@@ -54,7 +54,6 @@ def remove_obj_from_scene(pcd_ply_path, obj_index:int, npz_path):
     return: the scene pcd without the obj
     """
     data = np.load(npz_path)
-    points = data['xyz']
     semantic_labels = data['semantic_label']
     instance_labels = data['instance_label']
     point_cloud = o3d.io.read_point_cloud(pcd_ply_path)
@@ -296,7 +295,7 @@ def convert_dict(pcd_ply_path, npz_path) -> dict:
 
     # index -- object name
     item_dict = {}
-    with open('code/classes.txt', 'r') as file:
+    with open('scripts/dataset_gen/classes.txt', 'r') as file:
         # 逐行读取文件内容
         for line in file:
             # 去除行尾的换行符，并将每行内容按空格分割成数字和物品名
@@ -575,12 +574,9 @@ def get_on_desk_bbox(pcd_ply_path,  npz_path):
     return: the bbox position
     """
 
-    
     data = np.load(npz_path)
     points = data['xyz']
     semantic_labels = data['semantic_label']
-
-
 
     removed_indices = np.where((semantic_labels <= 40))[0]
 
@@ -620,7 +616,7 @@ def get_similar_random_obj(name):
     return: pcd of a similar obj
     """
     group_can = ['mug', 'can','bowl','bottle', 'jar']
-    group_elec = ['earphone', 'microphone', 'phone', 'calculator', 'charger', 'remote control']
+    group_elec = ['earphone', 'phone', 'calculator', 'charger', 'remote control']
     group_book = ['book','eraser','notebook', 'pencil','ruler']
     group_big = ['lamp', 'plant','vase']
     group_hat = ['hat', 'cap', 'eye_glasses']
@@ -657,7 +653,7 @@ def rotate_mesh(mesh, axis, angle_deg):
 
 def bbox_pos_scale_all_obj(pcd_ply_path, npz_path):
     """
-    Remove objects with semantic labels greater than 40 from the point cloud.
+    calculate the bbox pos and bbox scale of all obj(semantic label > 40)
     
     Parameters:
     pcd_ply_path (str): Path to the input PLY file.
@@ -668,7 +664,7 @@ def bbox_pos_scale_all_obj(pcd_ply_path, npz_path):
     """
     # Load NPZ file data
     data = np.load(npz_path)
-    points = data['xyz']
+    #points = data['xyz']
     semantic_labels = data['semantic_label']
     instance_labels = data['instance_label']
     
@@ -687,12 +683,11 @@ def bbox_pos_scale_all_obj(pcd_ply_path, npz_path):
         
         for ins_id in instance_ids:
             # Find points corresponding to the current instance
-            label_indices = np.where((semantic_labels == label) & (instance_labels == ins_id))[0]
-            points_of_instance = points[label_indices]
-            
+            obj = get_obj_from_scene_inslabel(pcd_ply_path=pcd_ply_path, ins_index=ins_id, npz_path=npz_path)
+            aabb = obj.get_axis_aligned_bounding_box()
             # Compute bounding box
-            min_bound = points_of_instance.min(axis=0)
-            max_bound = points_of_instance.max(axis=0)
+            min_bound = aabb.min_bound
+            max_bound = aabb.max_bound
             size = max_bound - min_bound
             
             # Store the bounding box information
@@ -702,14 +697,6 @@ def bbox_pos_scale_all_obj(pcd_ply_path, npz_path):
                 "max_bound": max_bound.tolist(),
                 "size": size.tolist()
             }
-    
-    # Remove points with semantic labels greater than 40
-    remove_mask = semantic_labels > 40
-    filtered_points = points[~remove_mask]
-    
-    # Create a filtered point cloud
-    filtered_point_cloud = o3d.geometry.PointCloud()
-    filtered_point_cloud.points = o3d.utility.Vector3dVector(filtered_points)
     
     return dict_bbox_pos_scale
 
