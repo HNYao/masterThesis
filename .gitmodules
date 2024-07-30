@@ -1,0 +1,9 @@
+[submodule "CLIP"]
+	path = CLIP
+	url = https://github.com/openai/CLIP.git
+[submodule "DiffusionCLIP"]
+	path = DiffusionCLIP
+	url = https://github.com/gwang-kim/DiffusionCLIP.git
+[submodule "GroundingDINO"]
+	path = GroundingDINO
+	url = https://github.com/IDEA-Research/GroundingDINO.git
