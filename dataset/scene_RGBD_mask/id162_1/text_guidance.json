@@ -1,0 +1,38 @@
+{
+    "the black keyboard": [
+        "the black monitor",
+        "the black keyboard is on the black monitor's Front side"
+    ],
+    "the black monitor": [
+        "the black keyboard",
+        "the black monitor is at the Back of the black keyboard"
+    ],
+    "the orange lamp": [
+        "the normal eraser",
+        "the orange lamp is on the normal eraser's Front side"
+    ],
+    "the white cup": [
+        "the black book",
+        "the white cup is at the black book's Right"
+    ],
+    "the normal printer": [
+        "the normal plant",
+        "the normal printer is on the normal plant's Front Right side"
+    ],
+    "the black book": [
+        "the normal eraser",
+        "the black book is on the normal eraser's Back Right side"
+    ],
+    "the normal eraser": [
+        "the black book",
+        "the normal eraser is at the black book's Front Left"
+    ],
+    "the normal plant": [
+        "the normal printer",
+        "the normal plant is on the Back Left side of the normal printer"
+    ],
+    "the white bowl": [
+        "the white cup",
+        "the white bowl is at the Right of the white cup"
+    ]
+}

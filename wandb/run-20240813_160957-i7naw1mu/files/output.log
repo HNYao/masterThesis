@@ -1,0 +1,49 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-13 16:10:03,672 [Worker 0] Is distributed: False
+2024-08-13 16:10:03,672 [Process: 0] Starting training
+2024-08-13 16:10:03,672 [Process: 0] EPOCH 1:
+2024-08-13 16:10:03,674 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 340, in train
+    avg_loss, avg_metrics = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 179, in train_one_epoch
+    for i, batch in enumerate(self.train_loader):
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 634, in __next__
+    data = self._next_data()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1346, in _next_data
+    return self._process_data(data)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1372, in _process_data
+    data.reraise()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/_utils.py", line 644, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 127, in collate
+    return elem_type({key: collate([d[key] for d in batch], collate_fn_map=collate_fn_map) for key in elem})
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 127, in <dictcomp>
+    return elem_type({key: collate([d[key] for d in batch], collate_fn_map=collate_fn_map) for key in elem})
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 150, in collate
+    raise TypeError(default_collate_err_msg_format.format(elem_type))
+TypeError: default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'PIL.Image.Image'>
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/worker.py", line 308, in _worker_loop
+    data = fetcher.fetch(index)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 54, in fetch
+    return self.collate_fn(data)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 264, in default_collate
+    return collate(batch, collate_fn_map=default_collate_fn_map)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 130, in collate
+    return {key: collate([d[key] for d in batch], collate_fn_map=collate_fn_map) for key in elem}
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 130, in <dictcomp>
+    return {key: collate([d[key] for d in batch], collate_fn_map=collate_fn_map) for key in elem}
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 150, in collate
+    raise TypeError(default_collate_err_msg_format.format(elem_type))
+TypeError: default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'PIL.Image.Image'>
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

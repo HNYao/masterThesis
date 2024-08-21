@@ -1,0 +1,45 @@
+2024-08-15 20:17:14,120 [Worker 0] Is distributed: False
+2024-08-15 20:17:14,121 [Process: 0] Starting training
+2024-08-15 20:17:14,121 [Process: 0] EPOCH 1:
+2024-08-15 20:17:14,125 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+Error executing job with overrides: []
+----x_geo shape: torch.Size([2, 4, 4096])
+shape of recept: torch.Size([2, 3, 480, 640])
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 339, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 198, in train_one_epoch
+    outputs = self.model(batch=batch)["affordance"].squeeze(1)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 48, in forward
+    x_rgb = self.clipunet_module(batch=batch)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/clip_unet.py", line 317, in forward
+    x = self.forward_encoder(receptacle, target)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/clip_unet.py", line 304, in forward_encoder
+    x = self.up3(x, x_im_feats[-4])
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/encoders/unet.py", line 68, in forward
+    x = torch.cat([x2, x1], dim=1)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 76.00 MiB (GPU 0; 7.77 GiB total capacity; 1.28 GiB already allocated; 123.06 MiB free; 1.37 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32

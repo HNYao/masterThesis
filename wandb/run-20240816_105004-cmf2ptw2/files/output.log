@@ -1,0 +1,93 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2288, 0.2102, 0.2691,  ..., 0.3613, 0.3844, 0.3568],
+         [0.2360, 0.3695, 0.2254,  ..., 0.2129, 0.2029, 0.2303],
+         [0.3065, 0.2102, 0.2067,  ..., 0.2129, 0.2029, 0.2065],
+         [0.2288, 0.2102, 0.2988,  ..., 0.2129, 0.2099, 0.2065]],
+        [[0.2659, 0.2759, 0.2439,  ..., 0.2364, 0.2260, 0.2454],
+         [0.2447, 0.2414, 0.2683,  ..., 0.2658, 0.2260, 0.2454],
+         [0.2447, 0.2414, 0.2439,  ..., 0.2615, 0.3221, 0.2638],
+         [0.2447, 0.2414, 0.2439,  ..., 0.2364, 0.2260, 0.2454]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+2024-08-16 10:50:09,059 [Worker 0] Is distributed: False
+2024-08-16 10:50:09,060 [Process: 0] Starting training
+2024-08-16 10:50:09,060 [Process: 0] EPOCH 1:
+2024-08-16 10:50:09,063 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-16 10:50:11,601 [Process: 0] Synchronize training processes
+2024-08-16 10:50:11,601 [Process: 0] Evaluating...
+2024-08-16 10:50:11,603 [Process: 0] EPOCH 2:
+2024-08-16 10:50:11,605 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-16 10:50:12,529 [Process: 0] Step: 0	 Loss: nan	 Metrics: 0	 Loss pre: nan	 P Mask: tensor([nan, nan], device='cuda:0', grad_fn=<SumBackward1>) inp: 0.0 - 211.0
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2858, 0.3608, 0.2500,  ..., 0.2531, 0.6670, 0.3649],
+         [0.2259, 0.2131, 0.2500,  ..., 0.1938, 0.1247, 0.1277],
+         [0.2101, 0.2131, 0.2500,  ..., 0.2927, 0.0843, 0.1277],
+         [0.2782, 0.2131, 0.2500,  ..., 0.2604, 0.1240, 0.3797]],
+        [[0.2061, 0.2252, 0.2500,  ..., 0.1765, 0.2068, 0.1902],
+         [0.2767, 0.2252, 0.2500,  ..., 0.5014, 0.3734, 0.4295],
+         [0.3111, 0.3244, 0.2500,  ..., 0.1611, 0.2129, 0.1902],
+         [0.2061, 0.2252, 0.2500,  ..., 0.1611, 0.2068, 0.1902]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 2:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan]],
+        [[nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan]]], device='cuda:0',
+       grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Step: 0	 Loss: nan	 Metrics: 0	 Loss pre: nan	 P Mask: tensor([nan, nan], device='cuda:0', grad_fn=<SumBackward1>) inp: 0.0 - 211.0

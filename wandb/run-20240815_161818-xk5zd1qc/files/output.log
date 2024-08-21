@@ -1,0 +1,904 @@
+2024-08-15 16:18:24,714 [Worker 0] Is distributed: False
+2024-08-15 16:18:24,714 [Process: 0] Starting training
+2024-08-15 16:18:24,715 [Process: 0] EPOCH 1:
+2024-08-15 16:18:24,717 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+2024-08-15 16:18:27,734 [Process: 0] Synchronize training processes
+2024-08-15 16:18:27,735 [Process: 0] Evaluating...
+2024-08-15 16:18:27,737 [Process: 0] EPOCH 2:
+2024-08-15 16:18:27,739 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 2:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:29,915 [Process: 0] Synchronize training processes
+2024-08-15 16:18:29,915 [Process: 0] Evaluating...
+2024-08-15 16:18:29,917 [Process: 0] EPOCH 3:
+2024-08-15 16:18:29,919 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 3:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:32,096 [Process: 0] Synchronize training processes
+2024-08-15 16:18:32,096 [Process: 0] Evaluating...
+2024-08-15 16:18:32,098 [Process: 0] EPOCH 4:
+2024-08-15 16:18:32,100 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 4:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:34,281 [Process: 0] Synchronize training processes
+2024-08-15 16:18:34,281 [Process: 0] Evaluating...
+2024-08-15 16:18:34,283 [Process: 0] EPOCH 5:
+2024-08-15 16:18:34,285 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 5:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:36,478 [Process: 0] Synchronize training processes
+2024-08-15 16:18:36,478 [Process: 0] Evaluating...
+2024-08-15 16:18:36,481 [Process: 0] EPOCH 6:
+2024-08-15 16:18:36,483 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 6:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:38,660 [Process: 0] Synchronize training processes
+2024-08-15 16:18:38,661 [Process: 0] Evaluating...
+2024-08-15 16:18:38,663 [Process: 0] EPOCH 7:
+2024-08-15 16:18:38,665 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 7:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:40,831 [Process: 0] Synchronize training processes
+2024-08-15 16:18:40,832 [Process: 0] Evaluating...
+2024-08-15 16:18:40,834 [Process: 0] EPOCH 8:
+2024-08-15 16:18:40,836 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 8:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:43,010 [Process: 0] Synchronize training processes
+2024-08-15 16:18:43,011 [Process: 0] Evaluating...
+2024-08-15 16:18:43,013 [Process: 0] EPOCH 9:
+2024-08-15 16:18:43,015 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 9:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:45,190 [Process: 0] Synchronize training processes
+2024-08-15 16:18:45,190 [Process: 0] Evaluating...
+2024-08-15 16:18:45,192 [Process: 0] EPOCH 10:
+2024-08-15 16:18:45,194 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 10:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:47,354 [Process: 0] Synchronize training processes
+2024-08-15 16:18:47,355 [Process: 0] Evaluating...
+2024-08-15 16:18:47,357 [Process: 0] EPOCH 11:
+2024-08-15 16:18:47,359 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 11:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:18:49,523 [Process: 0] Synchronize training processes
+2024-08-15 16:18:49,523 [Process: 0] Evaluating...
+2024-08-15 16:18:49,525 [Process: 0] EPOCH 12:
+2024-08-15 16:18:49,527 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 12:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:51,693 [Process: 0] Synchronize training processes
+2024-08-15 16:18:51,693 [Process: 0] Evaluating...
+2024-08-15 16:18:51,695 [Process: 0] EPOCH 13:
+2024-08-15 16:18:51,697 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 13:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:53,861 [Process: 0] Synchronize training processes
+2024-08-15 16:18:53,862 [Process: 0] Evaluating...
+2024-08-15 16:18:53,864 [Process: 0] EPOCH 14:
+2024-08-15 16:18:53,866 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 14:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:56,041 [Process: 0] Synchronize training processes
+2024-08-15 16:18:56,042 [Process: 0] Evaluating...
+2024-08-15 16:18:56,044 [Process: 0] EPOCH 15:
+2024-08-15 16:18:56,046 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 15:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:18:58,228 [Process: 0] Synchronize training processes
+2024-08-15 16:18:58,229 [Process: 0] Evaluating...
+2024-08-15 16:18:58,231 [Process: 0] EPOCH 16:
+2024-08-15 16:18:58,233 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 16:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:19:00,397 [Process: 0] Synchronize training processes
+2024-08-15 16:19:00,397 [Process: 0] Evaluating...
+2024-08-15 16:19:00,399 [Process: 0] EPOCH 17:
+2024-08-15 16:19:00,401 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 17:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:02,575 [Process: 0] Synchronize training processes
+2024-08-15 16:19:02,575 [Process: 0] Evaluating...
+2024-08-15 16:19:02,577 [Process: 0] EPOCH 18:
+2024-08-15 16:19:02,579 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 18:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:04,743 [Process: 0] Synchronize training processes
+2024-08-15 16:19:04,743 [Process: 0] Evaluating...
+2024-08-15 16:19:04,745 [Process: 0] EPOCH 19:
+2024-08-15 16:19:04,747 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 19:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:06,909 [Process: 0] Synchronize training processes
+2024-08-15 16:19:06,909 [Process: 0] Evaluating...
+2024-08-15 16:19:06,911 [Process: 0] EPOCH 20:
+2024-08-15 16:19:06,913 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 20:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:09,079 [Process: 0] Synchronize training processes
+2024-08-15 16:19:09,079 [Process: 0] Evaluating...
+2024-08-15 16:19:09,081 [Process: 0] EPOCH 21:
+2024-08-15 16:19:09,084 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 21:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:11,244 [Process: 0] Synchronize training processes
+2024-08-15 16:19:11,244 [Process: 0] Evaluating...
+2024-08-15 16:19:11,247 [Process: 0] EPOCH 22:
+2024-08-15 16:19:11,249 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 22:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:13,414 [Process: 0] Synchronize training processes
+2024-08-15 16:19:13,415 [Process: 0] Evaluating...
+2024-08-15 16:19:13,417 [Process: 0] EPOCH 23:
+2024-08-15 16:19:13,419 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 23:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+2024-08-15 16:19:15,590 [Process: 0] Synchronize training processes
+2024-08-15 16:19:15,590 [Process: 0] Evaluating...
+2024-08-15 16:19:15,592 [Process: 0] EPOCH 24:
+2024-08-15 16:19:15,594 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 24:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:19:17,770 [Process: 0] Synchronize training processes
+2024-08-15 16:19:17,771 [Process: 0] Evaluating...
+2024-08-15 16:19:17,773 [Process: 0] EPOCH 25:
+2024-08-15 16:19:17,775 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 25:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-15 16:19:19,943 [Process: 0] Synchronize training processes
+2024-08-15 16:19:19,944 [Process: 0] Evaluating...
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+shape of recept: torch.Size([2, 3, 480, 640])
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+torch.float32
+shape of inputs: torch.Size([2, 480, 640])
+shape of targets: torch.Size([2, 480, 640])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...

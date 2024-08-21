@@ -80,12 +80,20 @@ def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False,
         colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
         pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)
         
+        # save the pcd no obj scene
+        pcd_no_obj_scene = remove_ground(pcd_no_obj_scene)
+        pcd_ori_path = f"{output_dir}/pc_ori.ply"
+        o3d.io.write_point_cloud(pcd_ori_path, pcd_no_obj_scene)
 
     if reprocessing_flag == True:
         if (depth_removed_obj is not None) and (mask_hd5f_removed_obj is not None):
             points_scene = pcd_mask_preprocessing(points_scene=pcd_scene, points_no_obj_scene=pcd_no_obj_scene)
         else:
             points_scene = pcd_mask_preprocessing(points_scene=pcd_scene)
+    
+    # remove the ground floor
+    points_scene = remove_ground(points_scene)
+    
     # pc_mask_path
     pc_mask_path = f"{output_dir}/mask.ply"
     o3d.io.write_point_cloud(pc_mask_path, points_scene)
@@ -193,6 +201,22 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     points_scene.colors = o3d.utility.Vector3dVector(colors[not_white_mask])
     return points_scene
 
+def remove_ground(point_cloud):
+    points = np.asarray(point_cloud.points)
+    colors = np.asarray(point_cloud.colors)
+
+    z_min = np.min(points[:,2])
+    z_max = np.max(points[:,2])
+    height = z_max - z_min
+
+    z_thershold = z_max - height /4 # remove 25%
+    mask = points[:, 2] <= z_thershold
+    filtered_points = points[mask]
+    filtered_colors = colors[mask]
+    pcd_filtered = o3d.geometry.PointCloud()
+    pcd_filtered.points = o3d.utility.Vector3dVector(filtered_points)
+    pcd_filtered.colors = o3d.utility.Vector3dVector(filtered_colors)
+    return pcd_filtered
 
 def RGB2RefMaskPC(depth_path, ref_image_path, out_dir):
 
@@ -213,8 +237,19 @@ def RGB2RefMaskPC(depth_path, ref_image_path, out_dir):
     colors_image = cv2.imread(ref_image_path, cv2.IMREAD_UNCHANGED)
     color = np.array(colors_image) / 255.0
     colors_scene = color[scene_idx[0], scene_idx[1]]
+
+        # camera rotation 
+    cam_rotation_matrix = np.array([
+        [1, 0, 0],
+        [0,0.8,-0.6],
+        [0,0.6,0.8]
+    ])
+
+    points_scene = (cam_rotation_matrix @ points_scene.T).T
     
     pcd_scene = visualize_points(points_scene, colors_scene)
+    # remove the ground floor
+    pcd_scene = remove_ground(pcd_scene)
     pc_mask_path = f"{out_dir}/mask_ref.ply"
     o3d.io.write_point_cloud(pc_mask_path, pcd_scene)
 
@@ -224,7 +259,7 @@ if __name__ == "__main__":
     # dataset/scene_RGBD_mask/scene_name/remove_obj/ply
 
     # config
-    base = "dataset/scene_RGBD_mask/id162_1/printer_0002_normal" # only part need to be changed
+    base = "dataset/scene_RGBD_mask/id162_1/lamp_0004_orange" # only part need to be changed
 
     image_path = base + "/with_obj/test_pbr/000000/rgb/000000.jpg"
     depth_path = base + "/with_obj/test_pbr/000000/depth/000000.png"

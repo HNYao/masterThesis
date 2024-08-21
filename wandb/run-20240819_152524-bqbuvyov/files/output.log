@@ -1,0 +1,59 @@
+2024-08-19 15:25:29,432 [Worker 0] Is distributed: False
+2024-08-19 15:25:29,433 [Process: 0] Starting training
+2024-08-19 15:25:29,433 [Process: 0] EPOCH 1:
+2024-08-19 15:25:29,436 [Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+2024-08-19 15:25:31,045 [Process: 0] Synchronize training processes
+2024-08-19 15:25:31,046 [Process: 0] Evaluating...
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2028, 0.3592, 0.1945,  ..., 0.1251, 0.4740, 0.1963],
+         [0.3724, 0.2667, 0.1582,  ..., 0.1394, 0.1753, 0.4111],
+         [0.2220, 0.1966, 0.4491,  ..., 0.5495, 0.1753, 0.1963],
+         [0.2028, 0.1774, 0.1982,  ..., 0.1860, 0.1753, 0.1963]],
+        [[0.3022, 0.1658, 0.5318,  ..., 0.2739, 0.2172, 0.1463],
+         [0.1963, 0.4420, 0.0963,  ..., 0.3728, 0.2172, 0.2151],
+         [0.1502, 0.2115, 0.0963,  ..., 0.1767, 0.3485, 0.1463],
+         [0.3513, 0.1806, 0.2755,  ..., 0.1767, 0.2172, 0.4923]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2379, 0.2499, 0.2260,  ..., 0.2771, 0.2146, 0.1715],
+         [0.2724, 0.2891, 0.2260,  ..., 0.2746, 0.2730, 0.1738],
+         [0.2704, 0.2126, 0.2986,  ..., 0.2128, 0.1682, 0.1715],
+         [0.2193, 0.2485, 0.2493,  ..., 0.2355, 0.3442, 0.4832]],
+        [[0.2796, 0.2246, 0.2757,  ..., 0.2557, 0.2622, 0.2372],
+         [0.2218, 0.2955, 0.2625,  ..., 0.3082, 0.2789, 0.2609],
+         [0.2081, 0.1833, 0.2098,  ..., 0.1753, 0.1977, 0.3031],
+         [0.2905, 0.2966, 0.2521,  ..., 0.2608, 0.2613, 0.1988]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+(2, 512, 3)

@@ -1,0 +1,36 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 4, 4096])
+----x_rgb shape: torch.Size([2, 1, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+2024-08-15 20:53:00,994 [Worker 0] Is distributed: False
+2024-08-15 20:53:00,994 [Process: 0] Starting training
+2024-08-15 20:53:00,994 [Process: 0] EPOCH 1:
+2024-08-15 20:53:00,996 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 339, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 198, in train_one_epoch
+    outputs = self.model(batch=batch)["affordance"].squeeze(1)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 55, in forward
+    x = self.concate(x_rgb, scene_pcs, self.instrics)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/modules.py", line 133, in forward
+    feat_2d = self.interpolate_image_grid_features(
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/modules.py", line 75, in interpolate_image_grid_features
+    batch_size, _, height, width = image_grid.shape
+AttributeError: 'dict' object has no attribute 'shape'
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

@@ -1,0 +1,32 @@
+2024-08-16 15:39:09,545 [Worker 0] Is distributed: False
+2024-08-16 15:39:09,546 [Process: 0] Starting training
+2024-08-16 15:39:09,546 [Process: 0] EPOCH 1:
+2024-08-16 15:39:09,549 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 340, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 179, in train_one_epoch
+    for i, batch in enumerate(self.train_loader):
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 634, in __next__
+    data = self._next_data()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 678, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 51, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 51, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset/dataset.py", line 124, in __getitem__
+    fps_indices_scene = pointnet2_utils.furthest_point_sample(scene_pcd_tensor, 4096)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/autograd/function.py", line 506, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/pointnet2_ops/pointnet2_utils.py", line 54, in forward
+    out = _ext.furthest_point_sampling(xyz, npoint)
+RuntimeError: points.is_contiguous() INTERNAL ASSERT FAILED at "pointnet2_ops/_ext-src/src/sampling.cpp":67, please report a bug to PyTorch. points must be a contiguous tensor
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True

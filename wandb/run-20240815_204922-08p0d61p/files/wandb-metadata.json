@@ -1,0 +1,148 @@
+{
+    "os": "Linux-6.5.0-45-generic-x86_64-with-glibc2.17",
+    "python": "3.8.19",
+    "heartbeatAt": "2024-08-15T18:49:23.301733",
+    "startedAt": "2024-08-15T18:49:22.709967",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py",
+    "codePathLocal": "GeoL_net/run.py",
+    "codePath": "GeoL_net/run.py",
+    "git": {
+        "remote": "git@github.com:HNYao/masterThesis.git",
+        "commit": "ede9e9ebad7cbf6111f45c110f8ede16d765c3aa"
+    },
+    "email": "zhongyao9903@gmail.com",
+    "root": "/home/stud/zhoy/MasterThesis_zhoy",
+    "host": "atcremers100",
+    "username": "zhoy",
+    "executable": "/home/stud/zhoy/anaconda3/envs/o2o/bin/python",
+    "cpu_count": 12,
+    "cpu_count_logical": 20,
+    "cpu_freq": {
+        "current": 1902.2096000000001,
+        "min": 800.0,
+        "max": 4580.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2165.834,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3397.382,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 822.884,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 1040.367,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3337.118,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3485.465,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 828.175,
+            "min": 800.0,
+            "max": 4900.0
+        },
+        {
+            "current": 2688.137,
+            "min": 800.0,
+            "max": 4900.0
+        },
+        {
+            "current": 3650.875,
+            "min": 800.0,
+            "max": 4900.0
+        },
+        {
+            "current": 3654.424,
+            "min": 800.0,
+            "max": 4900.0
+        },
+        {
+            "current": 2956.534,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 2479.226,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 1184.957,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 1344.523,
+            "min": 800.0,
+            "max": 3600.0
+        },
+        {
+            "current": 1008.291,
+            "min": 800.0,
+            "max": 3600.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 3600.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 3600.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 58.75761032104492,
+            "used": 24.680355072021484
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3070",
+            "memory_total": 8589934592
+        }
+    ],
+    "memory": {
+        "total": 31.030742645263672
+    }
+}

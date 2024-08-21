@@ -1,0 +1,35 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+2024-08-15 09:44:56,556 [Worker 0] Is distributed: False
+2024-08-15 09:44:56,556 [Process: 0] Starting training
+2024-08-15 09:44:56,556 [Process: 0] EPOCH 1:
+2024-08-15 09:44:56,560 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 339, in train
+    avg_loss, avg_metrics = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 198, in train_one_epoch
+    outputs = self.model(batch=batch)["affordance"].squeeze(1)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 39, in forward
+    l_enc, l_emb, l_mask = self.encode_text(texts)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 28, in encode_text
+    tokens = tokenize([x]).to(self.device)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/clip/model.py", line 705, in tokenize
+    all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/clip/model.py", line 705, in <listcomp>
+    all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/clip/model.py", line 132, in encode
+    text = whitespace_clean(basic_clean(text)).lower()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/clip/model.py", line 55, in basic_clean
+    text = ftfy.fix_text(text)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/ftfy/__init__.py", line 351, in fix_text
+    textbreak = text.find("\n", pos) + 1
+AttributeError: 'list' object has no attribute 'find'
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

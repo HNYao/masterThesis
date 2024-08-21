@@ -1,0 +1,138 @@
+2024-07-07 18:31:21 running xatlas to unwrap UVs for mesh
+2024-07-07 18:31:21 Loaded Mesh, #parameters: 6337536
+2024-07-07 18:31:21 TexturedMeshModel()
+2024-07-07 18:31:21 loaded hugging face access token from ./TOKEN!
+2024-07-07 18:31:21 loading stable diffusion with stabilityai/stable-diffusion-2-depth...
+2024-07-07 18:31:25 	 successfully loaded stable diffusion!
+2024-07-07 18:31:25 A green plant with pot , front view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , front view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267,  2184,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 A green plant with pot , left view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , left view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267,  1823,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 A green plant with pot , back view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , back view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267,   893,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 A green plant with pot , right view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , right view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267,  1155,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 A green plant with pot , overhead view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , overhead view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267, 20321,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 A green plant with pot , bottom view
+2024-07-07 18:31:25 None
+2024-07-07 18:31:25 ['A green plant with pot , bottom view']
+2024-07-07 18:31:25 tensor([[49406,   320,  1901,  3912,   593,  5168,   267,  5931,  1093, 49407,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+             0,     0,     0,     0,     0,     0,     0]])
+2024-07-07 18:31:25 phis: [0.0, 45.0, 315.0, 90.0, 270.0, 135.0, 225.0, 180.0]
+2024-07-07 18:31:25 Successfully initialized plant_0003_normal
+2024-07-07 18:31:25 Starting training ^_^
+2024-07-07 18:31:25 Evaluating and saving model, painting iteration #0...
+2024-07-07 18:31:27 Done!
+2024-07-07 18:31:27 --- Painting step #1 ---
+2024-07-07 18:31:27 Painting from theta: 1.0471975803375244, phi: 0.0, radius: 1.5
+2024-07-07 18:31:27 text: A green plant with pot , front view
+2024-07-07 18:31:44 Evaluating and saving model, painting iteration #1...
+2024-07-07 18:31:46 Done!
+2024-07-07 18:31:46 --- Painting step #2 ---
+2024-07-07 18:31:46 Painting from theta: 1.0471975803375244, phi: 0.7853981852531433, radius: 1.5
+2024-07-07 18:31:46 text: A green plant with pot , left view
+2024-07-07 18:32:03 Evaluating and saving model, painting iteration #2...
+2024-07-07 18:32:04 Done!
+2024-07-07 18:32:04 --- Painting step #3 ---
+2024-07-07 18:32:04 Painting from theta: 1.0471975803375244, phi: 5.497786998748779, radius: 1.5
+2024-07-07 18:32:05 text: A green plant with pot , right view
+2024-07-07 18:32:22 Evaluating and saving model, painting iteration #3...
+2024-07-07 18:32:23 Done!
+2024-07-07 18:32:23 --- Painting step #4 ---
+2024-07-07 18:32:23 Painting from theta: 1.0471975803375244, phi: 1.5707963705062866, radius: 1.5
+2024-07-07 18:32:24 text: A green plant with pot , left view
+2024-07-07 18:32:41 Evaluating and saving model, painting iteration #4...
+2024-07-07 18:32:42 Done!
+2024-07-07 18:32:42 --- Painting step #5 ---
+2024-07-07 18:32:42 Painting from theta: 1.0471975803375244, phi: 4.71238899230957, radius: 1.5
+2024-07-07 18:32:43 text: A green plant with pot , right view
+2024-07-07 18:33:00 Evaluating and saving model, painting iteration #5...
+2024-07-07 18:33:02 Done!
+2024-07-07 18:33:02 --- Painting step #6 ---
+2024-07-07 18:33:02 Painting from theta: 1.0471975803375244, phi: 2.356194496154785, radius: 1.5
+2024-07-07 18:33:02 text: A green plant with pot , left view
+2024-07-07 18:33:19 Evaluating and saving model, painting iteration #6...
+2024-07-07 18:33:21 Done!
+2024-07-07 18:33:21 --- Painting step #7 ---
+2024-07-07 18:33:21 Painting from theta: 1.0471975803375244, phi: 3.9269907474517822, radius: 1.5
+2024-07-07 18:33:21 text: A green plant with pot , right view
+2024-07-07 18:33:39 Evaluating and saving model, painting iteration #7...
+2024-07-07 18:33:40 Done!
+2024-07-07 18:33:40 --- Painting step #8 ---
+2024-07-07 18:33:40 Painting from theta: 1.0471975803375244, phi: 3.1415927410125732, radius: 1.5
+2024-07-07 18:33:41 text: A green plant with pot , back view
+2024-07-07 18:33:58 Evaluating and saving model, painting iteration #8...
+2024-07-07 18:34:00 Done!
+2024-07-07 18:34:00 --- Painting step #9 ---
+2024-07-07 18:34:00 Painting from theta: 0.5235987901687622, phi: 3.1415927410125732, radius: 1.5
+2024-07-07 18:34:00 text: A green plant with pot , overhead view
+2024-07-07 18:34:18 Evaluating and saving model, painting iteration #9...
+2024-07-07 18:34:19 Done!
+2024-07-07 18:34:19 --- Painting step #10 ---
+2024-07-07 18:34:19 Painting from theta: 2.6179938316345215, phi: 3.1415927410125732, radius: 1.5
+2024-07-07 18:34:19 text: A green plant with pot , bottom view
+2024-07-07 18:34:37 Evaluating and saving model, painting iteration #10...
+2024-07-07 18:34:39 Done!
+2024-07-07 18:34:39 Finished Painting ^_^
+2024-07-07 18:34:39 Saving the last result...
+2024-07-07 18:34:39 Evaluating and saving model, painting iteration #10...
+2024-07-07 18:34:51 Done!
+2024-07-07 18:34:51 Saving mesh to experiments/plant_0003_normal/mesh
+2024-07-07 18:34:51 writing obj mesh to {obj_file}
+2024-07-07 18:34:51 writing vertices {v_np.shape}
+2024-07-07 18:34:51 writing vertices texture coords {vt_np.shape}
+2024-07-07 18:34:51 writing faces {f_np.shape}
+2024-07-07 18:34:51 	Done!
+2024-07-07 18:34:51 	Done!

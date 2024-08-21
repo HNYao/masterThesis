@@ -1,0 +1,16 @@
+2024-08-13 15:31:24,448 [Worker 0] Is distributed: False
+2024-08-13 15:31:24,448 [Process: 0] Starting training
+2024-08-13 15:31:24,448 [Process: 0] EPOCH 1:
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 25, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 340, in train
+    avg_loss, avg_metrics = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 161, in train_one_epoch
+    loss_fn = registry.get_loss_fn(self.cfg.training.loss.name)(
+TypeError: 'NoneType' object is not callable
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:

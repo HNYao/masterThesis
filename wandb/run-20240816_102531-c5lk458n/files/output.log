@@ -1,0 +1,66 @@
+2024-08-16 10:25:36,681 [Worker 0] Is distributed: False
+2024-08-16 10:25:36,682 [Process: 0] Starting training
+2024-08-16 10:25:36,682 [Process: 0] EPOCH 1:
+2024-08-16 10:25:36,684 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4096, 4])
+------target shape: torch.Size([2, 4096, 4])
+outputs shape: torch.Size([2, 4096, 4])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4096, 4])
+shape of targets: torch.Size([2, 4096, 4])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4096, 4])
+------target shape: torch.Size([2, 4096, 4])
+outputs shape: torch.Size([2, 4096, 4])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4096, 4])
+shape of targets: torch.Size([2, 4096, 4])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 2:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4096, 4])
+------target shape: torch.Size([2, 4096, 4])
+outputs shape: torch.Size([2, 4096, 4])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4096, 4])
+shape of targets: torch.Size([2, 4096, 4])
+[Process: 0] Step: 0	 Loss: nan	 Metrics: 0	 Loss pre: nan	 P Mask: tensor([nan, nan], device='cuda:0', grad_fn=<SumBackward1>) inp: 0.0 - 211.0
+2024-08-16 10:25:39,213 [Process: 0] Synchronize training processes
+2024-08-16 10:25:39,213 [Process: 0] Evaluating...
+2024-08-16 10:25:39,215 [Process: 0] EPOCH 2:
+2024-08-16 10:25:39,217 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+2024-08-16 10:25:40,127 [Process: 0] Step: 0	 Loss: nan	 Metrics: 0	 Loss pre: nan	 P Mask: tensor([nan, nan], device='cuda:0', grad_fn=<SumBackward1>) inp: 0.0 - 211.0

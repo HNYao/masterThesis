@@ -1,0 +1,71 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+2024-08-20 17:23:29,767 [Worker 0] Is distributed: False
+2024-08-20 17:23:29,767 [Process: 0] Starting training
+2024-08-20 17:23:29,767 [Process: 0] EPOCH 1:
+2024-08-20 17:23:29,771 [Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2028, 0.3592, 0.1945,  ..., 0.1251, 0.4740, 0.1963],
+         [0.3724, 0.2667, 0.1582,  ..., 0.1394, 0.1753, 0.4111],
+         [0.2220, 0.1966, 0.4491,  ..., 0.5495, 0.1753, 0.1963],
+         [0.2028, 0.1774, 0.1982,  ..., 0.1860, 0.1753, 0.1963]],
+        [[0.3022, 0.1658, 0.5318,  ..., 0.2739, 0.2172, 0.1463],
+         [0.1963, 0.4420, 0.0963,  ..., 0.3728, 0.2172, 0.2151],
+         [0.1502, 0.2115, 0.0963,  ..., 0.1767, 0.3485, 0.1463],
+         [0.3513, 0.1806, 0.2755,  ..., 0.1767, 0.2172, 0.4923]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+2024-08-20 17:23:40,145 [Process: 0] Synchronize training processes
+2024-08-20 17:23:40,145 [Process: 0] Evaluating...
+Error executing job with overrides: []
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2435, 0.2661, 0.2349,  ..., 0.2920, 0.2474, 0.1928],
+         [0.3161, 0.2683, 0.2255,  ..., 0.2623, 0.2470, 0.1928],
+         [0.2174, 0.2217, 0.1935,  ..., 0.1771, 0.1979, 0.1944],
+         [0.2230, 0.2439, 0.3461,  ..., 0.2687, 0.3076, 0.4199]],
+        [[0.2731, 0.2579, 0.2739,  ..., 0.3016, 0.2619, 0.2822],
+         [0.2576, 0.2824, 0.2457,  ..., 0.2435, 0.2519, 0.2263],
+         [0.1973, 0.1737, 0.1876,  ..., 0.1937, 0.2039, 0.2703],
+         [0.2721, 0.2860, 0.2928,  ..., 0.2612, 0.2823, 0.2212]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+(2, 512, 3)
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 356, in train
+    self.model.inference_heatmap_4cls()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 156, in inference_heatmap_4cls
+    self.color_backproj()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 197, in color_backproj
+    nearest_colors = colors_ply2[idx]
+IndexError: index 519 is out of bounds for axis 0 with size 512
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

@@ -1,0 +1,108 @@
+{
+    "os": "Linux-5.15.0-105-generic-x86_64-with-glibc2.17",
+    "python": "3.8.19",
+    "heartbeatAt": "2024-08-13T14:41:36.100007",
+    "startedAt": "2024-08-13T14:41:35.417223",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py",
+    "codePathLocal": "GeoL_net/run.py",
+    "codePath": "GeoL_net/run.py",
+    "git": {
+        "remote": "git@github.com:HNYao/masterThesis.git",
+        "commit": "2041e3bc2edcf03ee32906b48203788323e9b3f5"
+    },
+    "email": "zhongyao9903@gmail.com",
+    "root": "/home/stud/zhoy/MasterThesis_zhoy",
+    "host": "atcremers91",
+    "username": "zhoy",
+    "executable": "/home/stud/zhoy/anaconda3/envs/o2o/bin/python",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "cpu_freq": {
+        "current": 3316.67625,
+        "min": 800.0,
+        "max": 4800.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3500.115,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        },
+        {
+            "current": 3300.0,
+            "min": 800.0,
+            "max": 4800.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 39.075408935546875,
+            "used": 22.75201416015625
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3070",
+            "memory_total": 8589934592
+        }
+    ],
+    "memory": {
+        "total": 31.083030700683594
+    }
+}

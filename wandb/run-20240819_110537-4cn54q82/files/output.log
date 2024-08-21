@@ -1,0 +1,68 @@
+2024-08-19 11:05:42,570 [Worker 0] Is distributed: False
+2024-08-19 11:05:42,571 [Process: 0] Starting training
+2024-08-19 11:05:42,571 [Process: 0] EPOCH 1:
+2024-08-19 11:05:42,575 [Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2013, 0.3420, 0.1496,  ..., 0.1481, 0.4452, 0.1980],
+         [0.3961, 0.3088, 0.1496,  ..., 0.1420, 0.1849, 0.4061],
+         [0.2013, 0.1928, 0.5388,  ..., 0.5084, 0.1849, 0.1980],
+         [0.2013, 0.1564, 0.1620,  ..., 0.2015, 0.1849, 0.1980]],
+        [[0.3098, 0.1502, 0.6037,  ..., 0.2301, 0.2239, 0.1630],
+         [0.1867, 0.4153, 0.0751,  ..., 0.3520, 0.2239, 0.2199],
+         [0.1668, 0.2519, 0.0751,  ..., 0.2089, 0.3282, 0.1630],
+         [0.3367, 0.1825, 0.2462,  ..., 0.2089, 0.2239, 0.4541]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2857, 0.2439, 0.2407,  ..., 0.2738, 0.2753, 0.2548],
+         [0.3263, 0.2652, 0.3450,  ..., 0.2828, 0.2737, 0.2649],
+         [0.1611, 0.2246, 0.1885,  ..., 0.1659, 0.1832, 0.1639],
+         [0.2270, 0.2663, 0.2258,  ..., 0.2775, 0.2679, 0.3164]],
+        [[0.2873, 0.2359, 0.2336,  ..., 0.0928, 0.1271, 0.3112],
+         [0.2153, 0.2018, 0.2350,  ..., 0.0928, 0.2711, 0.2595],
+         [0.1900, 0.2407, 0.2336,  ..., 0.7217, 0.4748, 0.2022],
+         [0.3074, 0.3216, 0.2978,  ..., 0.0928, 0.1271, 0.2271]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+2024-08-19 11:05:44,296 [Process: 0] Synchronize training processes
+2024-08-19 11:05:44,296 [Process: 0] Evaluating...
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 356, in train
+    self.model.inference_heatmap_4cls()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/GeoL.py", line 133, in inference_heatmap_4cls
+    flattened = normalized_class_1_feat.numpy().flatten()
+RuntimeError: Can't call numpy() on Tensor that requires grad. Use tensor.detach().numpy() instead.
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

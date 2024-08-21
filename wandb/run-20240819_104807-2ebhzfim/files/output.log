@@ -1,0 +1,68 @@
+2024-08-19 10:48:11,083 [Worker 0] Is distributed: False
+2024-08-19 10:48:11,084 [Process: 0] Starting training
+2024-08-19 10:48:11,084 [Process: 0] EPOCH 1:
+2024-08-19 10:48:11,086 [Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 340, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 203, in train_one_epoch
+    loss.backward()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/_tensor.py", line 487, in backward
+    torch.autograd.backward(
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/autograd/__init__.py", line 200, in backward
+    Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 150.00 MiB (GPU 0; 9.75 GiB total capacity; 3.01 GiB already allocated; 99.12 MiB free; 3.24 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2028, 0.3592, 0.1945,  ..., 0.1251, 0.4740, 0.1963],
+         [0.3724, 0.2667, 0.1582,  ..., 0.1394, 0.1753, 0.4111],
+         [0.2220, 0.1966, 0.4491,  ..., 0.5495, 0.1753, 0.1963],
+         [0.2028, 0.1774, 0.1982,  ..., 0.1860, 0.1753, 0.1963]],
+        [[0.3022, 0.1658, 0.5318,  ..., 0.2739, 0.2172, 0.1463],
+         [0.1963, 0.4420, 0.0963,  ..., 0.3728, 0.2172, 0.2151],
+         [0.1502, 0.2115, 0.0963,  ..., 0.1767, 0.3485, 0.1463],
+         [0.3513, 0.1806, 0.2755,  ..., 0.1767, 0.2172, 0.4923]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 512])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 512, 3])
+-----align shape: torch.Size([2, 16, 512])
+------x shape: torch.Size([2, 35, 512])
+------fusion x shape: torch.Size([2, 4, 512])
+------target shape: torch.Size([2, 512, 4])
+tensor([[[0.2627, 0.2681, 0.2904,  ..., 0.2576, 0.2818, 0.2727],
+         [0.2802, 0.2575, 0.2925,  ..., 0.2964, 0.2853, 0.2552],
+         [0.2097, 0.2041, 0.1914,  ..., 0.1981, 0.2046, 0.2055],
+         [0.2474, 0.2703, 0.2258,  ..., 0.2479, 0.2283, 0.2666]],
+        [[0.2710, 0.1227, 0.2527,  ..., 0.2233, 0.0706, 0.2756],
+         [0.2724, 0.1227, 0.2682,  ..., 0.2587, 0.0706, 0.2685],
+         [0.2003, 0.6319, 0.2157,  ..., 0.2006, 0.7882, 0.1932],
+         [0.2563, 0.1227, 0.2635,  ..., 0.3174, 0.0706, 0.2627]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 512])
+mask shape: torch.Size([2, 512, 4])

@@ -1,0 +1,29 @@
+2024-08-13 17:04:02,282 [Worker 0] Is distributed: False
+2024-08-13 17:04:02,282 [Process: 0] Starting training
+2024-08-13 17:04:02,282 [Process: 0] EPOCH 1:
+2024-08-13 17:04:02,285 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+shape of recept: torch.Size([2, 3, 480, 640])
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 339, in train
+    avg_loss, avg_metrics = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 198, in train_one_epoch
+    outputs = self.model(batch=batch)["affordance"].squeeze(1)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/clip_unet.py", line 317, in forward
+    x = self.forward_encoder(receptacle, target)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/clip_unet.py", line 297, in forward_encoder
+    x = self.lang_fuser1(x, query, x2_proj=self.lang_proj1)
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/models/encoders/fusion.py", line 33, in forward
+    if x1.shape != x2.shape and len(x1.shape) != len(x2.shape):
+AttributeError: 'list' object has no attribute 'shape'
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

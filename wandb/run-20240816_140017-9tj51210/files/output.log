@@ -1,0 +1,276 @@
+2024-08-16 14:00:21,816 [Worker 0] Is distributed: False
+2024-08-16 14:00:21,817 [Process: 0] Starting training
+2024-08-16 14:00:21,817 [Process: 0] EPOCH 1:
+2024-08-16 14:00:21,821 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2288, 0.2102, 0.2691,  ..., 0.3613, 0.3844, 0.3568],
+         [0.2360, 0.3695, 0.2254,  ..., 0.2129, 0.2029, 0.2303],
+         [0.3065, 0.2102, 0.2067,  ..., 0.2129, 0.2029, 0.2065],
+         [0.2288, 0.2102, 0.2988,  ..., 0.2129, 0.2099, 0.2065]],
+        [[0.2659, 0.2759, 0.2439,  ..., 0.2364, 0.2260, 0.2454],
+         [0.2447, 0.2414, 0.2683,  ..., 0.2658, 0.2260, 0.2454],
+         [0.2447, 0.2414, 0.2439,  ..., 0.2615, 0.3221, 0.2638],
+         [0.2447, 0.2414, 0.2439,  ..., 0.2364, 0.2260, 0.2454]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+2024-08-16 14:00:24,378 [Process: 0] Synchronize training processes
+2024-08-16 14:00:24,378 [Process: 0] Evaluating...
+2024-08-16 14:00:24,380 [Process: 0] EPOCH 2:
+2024-08-16 14:00:24,382 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.0794, 0.2567, 0.2329,  ..., 0.2412, 0.2437, 0.2327],
+         [0.5864, 0.1943, 0.1624,  ..., 0.2412, 0.4205, 0.2327],
+         [0.0747, 0.3074, 0.2742,  ..., 0.2412, 0.1628, 0.2327],
+         [0.2594, 0.2415, 0.3305,  ..., 0.2764, 0.1730, 0.3019]],
+        [[0.2500, 0.2274, 0.2576,  ..., 0.2287, 0.6509, 0.3311],
+         [0.2500, 0.2809, 0.2197,  ..., 0.3140, 0.1583, 0.2265],
+         [0.2500, 0.2643, 0.3030,  ..., 0.2287, 0.0879, 0.2018],
+         [0.2500, 0.2274, 0.2197,  ..., 0.2287, 0.1029, 0.2406]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 2:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.3497, 0.3032, 0.2818,  ..., 0.3133, 0.2413, 0.3174],
+         [0.2275, 0.1752, 0.2621,  ..., 0.1857, 0.2413, 0.1755],
+         [0.1909, 0.1954, 0.2003,  ..., 0.1802, 0.2722, 0.2337],
+         [0.2319, 0.3263, 0.2558,  ..., 0.3208, 0.2453, 0.2734]],
+        [[0.2297, 0.2232, 0.2254,  ..., 0.2176, 0.2441, 0.2700],
+         [0.3110, 0.3304, 0.2584,  ..., 0.2679, 0.2678, 0.2925],
+         [0.2297, 0.2232, 0.2254,  ..., 0.2176, 0.2441, 0.2187],
+         [0.2297, 0.2232, 0.2908,  ..., 0.2969, 0.2441, 0.2187]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+2024-08-16 14:00:26,306 [Process: 0] Synchronize training processes
+2024-08-16 14:00:26,306 [Process: 0] Evaluating...
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.4784, 0.2314, 0.2282,  ..., 0.2500, 0.2176, 0.2500],
+         [0.1829, 0.2657, 0.2282,  ..., 0.2500, 0.2176, 0.2500],
+         [0.1693, 0.2525, 0.2282,  ..., 0.2500, 0.2176, 0.2500],
+         [0.1693, 0.2503, 0.3154,  ..., 0.2500, 0.3472, 0.2500]],
+        [[0.2359, 0.3363, 0.1599,  ..., 0.1970, 0.3346, 0.1744],
+         [0.2287, 0.2573, 0.2914,  ..., 0.2562, 0.2923, 0.3896],
+         [0.3469, 0.3026, 0.3572,  ..., 0.3497, 0.2337, 0.2619],
+         [0.1885, 0.1038, 0.1914,  ..., 0.1970, 0.1394, 0.1740]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+2024-08-16 14:00:42,533 [Process: 0] EPOCH 3:
+2024-08-16 14:00:42,539 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+[Process: 0] EPOCH 3:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2676, 0.2993, 0.2048,  ..., 0.2208, 0.2500, 0.2266],
+         [0.2441, 0.2246, 0.2797,  ..., 0.2208, 0.2500, 0.3211],
+         [0.2441, 0.1968, 0.2048,  ..., 0.2468, 0.2500, 0.2261],
+         [0.2441, 0.2794, 0.3108,  ..., 0.3117, 0.2500, 0.2261]],
+        [[0.2732, 0.2468, 0.2826,  ..., 0.2449, 0.2680, 0.2427],
+         [0.2032, 0.2710, 0.2879,  ..., 0.3342, 0.2475, 0.2554],
+         [0.2160, 0.1963, 0.2148,  ..., 0.2108, 0.2137, 0.2047],
+         [0.3076, 0.2859, 0.2148,  ..., 0.2101, 0.2708, 0.2972]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+2024-08-16 14:00:44,572 [Process: 0] Synchronize training processes
+2024-08-16 14:00:44,572 [Process: 0] Evaluating...
+2024-08-16 14:00:44,575 [Process: 0] EPOCH 4:
+2024-08-16 14:00:44,577 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2374, 0.0784, 0.0756,  ..., 0.2500, 0.1884, 0.2222],
+         [0.1544, 0.0770, 0.0756,  ..., 0.2500, 0.1884, 0.2222],
+         [0.4270, 0.7676, 0.7732,  ..., 0.2500, 0.4348, 0.3334],
+         [0.1812, 0.0770, 0.0756,  ..., 0.2500, 0.1884, 0.2222]],
+        [[0.1815, 0.1598, 0.2795,  ..., 0.2561, 0.2284, 0.2232],
+         [0.3889, 0.4295, 0.4236,  ..., 0.2806, 0.3898, 0.3249],
+         [0.1418, 0.2347, 0.1485,  ..., 0.2317, 0.1453, 0.2277],
+         [0.2879, 0.1760, 0.1485,  ..., 0.2317, 0.2365, 0.2241]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 4:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2307, 0.1805, 0.2514,  ..., 0.2129, 0.1973, 0.2130],
+         [0.2940, 0.2602, 0.2647,  ..., 0.3387, 0.2821, 0.3397],
+         [0.2307, 0.1648, 0.2234,  ..., 0.2129, 0.1973, 0.2130],
+         [0.2446, 0.3945, 0.2605,  ..., 0.2355, 0.3233, 0.2343]],
+        [[0.2309, 0.2459, 0.3231,  ..., 0.2595, 0.2807, 0.3345],
+         [0.3070, 0.3197, 0.2476,  ..., 0.3062, 0.2284, 0.2248],
+         [0.2347, 0.1961, 0.1994,  ..., 0.2172, 0.1963, 0.2062],
+         [0.2273, 0.2382, 0.2298,  ..., 0.2172, 0.2946, 0.2344]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+2024-08-16 14:00:46,577 [Process: 0] Synchronize training processes
+2024-08-16 14:00:46,578 [Process: 0] Evaluating...
+2024-08-16 14:00:46,580 [Process: 0] EPOCH 5:
+2024-08-16 14:00:46,582 [Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 37, in <module>
+    main()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/main.py", line 49, in decorated_main
+    _run_hydra(
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/_internal/utils.py", line 367, in _run_hydra
+    run_and_report(
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/_internal/utils.py", line 211, in run_and_report
+    return func()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/_internal/utils.py", line 368, in <lambda>
+    lambda: hydra.run(
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/_internal/hydra.py", line 97, in run
+    ret = run_job(
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/hydra/core/utils.py", line 160, in run_job
+    ret.return_value = task_function(task_cfg)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 340, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 179, in train_one_epoch
+    for i, batch in enumerate(self.train_loader):
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 634, in __next__
+    data = self._next_data()
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 678, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 51, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/stud/zhoy/anaconda3/envs/o2o/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 51, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset/dataset.py", line 165, in __getitem__
+    yellow_indices = [i for i, color in enumerate(colors_ref) if is_yellow(color)]
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset/dataset.py", line 165, in <listcomp>
+    yellow_indices = [i for i, color in enumerate(colors_ref) if is_yellow(color)]
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset/dataset.py", line 55, in is_yellow
+    return (color[0] > 1 - tolerance and color[1] > 1 - tolerance and color[2] < tolerance)
+KeyboardInterrupt
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+------list
+["the orange lamp is on the normal eraser's Front side", "the normal printer is on the normal plant's Front Right side"]
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4, 4096])
+------target shape: torch.Size([2, 4096, 4])
+tensor([[[0.2410, 0.2315, 0.5270,  ..., 0.2219, 0.3390, 0.4738],
+         [0.2410, 0.2315, 0.1449,  ..., 0.3755, 0.2203, 0.1349],
+         [0.2770, 0.3055, 0.1449,  ..., 0.2013, 0.2203, 0.1349],
+         [0.2410, 0.2315, 0.1833,  ..., 0.2013, 0.2203, 0.2565]],
+        [[0.2033, 0.0684, 0.3437,  ..., 0.1487, 0.1776, 0.1578],
+         [0.1209, 0.8570, 0.2449,  ..., 0.2363, 0.2207, 0.1578],
+         [0.4006, 0.0437, 0.2272,  ..., 0.4664, 0.1928, 0.4168],
+         [0.2753, 0.0309, 0.1842,  ..., 0.1487, 0.4088, 0.2675]]],
+       device='cuda:0', grad_fn=<SoftmaxBackward0>)
+outputs shape: torch.Size([2, 4, 4096])
+mask shape: torch.Size([2, 4096, 4])
+shape of inputs: torch.Size([2, 4, 4096])
+shape of targets: torch.Size([2, 4, 4096])
+[Process: 0] Synchronize training processes
+[Process: 0] Evaluating...
+[Process: 0] EPOCH 5:
+[Worker 0] Loss fn: soft_dice - SoftDiceLoss(), Rank 0 - True

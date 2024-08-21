@@ -1,0 +1,30 @@
+[Worker 0] Is distributed: False
+[Process: 0] Starting training
+[Process: 0] EPOCH 1:
+[Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+------list
+['To Front of the normal monitor, there is a the normal keyboard', 'the blue phone is at the Back of the normal phone']
+<class 'str'>
+<class 'str'>
+----x_geo shape: torch.Size([2, 16, 4096])
+----x_rgb shape: torch.Size([2, 16, 480, 640])
+-----scene_pcs shape: torch.Size([2, 4096, 3])
+-----align shape: torch.Size([2, 16, 4096])
+------x shape: torch.Size([2, 35, 4096])
+------fusion x shape: torch.Size([2, 4096, 4])
+------target shape: torch.Size([2, 4096, 4])
+2024-08-16 10:16:08,388 [Worker 0] Is distributed: False
+2024-08-16 10:16:08,389 [Process: 0] Starting training
+2024-08-16 10:16:08,389 [Process: 0] EPOCH 1:
+2024-08-16 10:16:08,393 [Worker 0] Loss fn: focal - FocalLoss(), Rank 0 - True
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/run.py", line 31, in main
+    trainer.train()
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 339, in train
+    avg_loss = self.train_one_epoch(epoch)
+  File "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/trainer/trainer.py", line 198, in train_one_epoch
+    outputs = self.model(batch=batch)["affordance"].squeeze(1)
+IndexError: too many indices for tensor of dimension 3
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
