@@ -74,7 +74,7 @@ class FeatureConcat(nn.Module):
         """
         batch_size, _, height, width = image_grid.shape
         query_grids = self.project_3d(query_points, intrinsics)  # [B, 2, N]
-        print("grid cord:", query_grids)
+        #print("grid cord:", query_grids)
         query_grids[:, 0] = (query_grids[:, 0] / (width - 1)) * 2 - 1
         query_grids[:, 1] = (query_grids[:, 1] / (height - 1)) * 2 - 1
         query_grids = query_grids.permute(0, 2, 1)[:, :, None]  # [B, N, 1, 2]
@@ -105,8 +105,6 @@ class FeatureConcat(nn.Module):
             pcd.points = o3d.utility.Vector3dVector(point_position_np)
             pcd.colors = o3d.utility.Vector3dVector(feature_np)
             o3d.visualization.draw_geometries([pcd])
-
-            
 
     def forward(
         self,
@@ -144,11 +142,24 @@ def test_FetureConcat():
     camera_instrinsics =np.array([[591.0125 ,   0.     , 322.525  ],
             [  0.     , 590.16775, 244.11084],
             [  0.     ,   0.     ,   1.     ]])
-    image = cv2.imread("dataset/scene_RGBD_mask/id15_1/keyboard_0004_normal/with_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR)
-    depth_image = cv2.imread("dataset/scene_RGBD_mask/id15_1/keyboard_0004_normal/with_obj/test_pbr/000000/depth/000000.png", cv2.IMREAD_UNCHANGED)
+
+    cam_rotation_matrix = np.array([
+        [1, 0, 0],
+        [0,0.8,-0.6],
+        [0,0.6,0.8]
+    ])  
+
+
+    image = cv2.imread("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/no_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR)
+    depth_image = cv2.imread("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/no_obj/test_pbr/000000/depth/000000.png", cv2.IMREAD_UNCHANGED)
     depth = np.array(depth_image)
     print(image.shape)
-    points, ids = backproject(depth_image, camera_instrinsics, np.logical_and(depth > 0, depth > 0),)
+
+    #points, _ = backproject(depth_image, camera_instrinsics, np.logical_and(depth > 0, depth > 0),)
+    pc = o3d.io.read_point_cloud("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/mask.ply")
+    points = np.array(pc.points)
+    points = (np.linalg.inv(cam_rotation_matrix) @ points.T).T
+
     pc = visualize_points(points)
     image_np = image.astype(np.float32)
     image_tensor = torch.tensor(image_np).permute(2, 0, 1).unsqueeze(0)  # [B, C, H, W]

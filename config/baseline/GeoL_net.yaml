@@ -24,10 +24,10 @@ dataset:
 
 training:
   trainer: "GeoL_net_trainer"
-  epochs: 25
+  epochs: 200
 
-  optimizer: "SGD"
-  lr: 0.001
+  optimizer: "Adam"
+  lr: 0.01
   weight_decay: 0.05
   layer_decay: 0.75
 
@@ -54,8 +54,10 @@ training:
     load_original_img: false
 
   loss:
-    name: "soft_dice"
+    name: "focal"
     soft_dice:
+      eps: 1e-7
+    focal:
       eps: 1e-7
     mae_reconstruction:
       norm_pix_loss: false

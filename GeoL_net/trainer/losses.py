@@ -7,8 +7,9 @@ from GeoL_net.core.registry import registry
 
 @registry.register_loss_fn(name="focal")
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0):
+    def __init__(self, config:DictConfig, alpha=0.25, gamma=5.0):
         super().__init__()
+        self.config = config
         self.alpha = alpha
         self.gamma = gamma
 

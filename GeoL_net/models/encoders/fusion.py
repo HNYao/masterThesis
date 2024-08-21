@@ -31,8 +31,8 @@ class FusionMult(Fusion):
 
     def forward(self, x1, x2, x2_proj=None):
         if x1.shape != x2.shape and len(x1.shape) != len(x2.shape):
-            print(x1.dtype)
-            print(x2.dtype)
+            #print(x1.dtype)
+            #print(x2.dtype)
             x2 = self.tile_x2(x1, x2, x2_proj)
         return x1 * x2
 

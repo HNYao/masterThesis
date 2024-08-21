@@ -95,11 +95,20 @@ class GeoLPlacementDataset(Dataset):
         """
         file_path = self.files[index]
         
+        cam_rotation_matrix = np.array([
+        [1, 0, 0],
+        [0,0.8,-0.6],
+        [0,0.6,0.8]
+        ])  
+
+
         # get scene pcd
         scene_pcd = o3d.io.read_point_cloud(os.path.join(file_path, "mask.ply"))
 
         # scene pcd points and colors
-        scene_pcd_points = np.asarray(scene_pcd.points)
+        scene_pcd_points_ori = np.asarray(scene_pcd.points)
+        scene_pcd_points = (np.linalg.inv(cam_rotation_matrix) @ scene_pcd_points_ori.T).T #reverse rotation
+
         scene_pcd_colors = np.asarray(scene_pcd.colors)
         
         # get label color 
@@ -112,7 +121,7 @@ class GeoLPlacementDataset(Dataset):
         scene_pcd_tensor = scene_pcd_tensor.to("cuda")
         scene_color_tensor = scene_color_tensor.to("cuda")
 
-        fps_indices_scene = pointnet2_utils.furthest_point_sample(scene_pcd_tensor, 4096)
+        fps_indices_scene = pointnet2_utils.furthest_point_sample(scene_pcd_tensor.contiguous(), 512)
         fps_indices_scene_np = fps_indices_scene.squeeze(0).cpu().numpy()
         fps_points_scene_from_original = scene_pcd_points[fps_indices_scene_np]
         fps_colors_scene_from_original = scene_pcd_colors[fps_indices_scene_np]
@@ -131,19 +140,35 @@ class GeoLPlacementDataset(Dataset):
         
         # get a fake mask
         fake_mask = np.random.rand(480, 640)
+        fake_mask_2 = np.random.rand(4096, 4)
 
 
-
-        colors_modified = np.zeros((fps_colors_from_original.shape[0],4))
+        # 4 classes
+        colors_modified_4cls = np.zeros((fps_colors_from_original.shape[0],4))
         for i in range(fps_colors_from_original.shape[0]):
             if (fps_colors_from_original[i] == [0.,1.,0.]).all(): #green
-                colors_modified[i] = [0.,1.,0.,0.]
+                colors_modified_4cls[i] = [0.,1.,0.,0.]
             elif (fps_colors_from_original[i] == [1.,0.,0.]).all(): # red
-                colors_modified[i] = [1.,0.,0.,0.]
+                colors_modified_4cls[i] = [1.,0.,0.,0.]
             elif (fps_colors_from_original[i] == [0.,0.,0.]).all(): #black
-                colors_modified[i] = [0.,0.,0.,1]
+                colors_modified_4cls[i] = [0.,0.,0.,1]
             elif (fps_colors_from_original[i] == [0.,0.,1.]).all(): #blue
-                colors_modified[i] = [0.,0.,1.,0.]
+                colors_modified_4cls[i] = [0.,0.,1.,0.]
+
+        # 2 classes
+        colors_modified_2cls = np.zeros((fps_colors_from_original.shape[0],2))
+        for i in range(fps_colors_from_original.shape[0]):
+            if (fps_colors_from_original[i] == [0.,1.,0.]).all(): #green
+                colors_modified_2cls[i] = [0.,1.]
+            elif (fps_colors_from_original[i] == [1.,0.,0.]).all(): # red
+                colors_modified_2cls[i] = [1.,0.]
+            elif (fps_colors_from_original[i] == [0.,0.,0.]).all(): #black
+                colors_modified_2cls[i] = [1.,0.]
+            elif (fps_colors_from_original[i] == [0.,0.,1.]).all(): #blue
+                colors_modified_2cls[i] = [1.,0.]
+
+
+
         
         # read json and the phrase
         parent_dir = os.path.dirname(file_path)
@@ -171,11 +196,11 @@ class GeoLPlacementDataset(Dataset):
             "fps_points_scene": fps_points_scene_from_original,
             "fps_colors_scene": fps_colors_scene_from_original,
             "ref_center": ref_center,
-            "colors_modified": colors_modified,
+            "colors_modified": colors_modified_4cls,
             "ref_obj": reference_obj,
             "phrase":phrase,
             "image": rgb_image,
-            "mask": fake_mask # just for testing
+            "mask": colors_modified_4cls
             
         }
 

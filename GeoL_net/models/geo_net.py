@@ -230,8 +230,8 @@ class GeoAffordModule(nn.Module):
         self.pointnet2 = PointNet2SemSegMSG(True)
         self.object_point2 = PointNet2SemSegSSGShape({'feat_dim': feat_dim})
         self.fc_layer = nn.Sequential(
-            nn.Conv1d(48, 4, kernel_size=1, bias=False),
-            nn.BatchNorm1d(4),
+            nn.Conv1d(48, 16, kernel_size=1, bias=False),
+            nn.BatchNorm1d(16),
             nn.ReLU(True),
         )
 
@@ -244,14 +244,14 @@ class GeoAffordModule(nn.Module):
     def forward(self, scene_pcs, acting_pcs):
         whole_feats = self.pointnet2(scene_pcs)     # B x 32 x N 
         acting_feats, acting_global_feats = self.object_point2(acting_pcs.repeat(1, 1, 2))    # B x F x M, B x F
-        acting_global_feats = acting_global_feats.unsqueeze(-1).repeat(1,1,4096) # B x F x N
+        acting_global_feats = acting_global_feats.unsqueeze(-1).repeat(1,1,512) # B x F x N
         scene_act_feats = torch.cat([whole_feats, acting_global_feats], dim=1) # B x 48 x N
 
         #print("scene_act_feats shape:", scene_act_feats.shape) 
         #pred_label = nn.LogSoftmax(whole_feats,dim=1)
         pred_feat = self.fc_layer(scene_act_feats)
-        pred_label = nn.functional.softmax(pred_feat,dim=1)
-        return pred_label
+        #pred_label = nn.functional.softmax(pred_feat,dim=1)
+        return pred_feat
     # scene_pcs: B x N x 3 (float)
     # acting_pcs: B x M x 3 (float)
     def inference(self, scene_pcs, acting_pcs, num_sample_pts=1000):
@@ -291,4 +291,92 @@ class GeoAffordModule(nn.Module):
         whole_pred_result_logits = self.fp_layer(scene_pcs, subsampled_scene_seeds, pred_result_logits).squeeze(1)   # B x N
         whole_pred_results = torch.sigmoid(whole_pred_result_logits)
         return whole_pred_results
+
+
+class PointNet2SemSegMSG_fusion(PointNet2SemSegSSG):
+    def _build_model(self):
+        self.SA_modules = nn.ModuleList()
+        c_in = 32
+        c_in_ori = c_in
+        self.SA_modules.append(
+            PointnetSAModuleMSG(
+                npoint=1024,
+                radii=[0.05, 0.1],
+                nsamples=[16, 32],
+                mlps=[[c_in, 16, 16, 32], [c_in, 32, 32, 64]],
+                use_xyz=True,
+            )
+        )
+        c_out_0 = 32 + 64
+
+        c_in = c_out_0
+        self.SA_modules.append(
+            PointnetSAModuleMSG(
+                npoint=256,
+                radii=[0.1, 0.2],
+                nsamples=[16, 32],
+                mlps=[[c_in, 64, 64, 128], [c_in, 64, 96, 128]],
+                use_xyz=True,
+            )
+        )
+        c_out_1 = 128 + 128
+
+        c_in = c_out_1
+        self.SA_modules.append(
+            PointnetSAModuleMSG(
+                npoint=64,
+                radii=[0.2, 0.4],
+                nsamples=[16, 32],
+                mlps=[[c_in, 128, 196, 256], [c_in, 128, 196, 256]],
+                use_xyz=True,
+            )
+        )
+        c_out_2 = 256 + 256
+
+        c_in = c_out_2
+        self.SA_modules.append(
+            PointnetSAModuleMSG(
+                npoint=16,
+                radii=[0.4, 0.8],
+                nsamples=[16, 32],
+                mlps=[[c_in, 256, 256, 512], [c_in, 256, 384, 512]],
+                use_xyz=True,
+            )
+        )
+        c_out_3 = 512 + 512
+
+        self.FP_modules = nn.ModuleList()
+        self.FP_modules.append(PointnetFPModule(mlp=[256 + c_in_ori, 128, 128]))
+        self.FP_modules.append(PointnetFPModule(mlp=[512 + c_out_0, 256, 256]))
+        self.FP_modules.append(PointnetFPModule(mlp=[512 + c_out_1, 512, 512]))
+        self.FP_modules.append(PointnetFPModule(mlp=[c_out_3 + c_out_2, 512, 512]))
+
+        self.fc_lyaer = nn.Sequential(
+            nn.Conv1d(128, 128, kernel_size=1, bias=False),
+            nn.BatchNorm1d(128),
+            nn.ReLU(True),
+            nn.Dropout(0.5),
+            nn.Conv1d(128, 32, kernel_size=1),
+        )
+
+class FusionPointLayer(nn.Module):
+    def __init__(self):
+        super(FusionPointLayer, self).__init__()
+        
+        self.pointnet2 = PointNet2SemSegMSG_fusion(True)
+        self.fc_layer = nn.Sequential(
+            nn.Conv1d(32, 4, kernel_size=1, bias=False),
+            nn.BatchNorm1d(4),
+            nn.ReLU(True),
+        )
+        self.fp_layer = MyFPModule()
+
+    # scene_pcs: B x N x 3 (float), with the 0th point to be the query point
+    # acting_pcs: B x M x 3 (float)
+    # pred_result_logits: B, whole_feats: B x F x N, acting_feats: B x F
+    def forward(self, scene_pcs):
+        whole_feats = self.pointnet2(scene_pcs)     # B x (3+16+16) x N 
+        pred_feat = self.fc_layer(whole_feats)
+        pred_feat = nn.functional.softmax(pred_feat,dim=1)
+        return pred_feat
 

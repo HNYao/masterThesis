@@ -196,9 +196,10 @@ class GeometryLanguageTrainer(BaseTrainer):
 
             # Make predictions for this batch
             outputs = self.model(batch=batch)["affordance"].squeeze(1)
-
+            print("outputs shape:", outputs.shape)
+            print("mask shape:", batch["mask"].shape)
             # Compute the loss and its gradients
-            loss = loss_fn(outputs, batch["mask"])
+            loss = loss_fn(outputs, batch["mask"].permute(0,2,1))
             loss.backward()
 
             metrics, _ = self.metrics(outputs, batch, mode="train")
@@ -350,6 +351,9 @@ class GeometryLanguageTrainer(BaseTrainer):
             logger.info("[Process: {}] Evaluating...".format(self.local_rank))
             # Evaluate model
             self.model.eval()
+            if epoch % 10 == 0:
+                self.model.inference_4cls()
+                self.model.inference_heatmap_4cls()
 
             if rank0_only():
                 #logger.info(

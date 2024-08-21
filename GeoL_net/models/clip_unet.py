@@ -170,7 +170,7 @@ class CLIPUNet(CLIPUNetImgQuery):
         self,
         input_shape: tuple,
         target_input_shape: tuple,
-        output_dim: int = 1,
+        output_dim: int = 16, # modify the output dim
         upsample_factor: int = 2,
         bilinear: bool = True,
         batchnorm: bool = True,
@@ -313,7 +313,7 @@ class CLIPUNet(CLIPUNetImgQuery):
         receptacle = batch["image"]
 
         input_shape = receptacle.shape
-        print("shape of recept:", receptacle.shape)
+        #print("shape of recept:", receptacle.shape)
         x = self.forward_encoder(receptacle, target)
 
         if not discriminator_only:
