@@ -4,7 +4,7 @@ translate all obj in dataset/obj/mesh to the origin point
 import trimesh
 import os
 
-parent_folder = "dataset/obj/mesh"
+parent_folder = "dataset/obj/objaverse"
 subfolders = [f.path for f in os.scandir(parent_folder) if f.is_dir()]
 for subfolder in subfolders:
     subsubfolders = [f.path for f in os.scandir(subfolder) if f.is_dir()]
