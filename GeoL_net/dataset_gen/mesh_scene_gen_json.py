@@ -3,6 +3,7 @@ generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
 """
 import open3d as o3d
+from pytorch3d.loss import chamfer_distance
 import trimesh
 import numpy as np
 import os
@@ -17,7 +18,8 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     Using open3d and trimesh
     OBJ with out texture
     Remove objects with semantic labels greater than 40 from the point cloud scene and replace them with mesh obj.
-    1. check if there is desk or table
+    1. check if there is desk or table 
+        # TODO: only keep the obj and calculate the center and size of desk 
     2. get the pos and scale of the desk or table
     3. write down the obj_file_name, position, z_angle, scale into json file 
     

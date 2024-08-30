@@ -69,9 +69,11 @@ def optimize_rotation(meshes, pcds, initial_angle, num_iterations=2000, learning
     
     # Optimization loop
     for iter in range(num_iterations):
-        chamfer_sum = 0
+        #chamfer_sum = 0
 
+        chamfer_loss = chamfer_distance(meshes, pcds)
         for i in range(B):
+            # TODO: parallelly
             chamfer_dist = compute_chamfer_distance(meshes[i], pcds[i], angles[i])
             chamfer_sum += chamfer_dist
 
