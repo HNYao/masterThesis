@@ -1,14 +1,13 @@
 import blenderproc as bproc
 import open3d as o3d
 import numpy as np
-import os
 import json
 import math
 from blenderproc.python.writer.MyWriterUtility import write_my, write_my_zhoy
 from blenderproc.python.writer.CocoWriterUtility import write_coco_annotations
 import argparse
-import glob
-import cv2
+import time
+
 
 """"
     almost same as the mesh_scene_gen_bproc.py

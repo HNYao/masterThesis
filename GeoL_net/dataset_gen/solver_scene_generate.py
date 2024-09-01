@@ -51,6 +51,34 @@ def compute_chamfer_distance(points1, points2, angle_degrees):
     
     return chamfer_loss
 
+def compute_chamfer_distance_batch(points1_list, points2_list, angle_degrees):
+    angle_radians = torch.deg2rad(angle_degrees).unsqueeze(-1) # B*N*1
+    #print("angle_radians.requires_grad:", angle_radians.requires_grad) 
+    points1_list = torch.tensor(points1_list)
+    points2_list = torch.tensor(points2_list)
+    points1_list = points1_list.to(torch.float32).requires_grad_(True)
+    points2_list = points2_list.to(torch.float32).requires_grad_(True)
+    #print('type of points1', type(points1))    
+    # Define rotation matrix around z-axis
+    cos_angles = torch.cos(angle_radians)
+    sin_angles = torch.sin(angle_radians)
+
+    R = torch.stack([
+        torch.stack([cos_angles, -sin_angles, torch.zeros_like(cos_angles)], dim=-1),
+        torch.stack([sin_angles,  cos_angles, torch.zeros_like(sin_angles)], dim=-1),
+        torch.stack([torch.zeros_like(cos_angles), torch.zeros_like(cos_angles), torch.ones_like(cos_angles)], dim=-1)
+    ], dim=-2)  # Shape will be (B, N, 3, 3)
+
+    # Rotate points1 around z-axis
+    #rotated_points1_list = torch.matmul(points1_list, R.T)
+    rotated_points1_list = torch.einsum('bnij,bnj->bni', R, points1_list)
+
+    # Compute Chamfer distance between rotated_points1 and points2
+    chamfer_loss, _ = chamfer_distance(rotated_points1_list, points2_list)
+
+    
+    return chamfer_loss 
+
 
 
 
@@ -69,9 +97,9 @@ def optimize_rotation(meshes, pcds, initial_angle, num_iterations=2000, learning
     
     # Optimization loop
     for iter in range(num_iterations):
-        #chamfer_sum = 0
+        chamfer_sum = 0
 
-        chamfer_loss = chamfer_distance(meshes, pcds)
+        #chamfer_loss = chamfer_distance(meshes, pcds)
         for i in range(B):
             # TODO: parallelly
             chamfer_dist = compute_chamfer_distance(meshes[i], pcds[i], angles[i])
@@ -88,6 +116,41 @@ def optimize_rotation(meshes, pcds, initial_angle, num_iterations=2000, learning
             # Print progress
         if (iter+1) % 100 == 0:
             print("Iteration {}: Chamfer Distance = {}, Angle = {} degrees".format(iter+1, chamfer_sum, angles))
+            print("angle grad:", angles.grad)
+
+
+    # Return the optimized rotation angle
+    return angles
+
+def optimize_rotation_batch(meshes, pcds, initial_angle, num_iterations=2000, learning_rate=1):
+    # Initialize angle as a PyTorch tensor
+
+    B = len(meshes)
+    #angle = torch.tensor(initial_angle, dtype=torch.float32, requires_grad=True)
+    #angles = torch.zeros(B, requires_grad=True)
+    angles = torch.full((B,), initial_angle, dtype=torch.float32, requires_grad=True)
+    #print("angle.requires_grad:", angle.requires_grad)
+    # Define optimizer
+    optimizer = optim.Adam([angles], lr=learning_rate)
+    
+    # Optimization loop
+    for iter in range(num_iterations):
+
+        #chamfer_loss = chamfer_distance(meshes, pcds)
+        chamfer_dist = compute_chamfer_distance_batch(meshes, pcds, angles)
+
+
+        optimizer.zero_grad()
+
+            # Backpropagation
+        chamfer_dist.backward()
+        
+            # Update angle
+        optimizer.step()
+        
+            # Print progress
+        if (iter+1) % 1 == 0:
+            print("Iteration {}: Chamfer Distance = {}, Angle = {} degrees".format(iter+1, chamfer_dist, angles))
             print("angle grad:", angles.grad)
 
 

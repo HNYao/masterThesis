@@ -137,6 +137,7 @@ class GeoL_net(nn.Module):
 
         # normalization
         normalized_class_1_feat = (class_1_feat - min_value) / (max_value - min_value)
+        #normalized_class_1_feat = class_1_feat
         flattened = normalized_class_1_feat.detach().numpy().flatten()
         cmap = plt.get_cmap('turbo')
         color_mapped = cmap(flattened)[:, :3]  # 获取 RGB 值，忽略 alpha 通道
@@ -170,19 +171,16 @@ class GeoL_net(nn.Module):
         points_ply2 = np.asarray(ply2.points)
         colors_ply2 = np.asarray(ply2.colors)
 
-        # 构建KD树，用于最近邻搜索
+        # KD tree ply2 ply1
         ply2_tree = o3d.geometry.KDTreeFlann(ply2)
-
-        # 为ply1中的每个点找到ply2中最近的点，并将对应颜色赋值给ply1
         new_colors = np.zeros_like(points_ply1)
 
         for i, point in enumerate(points_ply1):
-            # 查找ply2中离point最近的10个点
-            [_, idx, dist] = ply2_tree.search_knn_vector_3d(point, 10)
+            [_, idx, dist] = ply2_tree.search_knn_vector_3d(point, 10) # nearest 10
             nearest_colors = colors_ply2[idx]
             distances = np.array(dist)
             weights = 1 / (distances + 1e-6)
-            weighted_avg_color = np.average(nearest_colors, axis=0, weights=weights)
+            weighted_avg_color = np.average(nearest_colors, axis=0, weights=weights) # weighted avg
             new_colors[i] = weighted_avg_color
 
         ply1.colors = o3d.utility.Vector3dVector(new_colors)

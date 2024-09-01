@@ -2,7 +2,7 @@
 generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
 """
-import open3d as o3d
+import time
 from pytorch3d.loss import chamfer_distance
 import trimesh
 import numpy as np
@@ -46,7 +46,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         desk_pcd = table_pcd
         desk_mesh_folder = 'dataset/obj/mesh/table'
     else:
-        print('No table or desk, quit!')
+        print('No table or desk!')
         return None
     
     aabb_desk_pcd = desk_pcd.get_axis_aligned_bounding_box()
@@ -71,13 +71,14 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     sampled_indices_desk = np.random.choice(len(desk_pcd.points), 512, replace=True)
     sampled_pcd_points_desk = np.asarray(desk_pcd.points)[sampled_indices_desk]
     sampled_mesh_points_desk = desk_mesh.sample(512)
-    optimezed_z_desk = optimize_rotation([sampled_mesh_points_desk], [sampled_pcd_points_desk], initial_angle=0, num_iterations=1, learning_rate=0)
-    angle_deg_z_desk = optimezed_z_desk.detach().numpy()
+    #optimized_z_desk = optimize_rotation([sampled_mesh_points_desk], [sampled_pcd_points_desk], initial_angle=0, num_iterations=1, learning_rate=0)
+    optimized_z_desk = torch.tensor(0)
+    angle_deg_z_desk = optimized_z_desk.detach().numpy()
     angle_deg_z_desk = np.round(angle_deg_z_desk / 90) * 90 # each 90 degree
-    print(angle_deg_z_desk)
+    print("agnle desk:", angle_deg_z_desk)
     angle_rad_z_desk = np.radians(angle_deg_z_desk)
     # 绕Z轴旋转的旋转矩阵
-    desk_mesh = rotate_mesh_around_center(desk_mesh, angle_deg_z_desk, axis=[0,0,1])
+    #desk_mesh = rotate_mesh_around_center(desk_mesh, angle_deg_z_desk, axis=[0,0,1])
 
 
     # scale desk mesh
@@ -117,6 +118,8 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
 
     # 2. read mesh obj in sequence
+    sample_mesh_points_list = []
+    sample_pcd_points_list = []
     for ins_label, item_instance in dict_bbox_pos_sacle.items():
         obj_exist = 0
         #print('item instance', item_instance)
@@ -134,7 +137,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         # convert to semantic label to keyword
             # index -- object name
         item_dict = {}
-        with open('scripts/dataset_gen/classes.txt', 'r') as file:
+        with open('GeoL_net/dataset_gen/classes.txt', 'r') as file:
             for line in file:
                 parts = line.strip().split('	')
                 num = int(parts[0])
@@ -144,7 +147,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
         # get the mesh obj 
         keyword = item_keyword # add mapping
-        with open('scripts/dataset_gen/obj_dict.json', 'r', encoding='utf-8') as file:
+        with open('GeoL_net/dataset_gen/obj_dict.json', 'r', encoding='utf-8') as file:
             data=json.load(file)
             keyword = data[keyword]
         if keyword == "":
@@ -178,13 +181,13 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         obj_mesh_center = mesh_obj.centroid
         if keyword in ['book', 'pen', 'pencil', 'notebook', "glass_box", "bowl","printer", "keyboard", "laptop"]:
             scale_matrix = np.eye(4)
-            scale_matrix[0, 0] = scale_factors[0]
+            scale_matrix[0, 0] = scale_factors[0] # align with the target
             scale_matrix[1, 1] = scale_factors[1]
             scale_matrix[2, 2] = scale_factors[2]
 
         else:
             scale_matrix = np.eye(4)
-            scale_matrix[0, 0] = scale_factors.mean()
+            scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.mean()
             scale_matrix[2, 2] = scale_factors.mean()
             
@@ -206,7 +209,15 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         sampled_pcd_points = np.asarray(pcd.points)[sampled_indices]
         sampled_mesh_points = mesh_obj.sample(512)
         sampled_mesh_points = np.asarray(sampled_mesh_points)
+
         optimezed_z = optimize_rotation([sampled_mesh_points], [sampled_pcd_points], initial_angle=0, num_iterations=1, learning_rate=0)
+
+        sample_mesh_points_expanded = np.expand_dims(sampled_mesh_points, axis=0)
+        sample_pcd_points_expanded = np.expand_dims(sampled_pcd_points,axis=0)
+        sample_mesh_points_list.append(sample_mesh_points_expanded)
+        sample_pcd_points_list.append(sample_pcd_points_expanded)
+
+        
 
         angle_deg_z = optimezed_z.detach().numpy()
         if keyword in ['laptop','glass_box','camera','clock','monitor','monitor_modelnet','keyboard','printer']:
@@ -230,6 +241,12 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         pose_dict[mesh_file_path] = [item_bbox_pos, [scale_matrix[0,0], scale_matrix[1,1], scale_matrix[2,2]], angle_deg_z, mesh_bbox] # add obj mesh into dict
         print(f"-----Great! {keyword} is done-----")
 
+    sample_mesh_points_list = np.concatenate(sample_mesh_points_list, axis=0)
+    sample_pcd_points_list = np.concatenate(sample_pcd_points_list, axis=0)
+    start_time = time.time()
+    optimezed_z = optimize_rotation_batch(sample_mesh_points_list, sample_pcd_points_list, initial_angle=0, num_iterations=10, learning_rate=1)
+    end_time = time.time()
+    print(f"运行时间: {end_time - start_time} 秒")
     avg_bottom_centric = sum(list_bottom_centric) / len(list_bottom_centric)
     top_center_desk_pcd[2] = avg_bottom_centric
     translation = top_center_desk_pcd - top_center_desk_mesh
