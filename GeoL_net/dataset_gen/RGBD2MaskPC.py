@@ -6,6 +6,9 @@ from GroundingDINO.RGB_dect import rgb_obj_dect
 import cv2
 import numpy as np
 import open3d as o3d
+import torch
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.ops import sample_farthest_points
 import random
 from tqdm import tqdm
 
@@ -111,12 +114,22 @@ def is_red(color, threshold=0.9):
     return color[0] > threshold and color[1] < (1 - threshold) and color[2] < (1 - threshold)
 
 def check_collision(green_pcd, other_pcd, threshold=0.001):
-
     # 计算绿色点云每个点到最近邻点的距离
     distances = green_pcd.compute_point_cloud_distance(other_pcd)
     # 如果最近邻点的最小距离小于阈值，则认为存在碰撞
     #print("distance:", np.min(distances))
     return np.min(distances) <= threshold
+
+def check_collisiton_batch(green_pcds, other_pcds, threshold=0.001):
+    """
+    check the collision in batch
+
+    Paras:
+        green_pcds: B * N1* 3
+        other_pcds: B * N2 * 3
+    Return:
+        is_collision: B
+    """
 
 
 def compute_distance_matrix(points_a, points_b):
@@ -124,6 +137,7 @@ def compute_distance_matrix(points_a, points_b):
     return distances
 
 def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
+
     colors = np.asarray(points_scene.colors)
     points = np.asarray(points_scene.points)
 
@@ -143,9 +157,11 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     blue_points = points[blue_mask]
     blue_pcd = o3d.geometry.PointCloud()
     blue_pcd.points = o3d.utility.Vector3dVector(blue_points)
+    bbox = blue_pcd.get_axis_aligned_bounding_box()
+    bbox_extent = bbox.get_extent()
     
     
-    # 提取白色点云
+    # 提取black点云
     black_mask = np.apply_along_axis(is_black, 1, colors)
     z_max = blue_pcd.get_axis_aligned_bounding_box().get_max_bound()[2]
     z_center = blue_pcd.get_axis_aligned_bounding_box().get_center()[2]
@@ -159,7 +175,7 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     white_points = points[white_mask]
     
     # 在白色点中随机选择
-    number_selected = 1000
+    number_selected = 4000
     if len(white_points) > number_selected:
         selected_indices = random.sample(range(len(white_points)), number_selected)
         selected_white_points = white_points[selected_indices]
@@ -168,10 +184,13 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     
     # 计算绿色点云的包围盒最高的中心点
     green_bbox = green_pcd.get_axis_aligned_bounding_box()
+    green_box_extent = green_bbox.get_extent()
+    collision_thershold = np.sqrt(green_box_extent[0]**2 + green_box_extent[1]**2 ) / 5
     green_bbox_max_center = green_bbox.get_center()
     green_bbox_max_center[2] = green_bbox.get_max_bound()[2]
     
-    # 处理每个选定的白色点
+    '''
+    # 处理每个选定的白色点 for 
     for white_point in tqdm(selected_white_points, desc="Processing white points"):
         translation_vector = white_point  - green_bbox_max_center
         green_pcd.translate(translation_vector)
@@ -186,7 +205,62 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
         # 恢复绿色点云位置
     
         green_pcd.translate(-translation_vector)
+    '''
+    # 
+    distance_vectors = selected_white_points - green_bbox_max_center
+    green_points_tensor = torch.tensor(green_points)
+    green_points_expanded = green_points_tensor.unsqueeze(0).cuda()
+    green_points_fps, _ = sample_farthest_points(green_points_expanded, K=64)
+    distance_vectors_expanded = distance_vectors[:, np.newaxis, :]
+    moved_green_points = green_points_fps + torch.tensor(distance_vectors_expanded).cuda()
+    moved_green_points_tensor_fps = torch.tensor(moved_green_points, dtype=torch.float32)
+    blue_points_tensor = torch.tensor(blue_points, dtype=torch.float32).unsqueeze(0).cuda()
+    blue_points_tensor_fps, _ = sample_farthest_points(blue_points_tensor, K=4096)
+    blue_points_tensor_fps = blue_points_tensor_fps.expand(number_selected, -1, -1)
+ 
+    distances = torch.cdist(moved_green_points_tensor_fps, blue_points_tensor_fps)
+    min_distances = torch.min(distances, dim=-1).values
+    final_min_dists = torch.min(min_distances, dim=-1).values
+    final_min_dists = final_min_dists.cpu().numpy()
 
+    
+    # 筛选白色点
+    is_white_point = np.any(np.all(points[:, np.newaxis] == selected_white_points, axis=2), axis=1)
+
+    # 找到与白色点匹配的索引
+    white_point_indices = np.where(is_white_point)[0]
+    filtered_white_points = points[white_point_indices]
+
+    # 基于坐标匹配找出相应的最小距离
+    dist_mask = np.all(filtered_white_points[:, np.newaxis, :] == selected_white_points, axis=2)
+    matched_dists = np.dot(dist_mask, final_min_dists)
+
+    # 修改颜色 (无碰撞 -> 红色)
+    colors[white_point_indices] = [1, 0, 0]
+
+    # 进一步调整颜色 (接近绿色盒子中心 -> 绿色)
+    distances_to_center = np.linalg.norm(filtered_white_points[:, :2] - green_bbox_max_center[:2], axis=1)
+    close_to_center_mask = distances_to_center < max(collision_thershold*5, 200)
+    colors[white_point_indices[close_to_center_mask]] = [0, 1, 0]
+
+    # 修改颜色 (有碰撞 -> 黑色)
+    collision_mask = matched_dists <= collision_thershold
+    colors[white_point_indices[collision_mask]] = [0, 0, 0]
+    '''
+    for i in tqdm(range(number_selected)):
+        white_point = selected_white_points[i]
+        final_min_dist = final_min_dists[i]
+        if final_min_dist > 50: # no collision
+            colors[np.all(points == white_point, axis=1)] = [1, 0, 0]  # 红色
+            if np.sqrt((white_point[0] - green_bbox_max_center[0])**2 + (white_point[1] - green_bbox_max_center[1])**2) < 200:
+                colors[np.all(points == white_point, axis=1)] = [0, 1, 0]  # green
+            #print("red")
+        else:
+            colors[np.all(points == white_point, axis=1)] = [0, 0, 0]  # 黑色
+        # 恢复绿色点云位置
+    #distances, norm = chamfer_distance(moved_green_points_tensor_fps, blue_points_tensor_fps)
+    #min_distances_per_points = torch.min(distances, dim=-1).values
+    '''
 
     # 更新点云颜色
     points_scene.colors = o3d.utility.Vector3dVector(colors)
