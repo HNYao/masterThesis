@@ -1,5 +1,6 @@
 """
     Generate the text guidance from the json
+    TODO: 体积太小的物体不做参照物，例如plant和耳机
 """
 import json
 import math

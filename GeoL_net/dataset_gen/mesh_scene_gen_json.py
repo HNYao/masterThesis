@@ -68,18 +68,10 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
 
     # optimize the z
-    sampled_indices_desk = np.random.choice(len(desk_pcd.points), 512, replace=True)
-    sampled_pcd_points_desk = np.asarray(desk_pcd.points)[sampled_indices_desk]
-    sampled_mesh_points_desk = desk_mesh.sample(512)
-    #optimized_z_desk = optimize_rotation([sampled_mesh_points_desk], [sampled_pcd_points_desk], initial_angle=0, num_iterations=1, learning_rate=0)
-    optimized_z_desk = torch.tensor(0)
+    optimized_z_desk = torch.tensor(0) # hard code
     angle_deg_z_desk = optimized_z_desk.detach().numpy()
     angle_deg_z_desk = np.round(angle_deg_z_desk / 90) * 90 # each 90 degree
-    print("agnle desk:", angle_deg_z_desk)
-    angle_rad_z_desk = np.radians(angle_deg_z_desk)
-    # 绕Z轴旋转的旋转矩阵
-    #desk_mesh = rotate_mesh_around_center(desk_mesh, angle_deg_z_desk, axis=[0,0,1])
-
+    #print("agnle desk:", angle_deg_z_desk)
 
     # scale desk mesh
     min_bound = desk_mesh.bounds[0]
@@ -224,7 +216,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             angle_deg_z = np.round(angle_deg_z / 90) * 90
 
         if keyword in ['monitor']:
-            angle_deg_z = np.array([180.], dtype=np.float32)
+            angle_deg_z = np.array([180.], dtype=np.float32) # TODO:all 180， earphone no need if too small
         
 
         mesh_obj = rotate_mesh_around_center(mesh_obj, angle_deg_z, [0,0,1])
