@@ -149,9 +149,9 @@ def optimize_rotation_batch(meshes, pcds, initial_angle, num_iterations=2000, le
         optimizer.step()
         
             # Print progress
-        if (iter+1) % 1 == 0:
-            print("Iteration {}: Chamfer Distance = {}, Angle = {} degrees".format(iter+1, chamfer_dist, angles))
-            print("angle grad:", angles.grad)
+        #if (iter+1) % 1 == 0:
+        #    print("Iteration {}: Chamfer Distance = {}, Angle = {} degrees".format(iter+1, chamfer_dist, angles))
+        #    print("angle grad:", angles.grad)
 
 
     # Return the optimized rotation angle

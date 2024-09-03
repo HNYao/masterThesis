@@ -4,7 +4,7 @@ translate all obj in dataset/obj/mesh to the origin point
 import trimesh
 import os
 
-parent_folder = "dataset/obj/objaverse"
+parent_folder = "dataset/obj/mesh"
 subfolders = [f.path for f in os.scandir(parent_folder) if f.is_dir()]
 for subfolder in subfolders:
     subsubfolders = [f.path for f in os.scandir(subfolder) if f.is_dir()]
@@ -17,7 +17,11 @@ for subfolder in subfolders:
                     print(obj_path)
                     mesh = trimesh.load(obj_path)
                     centroid = mesh.bounding_box.centroid
-
+                    aabb2_scaled_min = mesh.bounds[0]
+                    aabb2_scaled_max = mesh.bounds[1]
+                    aabb_bottom_center = (aabb2_scaled_min + aabb2_scaled_max)/2
+                    print("centroid:", centroid)
+                    print("another center:", aabb_bottom_center)
                     translation = -centroid
 
                     mesh.apply_translation(translation)

@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import torchvision
 import pytorch3d
-print(torch.__version__) # 2.0.0
-print(torch.version.cuda) # 11.7 cudatoolkit 11.8.0 pytorch-cuda 11.7
-print(torchvision.__version__) # 0.15.0
-print(pytorch3d.__version__) # 0.7.5
+#print(torch.__version__) # 2.0.0
+#print(torch.version.cuda) # 11.7 cudatoolkit 11.8.0 pytorch-cuda 11.7
+#print(torchvision.__version__) # 0.15.0
+#print(pytorch3d.__version__) # 0.7.5
 import open3d as o3d
-print(o3d.__version__) # 0.18.0
+#print(o3d.__version__) # 0.18.0
 import matplotlib.pyplot as plt
 from GeoL_net.models.clip_unet import CLIPUNet
 from GeoL_net.models.geo_net import GeoAffordModule, FusionPointLayer

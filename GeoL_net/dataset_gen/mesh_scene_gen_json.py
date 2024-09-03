@@ -3,6 +3,7 @@ generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
 """
 import time
+from tqdm import tqdm
 from pytorch3d.loss import chamfer_distance
 import trimesh
 import numpy as np
@@ -104,28 +105,36 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
     list_bottom_centric = []
 
-    print("---------")
-    print("Creating mesh scene...")
+    #print("---------")
+    #print("Creating mesh scene...")
     dict_bbox_pos_sacle = bbox_pos_scale_all_obj(ply_path, npz_path)
 
 
     # 2. read mesh obj in sequence
     sample_mesh_points_list = []
     sample_pcd_points_list = []
+    scale_matrix_list = []
+    item_bbox_pos_list = []
+    keyword_list = []
+    mesh_file_path_list = []
+    mesh_obj_list = []
     for ins_label, item_instance in dict_bbox_pos_sacle.items():
         obj_exist = 0
-        #print('item instance', item_instance)
+
         item_semantic_label = item_instance['semantic_label']
         item_bbox_min_bound = item_instance['min_bound']
         item_bbox_max_bound = item_instance['max_bound']
         item_bbox_size = item_instance['size']
         item_bbox_center = [0,0,0] # initialize center
-        item_bbox_center[0] = (item_bbox_min_bound[0] + item_bbox_max_bound[0]) / 2
-        item_bbox_center[1] = (item_bbox_min_bound[1] + item_bbox_max_bound[1]) / 2
-        item_bbox_center[2] = (item_bbox_min_bound[2] + item_bbox_max_bound[2]) / 2
+        item_bbox_center[0] = (item_bbox_min_bound[0] + item_bbox_max_bound[0]) / 2 #x
+        item_bbox_center[1] = (item_bbox_min_bound[1] + item_bbox_max_bound[1]) / 2 #y
+        item_bbox_center[2] = (item_bbox_min_bound[2] + item_bbox_max_bound[2]) / 2 #z
         item_bbox_pos = item_bbox_center
-        item_bbox_pos[2] = item_bbox_pos[2] - item_bbox_size[2] / 2
-        #print('item bbox pos', item_bbox_pos)
+        item_bbox_pos[2] = item_bbox_pos[2] - item_bbox_size[2] / 2 #z bottom
+        item_bbox_pos[2] = 0
+
+        
+        
         # convert to semantic label to keyword
             # index -- object name
         item_dict = {}
@@ -142,9 +151,11 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         with open('GeoL_net/dataset_gen/obj_dict.json', 'r', encoding='utf-8') as file:
             data=json.load(file)
             keyword = data[keyword]
+            
         if keyword == "":
-            print(f"no {item_keyword}")
+            # print(f"no {item_keyword}")
             continue
+        
 
         folder_path = 'dataset/obj/mesh' # the dataset folder of texture obj
         subfolders = next(os.walk(folder_path))[1]
@@ -155,11 +166,13 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             subfolder = random.choice(subfolders) # select a obj randomly
             mesh_file_path = os.path.join(subfolder, 'mesh.obj')
             if os.path.exists(mesh_file_path):
-                mesh_obj = trimesh.load_mesh(mesh_file_path, process=False, skip_materials=True)
-
+                #mesh_obj = trimesh.load_mesh(mesh_file_path, process=False, skip_materials=True, force="mesh")
+                # print(mesh_file_path)
+                mesh_obj = trimesh.load(mesh_file_path, process=False, skip_materials=True, force="mesh")
+                #print(f"get obj from {mesh_file_path}")
 
         if obj_exist == 0: #ModelNet does not have the obj
-            print(f'sorry we dont have {keyword} in texture obj dataset')
+            #print(f'sorry we dont have {keyword} in texture obj dataset')
             continue
 
         
@@ -169,8 +182,6 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         extent1 = item_bbox_size
         extent2 = aabb_max_bound - aabb_min_bound
         scale_factors = extent1 / extent2
-        obj_mesh_vertices = mesh_obj.vertices
-        obj_mesh_center = mesh_obj.centroid
         if keyword in ['book', 'pen', 'pencil', 'notebook', "glass_box", "bowl","printer", "keyboard", "laptop"]:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors[0] # align with the target
@@ -182,92 +193,125 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.mean()
             scale_matrix[2, 2] = scale_factors.mean()
-            
-        mesh_obj.apply_transform(scale_matrix)
+        
+        scale_matrix_list.append(scale_matrix)
+        keyword_list.append(keyword) # keyword list
+        mesh_obj.apply_transform(scale_matrix) # 1. scale
 
         aabb2_scaled_min = mesh_obj.bounds[0]
         aabb2_scaled_max = mesh_obj.bounds[1]
-        extent2_scaled = aabb2_scaled_max - aabb2_scaled_min
-        aabb_center = mesh_obj.centroid
-        aabb_bottom_center = np.array(aabb_center)
-        aabb_bottom_center[2] -= extent2_scaled[2] / 2.0  
-        translation = item_bbox_pos - aabb_bottom_center
-        #mesh_obj.translate(translation)
+        #extent2_scaled = aabb2_scaled_max - aabb2_scaled_min
+        #aabb_center = mesh_obj.centroid
+        #aabb_bottom_center = np.array(aabb_center)
+        #aabb_bottom_center[2] -= extent2_scaled[2] / 2.0  
+        aabb_bottom_center = (aabb2_scaled_min + aabb2_scaled_max)/2
+        aabb_bottom_center[2] = aabb2_scaled_min[2]
+
         list_bottom_centric.append(item_bbox_pos[2])
         # optimize the z-angle
         pcd = get_obj_from_scene_inslabel(pcd_ply_path=ply_path, ins_index=ins_label, npz_path=npz_path)
         # Sample points randomly from the point cloud
         sampled_indices = np.random.choice(len(pcd.points), 512, replace=True)
         sampled_pcd_points = np.asarray(pcd.points)[sampled_indices]
-        sampled_mesh_points = mesh_obj.sample(512)
+        sampled_mesh_points = mesh_obj.sample(512) # sample mesh points
         sampled_mesh_points = np.asarray(sampled_mesh_points)
-
-        optimezed_z = optimize_rotation([sampled_mesh_points], [sampled_pcd_points], initial_angle=0, num_iterations=1, learning_rate=0)
 
         sample_mesh_points_expanded = np.expand_dims(sampled_mesh_points, axis=0)
         sample_pcd_points_expanded = np.expand_dims(sampled_pcd_points,axis=0)
         sample_mesh_points_list.append(sample_mesh_points_expanded)
         sample_pcd_points_list.append(sample_pcd_points_expanded)
 
+    
+        mesh_obj = move_trimeshobj_to_position(mesh_obj, end_position=item_bbox_pos, start_position=aabb_bottom_center) # 4. translate
+        mesh_obj_list.append(mesh_obj) # mesh_obj_list
+        mesh_file_path_list.append(mesh_file_path)
+        item_bbox_pos_list.append(item_bbox_pos)
         
-
-        angle_deg_z = optimezed_z.detach().numpy()
-        if keyword in ['laptop','glass_box','camera','clock','monitor','monitor_modelnet','keyboard','printer']:
-            angle_deg_z = np.round(angle_deg_z / 90) * 90
-
-        if keyword in ['monitor']:
-            angle_deg_z = np.array([180.], dtype=np.float32) # TODO:all 180， earphone no need if too small
-        
-
-        mesh_obj = rotate_mesh_around_center(mesh_obj, angle_deg_z, [0,0,1])
-        mesh_obj = move_trimeshobj_to_position(mesh_obj, end_position=item_bbox_pos, start_position=aabb_bottom_center)
-        mesh_bbox = mesh_obj.bounds.tolist()
-        #mesh_obj.vertex_colors = o3d.utility.Vector3dVector(colors)
-
-        # drift the object until collision -- waiting to be done
-
-        mesh_scene = trimesh.util.concatenate([mesh_scene, mesh_obj])
-
-        scale_matrix.tolist()
-        angle_deg_z = angle_deg_z.tolist()
-        pose_dict[mesh_file_path] = [item_bbox_pos, [scale_matrix[0,0], scale_matrix[1,1], scale_matrix[2,2]], angle_deg_z, mesh_bbox] # add obj mesh into dict
-        print(f"-----Great! {keyword} is done-----")
+        #print(f"-----Great! {keyword} is done-----")
 
     sample_mesh_points_list = np.concatenate(sample_mesh_points_list, axis=0)
     sample_pcd_points_list = np.concatenate(sample_pcd_points_list, axis=0)
     start_time = time.time()
-    optimezed_z = optimize_rotation_batch(sample_mesh_points_list, sample_pcd_points_list, initial_angle=0, num_iterations=10, learning_rate=1)
+    optimized_z_list = optimize_rotation_batch(sample_mesh_points_list, sample_pcd_points_list, initial_angle=0, num_iterations=10, learning_rate=1)
     end_time = time.time()
-    print(f"运行时间: {end_time - start_time} 秒")
+
+    assert len(keyword_list) == len(mesh_obj_list)
+    for i in range(len(keyword_list)):
+        scale_matrix = scale_matrix_list[i]
+        scale_matrix.tolist()
+        keyword = keyword_list[i]
+        mesh_obj = mesh_obj_list[i]
+        optimized_z = optimized_z_list[i]
+        angle_deg_z = optimized_z.detach().numpy().tolist()
+        if keyword in ['laptop','glass_box','camera','clock','monitor','monitor_modelnet','keyboard','printer']:
+            angle_deg_z = np.round(angle_deg_z / 90) * 90
+        else:
+            angle_deg_z = angle_deg_z//10 * 10
+
+        mesh_obj = rotate_mesh_around_center(mesh_obj, angle_deg_z, [0,0,1])
+        mesh_bbox = mesh_obj.bounds.tolist()
+        #mesh_scene = trimesh.util.concatenate([mesh_scene, mesh_obj]) 为了速度 不生成mesh
+        mesh_file_path = mesh_file_path_list[i]
+        item_bbox_pos = item_bbox_pos_list[i]
+        pose_dict[mesh_file_path] = [item_bbox_pos, [scale_matrix[0,0], scale_matrix[1,1], scale_matrix[2,2]], angle_deg_z, mesh_bbox] # add obj mesh into dict
+
+
+
+    # final desk
     avg_bottom_centric = sum(list_bottom_centric) / len(list_bottom_centric)
     top_center_desk_pcd[2] = avg_bottom_centric
-    translation = top_center_desk_pcd - top_center_desk_mesh
     desk_mesh = move_trimeshobj_to_position(desk_mesh, top_center_desk_pcd, top_center_desk_mesh)
-    mesh_scene = trimesh.util.concatenate([mesh_scene, desk_mesh])
+    # mesh_scene = trimesh.util.concatenate([mesh_scene, desk_mesh]) 为了速度 不生成mesh
 
 
     last_slash_index = ply_path.rfind("/")
     last_dot_index = ply_path.rfind(".")
 
     filename = ply_path[last_slash_index + 1:last_dot_index]
-    print('filename', filename)
-    unique_file_path = get_unique_filename(directory=directory_mesh_save, filename=filename, extension="_mesh.obj")
+    #print('filename', filename)
+    #unique_file_path = get_unique_filename(directory=directory_mesh_save, filename=filename, extension="_mesh.obj")
 
     desk_scale_matrix.tolist()
     angle_deg_z_desk = angle_deg_z_desk.tolist()
     pose_dict[desk_obj_files[0]] = [item_bbox_pos, [desk_scale_matrix[0,0], desk_scale_matrix[1,1], desk_scale_matrix[2,2]], angle_deg_z_desk]
 
-    mesh_scene.export(unique_file_path)
+    #mesh_scene.export(unique_file_path)
     unique_json_path = get_unique_filename(directory=directory_json_save, filename=filename, extension=".json")
-    print(pose_dict)
+    #print(pose_dict)
     with open(f"{unique_json_path}", "w") as json_file:
         json.dump(pose_dict, json_file, indent=4)  # The indent parameter is optional but makes the JSON more readable
-    print(f"{unique_file_path} is done")
-    print(f"{unique_json_path} is done")
+    #print(f"{unique_file_path} is done")
+    print(f"{unique_json_path} is done") 
     print("-----------")
-    return unique_file_path, unique_json_path
+    return unique_json_path
 
 if __name__ == "__main__":
-    ply_path = "dataset/TO_scene_ori/TO-crowd/ply/train/id15.ply"
-    npz_path = "dataset/TO_scene_ori/TO-crowd/npz/train/id15.npz"
+
+    # 打开并读取文件
+    
+    with open('GeoL_net/dataset_gen/to_scene.txt', 'r', encoding='utf-8') as file:
+        total_lines = sum(1 for _ in file)
+    bad = 0
+    good = 0
+    start_time = time.time()
+    with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
+        for line in tqdm(file, total=total_lines):
+            line = line.strip()
+            print(line)
+            
+            ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id{line}.ply"
+            npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id{line}.npz"
+            result = generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
+            if result is None:
+                bad = bad + 1
+            else:
+                good = good + 1
+    end_time = time.time()
+    print(f"运行时间: {end_time - start_time} 秒")
+    print("good:", good)
+    print("bad:", bad)
+'''
+    ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id16.ply"
+    npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id16.npz"
     generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
+    '''

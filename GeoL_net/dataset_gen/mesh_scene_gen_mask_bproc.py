@@ -47,7 +47,6 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
     num_target_objects_perclass = num_objects[mode]
     num_distractor_objects_perclass = num_objects_distract[mode]
 
-
     #bproc.init()
     bproc.camera.set_intrinsics_from_K_matrix(K,  cfg['W'],  cfg['H'])
 
@@ -93,13 +92,11 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
 
             break
         obj_mesh = bproc.loader.load_obj(obj_file_name)
-
-        if "monitor" in obj_file_name:
-            obj_mesh[0].blender_obj.rotation_euler = (0,0, math.pi)
-        elif "laptop" in obj_file_name:
-            obj_mesh[0].blender_obj.rotation_euler = (math.pi/2,0, 0)
-        else:  
-            obj_mesh[0].blender_obj.rotation_euler = (0,0, 0)
+        print(f"{obj_file_name}")
+        bbox = obj_mesh[0].get_bound_box()
+        bbox_center = np.mean(bbox, axis=0)
+        print(bbox_center)
+        obj_mesh[0].blender_obj.rotation_euler = (0,0, 0)
 
 
             
@@ -108,7 +105,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
         z_height = bbox[1][2] - bbox[0][2]
         x_width = bbox[4][0]-bbox[3][0]
         y_width = bbox[2][1]-bbox[0][1]
-        #obj_mesh[0].blender_obj.location = (obj_pose[0][0]-x_width/2,obj_pose[0][1]-y_width/2,obj_pose[0][2]+z_height/2)
+
         obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],obj_pose[0][2]+z_height/2)
         mass, fiction_coeff = (0.4, 0.5)
         obj_mesh[0].enable_rigidbody(True, mass=mass, friction=mass * fiction_coeff, 
@@ -228,16 +225,14 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
     
     bproc.renderer.enable_depth_output(activate_antialiasing=False)
     bproc.renderer.set_max_amount_of_samples(num_views)
-    bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
-    #bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
-    #bproc.renderer.enable_segmentation_output(default_values={'category_id': None})
+    bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"], default_values={'category_id': 0})
     data = bproc.renderer.render()
 
     data["depth_kinect"] = bproc.postprocessing.add_kinect_azure_noise(data["depth"], data["colors"], 10)
-
+    #print(data)
     # Save the rendered images
     out_dir = RGBD_out_dir
-    # print(data['instance_segmaps'])
+    #print(data['instance_segmaps'])
     # print(len(data['category_id_segmaps']))
     '''
     write_my_zhoy(out_dir, 
@@ -352,23 +347,18 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
             continue
 
         obj_mesh = bproc.loader.load_obj(obj_file_name)
-
-        if "monitor" in obj_file_name:
-            obj_mesh[0].blender_obj.rotation_euler = (0,0, math.pi)
-        elif "laptop" in obj_file_name:
-            obj_mesh[0].blender_obj.rotation_euler = (math.pi/2,0, 0)
-        else:  
-            obj_mesh[0].blender_obj.rotation_euler = (0,0, 0)
-
-
-            
+        obj_mesh[0].blender_obj.rotation_euler = (0, 0, 0)
+         
         obj_mesh[0].blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2]) 
         bbox = obj_mesh[0].get_bound_box()
         z_height = bbox[1][2] - bbox[0][2]
         x_width = bbox[4][0]-bbox[3][0]
         y_width = bbox[2][1]-bbox[0][1]
         #obj_mesh[0].blender_obj.location = (obj_pose[0][0]-x_width/2,obj_pose[0][1]-y_width/2,obj_pose[0][2]+z_height/2)
+        print(f"{obj_file_name} oringal position: {obj_mesh[0].blender_obj.location}")
         obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],obj_pose[0][2]+z_height/2)
+        obj_mesh[0].blender_obj.location= (0,0,obj_pose[0][2]+z_height/2)
+        print(f"{obj_file_name} new position: {obj_mesh[0].blender_obj.location}")
         mass, fiction_coeff = (0.4, 0.5)
         obj_mesh[0].enable_rigidbody(True, mass=mass, friction=mass * fiction_coeff, 
         linear_damping = 1.99, angular_damping = 0, collision_margin=0.0001)
@@ -488,8 +478,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
     #bproc.renderer.enable_depth_output(activate_antialiasing=False)
     bproc.renderer.set_max_amount_of_samples(num_views)
     bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
-    #bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
-    #bproc.renderer.enable_segmentation_output(default_values={'category_id': None})
+    bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"], default_values={'category_id': 0})
     data = bproc.renderer.render()
 
     data["depth_kinect"] = bproc.postprocessing.add_kinect_azure_noise(data["depth"], data["colors"], 10)
@@ -536,8 +525,10 @@ if __name__ == "__main__":
     # dataset/scene_RGBD_mask/scene_id/remove_obj/no_obj
     # gerate depth.png and hdf5
     parent_dir = "dataset/scene_RGBD_mask"
-    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id15_1.json"
-    removed_obj_path = "dataset/obj/mesh/phone/phone_0000_blue/mesh.obj"
+    #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id15_1.json"
+    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id78_1.json"
+    #removed_obj_path = "dataset/obj/mesh/phone/phone_0000_blue/mesh.obj"
+    removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
 
     scene_path = scene_mesh_json.split("/")[-1]  
     scene_id = scene_path.split(".")[0]  
@@ -555,6 +546,7 @@ if __name__ == "__main__":
                    RGBD_out_dir=output_dir_with_obj,
                    removed_obj=removed_obj_path)
     bproc.clean_up()
+
     bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
                    RGBD_out_dir=output_dir_no_obj,
                    removed_obj=removed_obj_path)

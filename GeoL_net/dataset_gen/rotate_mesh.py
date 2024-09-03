@@ -1,7 +1,7 @@
 import numpy as np
 import trimesh
 
-def rotate_mesh_obj(file_path, axis='z', angle_degrees=90):
+def rotate_mesh_obj(file_path, axis='x', angle_degrees=90):
     mesh = trimesh.load(file_path)
 
     angle_radians = np.radians(angle_degrees)
@@ -20,6 +20,6 @@ def rotate_mesh_obj(file_path, axis='z', angle_degrees=90):
 
 
     mesh.export(file_path)
-file_list = ["dataset/obj/objaverse/remote control/remote control_1/remote control_1.obj", "dataset/obj/objaverse/remote control/remote control_6/remote control_6.obj"]
+file_list = ["dataset/obj/mesh/clock/clock_0001_normal/mesh.obj", "dataset/obj/mesh/clock/clock_0002_wooden/mesh.obj"]
 for file_path in file_list:
     rotate_mesh_obj(file_path, axis='x', angle_degrees=90)
