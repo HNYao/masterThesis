@@ -90,6 +90,10 @@ class BaseTrainer:
     def log(self, step, metrics):
         wandb.log({**metrics, "step": step})
 
+    def log_img(self, step, img_pil, phrase, file_name):
+        image = wandb.Image(img_pil, caption=f"{file_name} -- {phrase}--STEP: {step}")
+        wandb.log({"Rendered Point Cloud": image})
+
     @abstractmethod
     def init_dataset(self) -> None:
         pass

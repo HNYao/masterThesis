@@ -1,7 +1,9 @@
 import blenderproc as bproc
 import open3d as o3d
 import numpy as np
+import glob
 import json
+import os
 import math
 from blenderproc.python.writer.MyWriterUtility import write_my, write_my_zhoy
 from blenderproc.python.writer.CocoWriterUtility import write_coco_annotations
@@ -52,7 +54,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
 
     # generate whole scene in blenderproc
     table_height = 0
-    print("len:", len(data))
+    #print("len:", len(data))
     obj_amount = len(data)
     exist_obj_amount = 0
     x_min = 100
@@ -92,10 +94,10 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
 
             break
         obj_mesh = bproc.loader.load_obj(obj_file_name)
-        print(f"{obj_file_name}")
+        #print(f"{obj_file_name}")
         bbox = obj_mesh[0].get_bound_box()
         bbox_center = np.mean(bbox, axis=0)
-        print(bbox_center)
+        #print(bbox_center)
         obj_mesh[0].blender_obj.rotation_euler = (0,0, 0)
 
 
@@ -118,9 +120,9 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
         mat.set_principled_shader_value("Specular", np.random.uniform(0.8, 1.0))
         #mat.set_principled_shader_value("Base Color", [0.0, 0.0, 1.0, 1.0])
 
-        print(obj_file_name)
+        #print(obj_file_name)
         if removed_obj in obj_file_name:
-            print("++++++++++++++++++")
+            #print("++++++++++++++++++")
             obj_mesh[0].set_cp("category_id", 4) # default 0 
             obj_mesh[0].set_cp("scene_id", 4) #default 0
         else:
@@ -148,7 +150,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
         json.dump(data, f, indent=4)
 
     # create room
-    room_coeff = 4
+    room_coeff = 10
     room = [bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, 0, obj_pose[0][2] - z_height]),
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, -room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[-1.570796, 0, 0]),
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[1.570796, 0, 0]),
@@ -190,7 +192,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
     light_point.set_location(location)
     '''
     # setup camera
-    print("-----start setting camera ------")
+    #print("-----start setting camera ------")
     i = 0
     radius_min, radius_max = (1.2, 1.5)
     _radius = np.random.uniform(low=radius_min, high=radius_max) 
@@ -221,9 +223,11 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
 
         
     # render the whole pipeline
-    print("-----start rendering ------")
-    
-    bproc.renderer.enable_depth_output(activate_antialiasing=False)
+    # print("-----start rendering ------")
+    try:
+        bproc.renderer.enable_depth_output(activate_antialiasing=False)
+    except RuntimeError:
+        pass
     bproc.renderer.set_max_amount_of_samples(num_views)
     bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"], default_values={'category_id': 0})
     data = bproc.renderer.render()
@@ -303,7 +307,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
 
     # generate whole scene in blenderproc
     table_height = 0
-    print("len:", len(data))
+    # print("len:", len(data))
     obj_amount = len(data)
     exist_obj_amount = 0
     x_min = 100
@@ -355,10 +359,10 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         x_width = bbox[4][0]-bbox[3][0]
         y_width = bbox[2][1]-bbox[0][1]
         #obj_mesh[0].blender_obj.location = (obj_pose[0][0]-x_width/2,obj_pose[0][1]-y_width/2,obj_pose[0][2]+z_height/2)
-        print(f"{obj_file_name} oringal position: {obj_mesh[0].blender_obj.location}")
+        #print(f"{obj_file_name} oringal position: {obj_mesh[0].blender_obj.location}")
         obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],obj_pose[0][2]+z_height/2)
-        obj_mesh[0].blender_obj.location= (0,0,obj_pose[0][2]+z_height/2)
-        print(f"{obj_file_name} new position: {obj_mesh[0].blender_obj.location}")
+        #obj_mesh[0].blender_obj.location= (0,0,obj_pose[0][2]+z_height/2)
+        #print(f"{obj_file_name} new position: {obj_mesh[0].blender_obj.location}")
         mass, fiction_coeff = (0.4, 0.5)
         obj_mesh[0].enable_rigidbody(True, mass=mass, friction=mass * fiction_coeff, 
         linear_damping = 1.99, angular_damping = 0, collision_margin=0.0001)
@@ -370,7 +374,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         mat.set_principled_shader_value("Specular", np.random.uniform(0.8, 1.0))
         #mat.set_principled_shader_value("Base Color", [0.0, 0.0, 1.0, 1.0])
 
-        print(obj_file_name)
+        # print(obj_file_name)
         if removed_obj in obj_file_name:
             print("++++++++++++++++++")
             obj_mesh[0].set_cp("category_id", 4) # default 0 
@@ -400,7 +404,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         json.dump(data, f, indent=4)
 
     # create room
-    room_coeff = 4
+    room_coeff = 10
     room = [bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, 0, obj_pose[0][2] - z_height]),
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, -room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[-1.570796, 0, 0]),
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[1.570796, 0, 0]),
@@ -442,7 +446,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
     light_point.set_location(location)
     '''
     # setup camera
-    print("-----start setting camera ------")
+    # print("-----start setting camera ------")
     i = 0
     radius_min, radius_max = (1.2, 1.5)
     _radius = np.random.uniform(low=radius_min, high=radius_max) 
@@ -467,13 +471,13 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         #cam2world_matrix = bproc.math.build_transformation_mat(location, rotation_matrix)
         rotation_matrix = [[1, 0, 0], [0,0.8,-0.6], [0,0.6,0.8]]
         cam2world_matrix = bproc.math.build_transformation_mat([(x_min+x_max)/2, (y_min+y_max)/2 - 1, 1], rotation_matrix)
-        print(location, rotation_matrix)
+        # print(location, rotation_matrix)
         bproc.camera.add_camera_pose(cam2world_matrix)
         i += 1
 
         
     # render the whole pipeline
-    print("-----start rendering ------")
+    # print("-----start rendering ------")
     
     #bproc.renderer.enable_depth_output(activate_antialiasing=False)
     bproc.renderer.set_max_amount_of_samples(num_views)
@@ -521,15 +525,58 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
 
 
 if __name__ == "__main__":
-    # dataset/scene_RGBD_mask/scene_id/remove_obj/with_obj
-    # dataset/scene_RGBD_mask/scene_id/remove_obj/no_obj
+    bproc.init()
     # gerate depth.png and hdf5
     parent_dir = "dataset/scene_RGBD_mask"
-    #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id15_1.json"
-    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id78_1.json"
-    #removed_obj_path = "dataset/obj/mesh/phone/phone_0000_blue/mesh.obj"
-    removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
 
+    
+    json_folder_path = "dataset/scene_gen/scene_mesh_json"
+    json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
+
+    for json_file_path in json_files:
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)  # 解析JSON文件内容为Python字典
+            print(json_file_path, "-----")
+            start_time = time.time()
+            for removed_obj_path in data.keys():
+                if "desk" in removed_obj_path or "table"  in removed_obj_path:
+                    continue
+                    print(removed_obj_path)
+    
+    #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id16_7.json"
+    #removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
+                scene_mesh_json = json_file_path
+                removed_obj_path = removed_obj_path
+
+                scene_path = scene_mesh_json.split("/")[-1]  
+                scene_id = scene_path.split(".")[0]  
+
+                removed_obj_name = removed_obj_path.split("/")[-2]
+
+                output_dir_with_obj = parent_dir + "/" + scene_id + "/"+ removed_obj_name +"/with_obj"
+                output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
+                print(output_dir_no_obj)
+                print(output_dir_with_obj)
+    
+    
+                
+                bproc_gen_mask(scene_mesh_json=scene_mesh_json,
+                            RGBD_out_dir=output_dir_with_obj,
+                            removed_obj=removed_obj_path)
+                bproc.clean_up()
+
+                bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
+                            RGBD_out_dir=output_dir_no_obj,
+                            removed_obj=removed_obj_path)
+                bproc.clean_up()
+            end_time = time.time()
+            print(f"------Consume: {end_time - start_time} s--------")
+    '''  
+
+        #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id16_7.json"
+    #removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
+    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id1.json"
+    removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
     scene_path = scene_mesh_json.split("/")[-1]  
     scene_id = scene_path.split(".")[0]  
 
@@ -539,14 +586,16 @@ if __name__ == "__main__":
     output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
     print(output_dir_no_obj)
     print(output_dir_with_obj)
-    
 
-    bproc.init()
+
+    
     bproc_gen_mask(scene_mesh_json=scene_mesh_json,
-                   RGBD_out_dir=output_dir_with_obj,
-                   removed_obj=removed_obj_path)
+                RGBD_out_dir=output_dir_with_obj,
+                removed_obj=removed_obj_path)
     bproc.clean_up()
 
     bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
-                   RGBD_out_dir=output_dir_no_obj,
-                   removed_obj=removed_obj_path)
+                RGBD_out_dir=output_dir_no_obj,
+                removed_obj=removed_obj_path)
+    bproc.clean_up()
+    '''

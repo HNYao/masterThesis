@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from omegaconf import DictConfig
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
@@ -41,6 +41,11 @@ class GeometryLanguageTrainer(BaseTrainer):
         print("dataset name:",self.cfg.dataset.name)
         self.train_dataset = dataset_cls(split="train",
                                          root_dir=self.dataset_dir)
+        
+        #Subset
+        subset_indice = list(range(self.cfg.dataset.size))
+        self.train_dataset = Subset(self.train_dataset, subset_indice)
+
         # Initialize data loaders
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -117,10 +122,41 @@ class GeometryLanguageTrainer(BaseTrainer):
         return t.to(device=orig_device)
 
     def save_state(self, epoch):
-        None
+        state_dict = {
+            "epoch": epoch,
+            "ckpt_dict": self.model.state_dict(),
+            "optim_dict": self.optimizer.state_dict(),
+            "lr_scheduler": self.scheduler.state_dict(),
+        }
+        model_path = os.path.join(
+            self.checkpoint_dir, "ckpt_{}.pth".format(epoch)
+        )
+        torch.save(state_dict, model_path)
 
     def load_state(self, path, ckpt_only: bool = False):
-        None
+        state_dict = torch.load(path, map_location="cpu")
+
+        if "optim_dict" in state_dict and not ckpt_only:
+            self.optimizer.load_state_dict(state_dict["optim_dict"])
+
+        # To handle case when model is saved before commit 862850571316b82613dad67525f8c1bf643b4f10
+        ckpt_dict = (
+            state_dict["ckpt_dict"] if "ckpt_dict" in state_dict else state_dict
+        )
+        if not self._is_distributed:
+            missing_keys = self.model.load_state_dict(
+                {k.replace("module.", ""): v for k, v in ckpt_dict.items()}
+            )
+        else:
+            missing_keys = self.model.load_state_dict(ckpt_dict)
+        logger.info("Missing keys: {}".format(missing_keys))
+        return {
+            "epoch": (
+                state_dict["epoch"]
+                if "epoch" in state_dict and not ckpt_only
+                else 0
+            ),
+        }
 
     def observations_batch_from_batch(
         self, batch: Dict[str, torch.Tensor], preds: torch.Tensor
@@ -196,8 +232,8 @@ class GeometryLanguageTrainer(BaseTrainer):
 
             # Make predictions for this batch
             outputs = self.model(batch=batch)["affordance"].squeeze(1)
-            print("outputs shape:", outputs.shape)
-            print("mask shape:", batch["mask"].shape)
+            #print("outputs shape:", outputs.shape)
+            #print("mask shape:", batch["mask"].shape)
             # Compute the loss and its gradients
             loss = loss_fn(outputs, batch["mask"].permute(0,2,1))
             loss.backward()
@@ -351,9 +387,12 @@ class GeometryLanguageTrainer(BaseTrainer):
             logger.info("[Process: {}] Evaluating...".format(self.local_rank))
             # Evaluate model
             self.model.eval()
-            if epoch % 10 == 0:
-                self.model.inference_4cls()
-                self.model.inference_heatmap_4cls()
+            if epoch % 5 == 0:
+                self.model.inference_4cls(epoch) # debug
+                self.save_state(epoch + 1)
+
+                #image_pil, phrase, file_name = self.model.inference_4cls()
+                #self.log_img(epoch + 1, image_pil, phrase, file_name)
 
             if rank0_only():
                 #logger.info(
@@ -369,19 +408,23 @@ class GeometryLanguageTrainer(BaseTrainer):
                         "train/learning_rate": self.scheduler.get_last_lr()[0],
                     },
                 )
-                #self.log(
-                #    epoch + 1,
-                #    {f"train/{k}_per_epoch": v for k, v in avg_metrics.items()},
-                #)
 
-                self.save_state(epoch + 1)
-
+                
             # Synchronize all processes
             if self._is_distributed:
                 torch.distributed.barrier()
 
-    def eval(self, checkpoint_dir):
-        None
+    def eval(self):
+        with torch.no_grad():
+            for i, batch in enumerate(self.train_loader):
+                for key, val in batch.items():
+                    if type(val) == list:
+                        continue
+                    batch[key] = val.float().to(self.device)
+                batch = self.apply_transforms(batch, split="train")
+
+                outputs = self.model(batch=batch)["affordance"].squeeze(1)
+                
 
 
     def visualize(

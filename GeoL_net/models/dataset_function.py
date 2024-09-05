@@ -28,7 +28,7 @@ class AffordanceDataset(Dataset):
             sub_items = os.listdir(sub_folder_path)
             for sub_item in sub_items:
                 sub_sub_folder_path = os.path.join(sub_folder_path, sub_item)
-                print(sub_sub_folder_path)
+                #print(sub_sub_folder_path)
                 if os.path.isdir(sub_sub_folder_path):
                     self.files.extend([sub_sub_folder_path])
 
@@ -125,6 +125,6 @@ if __name__ == "__main__":
         for sub_item in sub_items:
             sub_sub_folder_path = os.path.join(sub_folder_path, sub_item)
             if os.path.isdir(sub_sub_folder_path): 
-                print(sub_sub_folder_path)
+                #print(sub_sub_folder_path)
                 files.extend([sub_sub_folder_path])
-    print(files)
+    #print(files)

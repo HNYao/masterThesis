@@ -46,6 +46,10 @@ class CLIPUNetImgQuery(SPModel):
             backbone_type="prepool",
             clip_model="RN50",
         )
+        #frozen
+        for param in self.clip.parameters():
+            param.requires_grad = False
+
         self.clip_out_dim = self.clip.output_shape[0]
 
     def init_target_encoder(self):

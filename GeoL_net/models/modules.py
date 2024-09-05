@@ -153,7 +153,7 @@ def test_FetureConcat():
     image = cv2.imread("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/no_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR)
     depth_image = cv2.imread("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/no_obj/test_pbr/000000/depth/000000.png", cv2.IMREAD_UNCHANGED)
     depth = np.array(depth_image)
-    print(image.shape)
+    #print(image.shape)
 
     #points, _ = backproject(depth_image, camera_instrinsics, np.logical_and(depth > 0, depth > 0),)
     pc = o3d.io.read_point_cloud("dataset/scene_RGBD_mask/id162_1/lamp_0004_orange/mask.ply")
@@ -163,9 +163,9 @@ def test_FetureConcat():
     pc = visualize_points(points)
     image_np = image.astype(np.float32)
     image_tensor = torch.tensor(image_np).permute(2, 0, 1).unsqueeze(0)  # [B, C, H, W]
-    print('image tensor:', image_tensor)
+    #print('image tensor:', image_tensor)
     #image_tensor = torch.cat((image_tensor, image_tensor), dim=1)
-    print("image tensor:", image_tensor.shape)
+    #print("image tensor:", image_tensor.shape)
 
     pc_points = np.asarray(pc.points)
     num_points = pc_points.shape[0]
@@ -174,12 +174,12 @@ def test_FetureConcat():
     #pc_points[:] -= 10000
     pc_tensor = torch.tensor(pc_points, dtype=torch.float32).unsqueeze(0)  # [B, N, 3]
 
-    print("Point cloud tensor shape:", pc_tensor.shape)  # (N, 3)
+    #print("Point cloud tensor shape:", pc_tensor.shape)  # (N, 3)
 
     featureconcat = FeatureConcat()
     feature = featureconcat(image_tensor, pc_tensor, camera_instrinsics)
-    print(feature.shape)
-    print(feature)
+    #print(feature.shape)
+    #print(feature)
     featureconcat.feature_visualization(feature, pc_tensor)
 
 if __name__ == "__main__":

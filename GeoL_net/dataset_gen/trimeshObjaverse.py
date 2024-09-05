@@ -1,5 +1,5 @@
 import trimesh
-file_path = "dataset/obj/mesh/pencil/pencil_0006_orange/mesh.obj"
+file_path = "dataset/obj/mesh/chessboard/chessboard_0002_grey/mesh.obj"
 # 加载模型
 mesh = trimesh.load(file_path, force="mesh")
 

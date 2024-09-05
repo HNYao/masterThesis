@@ -1,21 +1,22 @@
 """
     Generate the text guidance from the json
-    TODO: 体积太小的物体不做参照物，例如plant和耳机
+    TODO: 体积太小的物体不做参照物，例如plant 橡皮
 """
 import json
 import math
 import random
 import os
+import glob
 
 
 def euclidean_distance(p1, p2):
     return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
 def key2phrase(key:str):
-    parts = key.split('/')
-    obj_descpt = parts[-2]
+    key_parts = key.split('/')
+    obj_descpt = key_parts[-2]
     parts = obj_descpt.split('_')
-    obj_name = parts[0]
+    obj_name = '_'.join(key_parts[3:-2]) # pay attention
     obj_descpt = parts[-1]
     phrase = f"the {obj_descpt} {obj_name}"
     return phrase
@@ -66,6 +67,8 @@ def json2text(json_path, out_dir=None):
         min_distance = float('inf')
         for obj2, pos2 in positions.items():
             if obj1 != obj2:
+                if "eraser" in obj2 or "pencil" in obj2:
+                    continue
                 distance = euclidean_distance(pos1, pos2)
                 if distance < min_distance:
                     min_distance = distance
@@ -74,31 +77,49 @@ def json2text(json_path, out_dir=None):
         nearest_neighbors[obj1] = (nearest_obj, direction)
 
     # text
-    print(f"There are {len(positions)} objects on the table.")
+    #print(f"There are {len(positions)} objects on the table.")
     for obj, (nearest, direction) in nearest_neighbors.items():
         obj1 = key2phrase(obj)
         obj2 = key2phrase(nearest)
         direction = direction
-        strings = [
+        
+        strings = [ # type1
         f'{obj1} is at the {direction} of {obj2}',
         f'{obj1} is at {obj2}\'s {direction}',
         f'{obj1} is on {obj2}\'s {direction} side',
         f'{obj1} is on the {direction} side of {obj2}',
         f'To {direction} of {obj2}, there is a {obj1}'
     ]
+        strings = [ #type2
+        f'place {obj1} at the {direction} of {obj2}',
+        f'place {obj1} at {obj2}\'s {direction}',
+        f'place {obj1} on {obj2}\'s {direction} side',
+        f'place {obj1} on the {direction} side of {obj2}'
+    ]
         selected_string = random.choice(strings)
         text_dict[obj1] = [obj2, selected_string]
-        print(selected_string, "--refrence:", obj2)
-        print(text_dict)
+        #print(selected_string, "--refrence:", obj2)
+        #print(text_dict)
 
     if out_dir is None:
         scene_id = json_path.split("/")[-1].split(".")[0]
         parent_folder = "dataset/scene_RGBD_mask"
         out_dir = os.path.join(parent_folder, scene_id)
-        print(out_dir)
+        print(out_dir, "is done ")
 
     with open(f"{out_dir}/text_guidance.json", "w") as json_file:
         json.dump(text_dict, json_file, indent=4)
 
 if __name__ =="__main__":
-    json2text(json_path="dataset/scene_gen/scene_mesh_json/id15_1.json")
+
+    json_folder_path = "dataset/scene_gen/scene_mesh_json"
+    json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
+
+    amount_dataset = 0
+    for json_file_path in json_files:
+        json_path = json_file_path
+        json2text(json_path=json_path)
+        amount_dataset += 1
+    
+    print(amount_dataset)
+    # json2text(json_path="dataset/scene_gen/scene_mesh_json/id100.json") generate single json

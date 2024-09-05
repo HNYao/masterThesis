@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 
-def hdf52png(hdf5_path = 'dataset/scene_RGBD_mask/no_obj/0.hdf5', output_dir='dataset/scene_RGBD_mask/no_obj/mask.png'):
+def hdf52png(hdf5_path = 'dataset/scene_RGBD_mask/id1/bottle_0003_cola/with_obj/0.hdf5', output_dir='dataset/scene_RGBD_mask/id1/bottle_0003_cola/with_obj/mask.png'):
     category_colors = {
         0: (0, 0, 0),         
         1: (0, 0, 255),   #Obj _ Blue   
@@ -24,4 +24,13 @@ def hdf52png(hdf5_path = 'dataset/scene_RGBD_mask/no_obj/0.hdf5', output_dir='da
     return rgb_image
 
 if __name__ == "__main__":
-    hdf52png()
+    hdf5_path = "dataset/scene_RGBD_mask/id1/bottle_0003_cola/no_obj/0.hdf5"
+    is_with_obj = hdf5_path.split("/")[-2]
+    if is_with_obj == "with_obj":
+        png_end = "/mask_with_obj.png"
+    else:
+        png_end = "/mask_no_obj.png"
+
+    output_dir = "dataset/scene_RGBD_mask/id1/" + hdf5_path.split("/")[-3] + png_end
+    print(output_dir)
+    #hdf52png()

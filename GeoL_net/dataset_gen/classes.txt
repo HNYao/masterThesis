@@ -34,7 +34,7 @@
 56	microwave
 57	mug
 58	printer
-59	remote control
+59	remote_control
 60	phone
 61	alarm
 62	book

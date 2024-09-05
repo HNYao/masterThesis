@@ -244,7 +244,7 @@ class GeoAffordModule(nn.Module):
     def forward(self, scene_pcs, acting_pcs):
         whole_feats = self.pointnet2(scene_pcs)     # B x 32 x N 
         acting_feats, acting_global_feats = self.object_point2(acting_pcs.repeat(1, 1, 2))    # B x F x M, B x F
-        acting_global_feats = acting_global_feats.unsqueeze(-1).repeat(1,1,512) # B x F x N
+        acting_global_feats = acting_global_feats.unsqueeze(-1).repeat(1,1,2048) # B x F x N
         scene_act_feats = torch.cat([whole_feats, acting_global_feats], dim=1) # B x 48 x N
 
         #print("scene_act_feats shape:", scene_act_feats.shape) 

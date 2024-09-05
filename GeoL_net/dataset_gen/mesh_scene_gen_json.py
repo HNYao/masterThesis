@@ -1,6 +1,8 @@
 """
 generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
+    TODO: aabb bbox存在问题，例如pencil,判断出长宽高
+    TODO:旋转显示器
 """
 import time
 from tqdm import tqdm
@@ -182,17 +184,26 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         extent1 = item_bbox_size
         extent2 = aabb_max_bound - aabb_min_bound
         scale_factors = extent1 / extent2
-        if keyword in ['book', 'pen', 'pencil', 'notebook', "glass_box", "bowl","printer", "keyboard", "laptop"]:
+        if keyword in []:
+            scale_matrix = np.eye(4)
+            scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
+            scale_matrix[1, 1] = scale_factors.mean()
+            scale_matrix[2, 2] = scale_factors.mean()
+
+
+        elif keyword in ["cup"]:
+            scale_matrix = np.eye(4)
+            scale_matrix[0, 0] = scale_factors.min() # keep the orignal shape
+            scale_matrix[1, 1] = scale_factors.min()
+            scale_matrix[2, 2] = scale_factors.min()
+
+
+        else:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors[0] # align with the target
             scale_matrix[1, 1] = scale_factors[1]
             scale_matrix[2, 2] = scale_factors[2]
 
-        else:
-            scale_matrix = np.eye(4)
-            scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
-            scale_matrix[1, 1] = scale_factors.mean()
-            scale_matrix[2, 2] = scale_factors.mean()
         
         scale_matrix_list.append(scale_matrix)
         keyword_list.append(keyword) # keyword list
@@ -289,18 +300,30 @@ if __name__ == "__main__":
 
     # 打开并读取文件
     
-    with open('GeoL_net/dataset_gen/to_scene.txt', 'r', encoding='utf-8') as file:
+    with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
+        ungenerated_scene_ids = []
+        for line in file:
+            #print(line.strip())
+            try:
+                number = int(line.strip())
+                #print("number:", number)
+                ungenerated_scene_ids.append(number)
+            except ValueError:
+                pass
+                #print("value error") 
         total_lines = sum(1 for _ in file)
+
+    #print(ungenerated_scene_ids)
     bad = 0
     good = 0
     start_time = time.time()
-    with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
-        for line in tqdm(file, total=total_lines):
-            line = line.strip()
-            print(line)
-            
-            ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id{line}.ply"
-            npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id{line}.npz"
+    
+    for number in tqdm(range(100, 200), total=100-total_lines):
+        if number not in ungenerated_scene_ids:
+            print(number)
+
+            ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id{number}.ply"
+            npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id{number}.npz"
             result = generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
             if result is None:
                 bad = bad + 1

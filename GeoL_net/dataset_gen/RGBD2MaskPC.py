@@ -2,15 +2,16 @@
 transfer the RGBD to a mask pointcloud"""
 from GeoL_net.dataset_gen.hdf52png import hdf52png
 from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
-from GroundingDINO.RGB_dect import rgb_obj_dect
 import cv2
 import numpy as np
 import open3d as o3d
+import os
 import torch
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops import sample_farthest_points
 import random
 from tqdm import tqdm
+import time
 
 def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False, depth_removed_obj = None, mask_hd5f_removed_obj = None):
     """ transfer deph and mask hd5f to point cloud(mask)
@@ -141,7 +142,7 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     colors = np.asarray(points_scene.colors)
     points = np.asarray(points_scene.points)
 
-    # 提取绿色点云
+    # 提取绿色点云 removed obj
     green_mask = np.apply_along_axis(is_green, 1, colors)
     green_points = points[green_mask]
     green_pcd = o3d.geometry.PointCloud()
@@ -152,42 +153,43 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
         colors = np.asarray(points_no_obj_scene.colors)
         points = np.asarray(points_no_obj_scene.points)
     
-    # 提取蓝色点云
+    # 提取蓝色点云 other objs
     blue_mask = np.apply_along_axis(is_blue, 1, colors)
     blue_points = points[blue_mask]
     blue_pcd = o3d.geometry.PointCloud()
     blue_pcd.points = o3d.utility.Vector3dVector(blue_points)
-    bbox = blue_pcd.get_axis_aligned_bounding_box()
-    bbox_extent = bbox.get_extent()
     
-    
-    # 提取black点云
+    # 提取black点云 
     black_mask = np.apply_along_axis(is_black, 1, colors)
     z_max = blue_pcd.get_axis_aligned_bounding_box().get_max_bound()[2]
     z_center = blue_pcd.get_axis_aligned_bounding_box().get_center()[2]
     z_range_mask = (points[:, 2] <= z_max + 10) & (points[:, 2] >= z_center)
     target_mask = z_range_mask & black_mask
-    colors[target_mask] = [1, 1, 1]  # 将这些点的颜色设置为白色
+    colors[target_mask] = [1, 0, 0]  # 将这些点的颜色设置为红色 表示桌面
     points_scene.colors = o3d.utility.Vector3dVector(colors)
     
     # 提取白色点
-    white_mask = np.all(colors == [1, 1, 1], axis=1)
-    white_points = points[white_mask]
+    red_mask = np.all(colors == [1, 0, 0], axis=1)
+    red_points = points[red_mask]
     
-    # 在白色点中随机选择
+
+    # 在白色点中随机选择 for collision detection
+    '''
     number_selected = 4000
     if len(white_points) > number_selected:
         selected_indices = random.sample(range(len(white_points)), number_selected)
         selected_white_points = white_points[selected_indices]
     else:
         selected_white_points = white_points
+    '''
     
-    # 计算绿色点云的包围盒最高的中心点
+    # 计算绿色点云的包围盒最高的中心点 green bbox max center
     green_bbox = green_pcd.get_axis_aligned_bounding_box()
     green_box_extent = green_bbox.get_extent()
-    collision_thershold = np.sqrt(green_box_extent[0]**2 + green_box_extent[1]**2 ) / 5
+    collision_thershold = np.sqrt(green_box_extent[0]**2 + green_box_extent[1]**2 ) / 5 # for collision detection
     green_bbox_max_center = green_bbox.get_center()
     green_bbox_max_center[2] = green_bbox.get_max_bound()[2]
+
     
     '''
     # 处理每个选定的白色点 for 
@@ -206,7 +208,8 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     
         green_pcd.translate(-translation_vector)
     '''
-    # 
+    # for collision detection
+    '''
     distance_vectors = selected_white_points - green_bbox_max_center
     green_points_tensor = torch.tensor(green_points)
     green_points_expanded = green_points_tensor.unsqueeze(0).cuda()
@@ -219,33 +222,40 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     blue_points_tensor_fps = blue_points_tensor_fps.expand(number_selected, -1, -1)
  
     distances = torch.cdist(moved_green_points_tensor_fps, blue_points_tensor_fps)
+    distances = chamfer_distance(moved_green_points, blue_points_tensor_fps, )
     min_distances = torch.min(distances, dim=-1).values
     final_min_dists = torch.min(min_distances, dim=-1).values
     final_min_dists = final_min_dists.cpu().numpy()
-
+    '''
     
     # 筛选白色点
-    is_white_point = np.any(np.all(points[:, np.newaxis] == selected_white_points, axis=2), axis=1)
+    #is_white_point = np.any(np.all(points[:, np.newaxis] == selected_white_points, axis=2), axis=1)
+    
 
     # 找到与白色点匹配的索引
-    white_point_indices = np.where(is_white_point)[0]
-    filtered_white_points = points[white_point_indices]
+    #white_point_indices = np.where(is_white_point)[0]
+    #filtered_white_points = points[white_point_indices]
+    
 
     # 基于坐标匹配找出相应的最小距离
-    dist_mask = np.all(filtered_white_points[:, np.newaxis, :] == selected_white_points, axis=2)
-    matched_dists = np.dot(dist_mask, final_min_dists)
+    #dist_mask = np.all(filtered_white_points[:, np.newaxis, :] == selected_white_points, axis=2)
+    #matched_dists = np.dot(dist_mask, final_min_dists)
 
     # 修改颜色 (无碰撞 -> 红色)
-    colors[white_point_indices] = [1, 0, 0]
+    #colors[white_point_indices] = [1, 0, 0]
 
     # 进一步调整颜色 (接近绿色盒子中心 -> 绿色)
-    distances_to_center = np.linalg.norm(filtered_white_points[:, :2] - green_bbox_max_center[:2], axis=1)
-    close_to_center_mask = distances_to_center < max(collision_thershold*5, 200)
-    colors[white_point_indices[close_to_center_mask]] = [0, 1, 0]
+    #distances_to_center = np.linalg.norm(filtered_white_points[:, :2] - green_bbox_max_center[:2], axis=1)
+    distances_to_center = np.linalg.norm(red_points[:, :2] - green_bbox_max_center[:2],ord=np.inf, axis=1)
 
+    close_to_center_mask = distances_to_center < max(collision_thershold*3, 100)
+    red_point_indices = np.where(red_mask)[0]
+    colors[red_point_indices[close_to_center_mask]] = [0, 1, 0] # 靠近绿色点的白色点赋予绿色
+ 
     # 修改颜色 (有碰撞 -> 黑色)
-    collision_mask = matched_dists <= collision_thershold
-    colors[white_point_indices[collision_mask]] = [0, 0, 0]
+    #collision_mask = matched_dists <= collision_thershold
+    #colors[white_point_indices[collision_mask]] = [0, 0, 0]
+    
     '''
     for i in tqdm(range(number_selected)):
         white_point = selected_white_points[i]
@@ -269,10 +279,10 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     #colors = np.asarray(points_scene.colors)
     #red_mask = np.apply_along_axis(is_red, 1, colors)
     #print(np.any(red_mask))
-    # 从点云中删除所有白色点
-    not_white_mask = np.any(colors != [1, 1, 1], axis=1)
-    points_scene.points = o3d.utility.Vector3dVector(points[not_white_mask])
-    points_scene.colors = o3d.utility.Vector3dVector(colors[not_white_mask])
+    
+    
+    points_scene.points = o3d.utility.Vector3dVector(points)
+    points_scene.colors = o3d.utility.Vector3dVector(colors)
     return points_scene
 
 def remove_ground(point_cloud):
@@ -283,7 +293,7 @@ def remove_ground(point_cloud):
     z_max = np.max(points[:,2])
     height = z_max - z_min
 
-    z_thershold = z_max - height /4 # remove 25%
+    z_thershold = z_max - height /50 # remove 2%
     mask = points[:, 2] <= z_thershold
     filtered_points = points[mask]
     filtered_colors = colors[mask]
@@ -333,7 +343,41 @@ if __name__ == "__main__":
     # dataset/scene_RGBD_mask/scene_name/remove_obj/ply
 
     # config
-    base = "dataset/scene_RGBD_mask/id162_1/lamp_0004_orange" # only part need to be changed
+    
+    folder_path = "dataset/scene_RGBD_mask"
+    amount_scene = 0
+    for root,dirs,files in os.walk(folder_path):
+        for dir_name in dirs:
+            subfolder_path = os.path.join(root, dir_name)
+            for sub_root, sub_dirs, sub_files in os.walk(subfolder_path):
+                for sub_dir_name in sub_dirs:
+                    sub_subfolder_path = os.path.join(sub_root, sub_dir_name)
+                    #print(sub_subfolder_path)
+                    amount_scene = amount_scene + 1
+                    #print(amount_scene)
+
+                    base = sub_subfolder_path
+                    image_path = base + "/with_obj/test_pbr/000000/rgb/000000.jpg"
+                    depth_path = base + "/with_obj/test_pbr/000000/depth/000000.png"
+                    mask_hdf5_path = base + "/with_obj/0.hdf5"
+                    output_dir = base
+                    depth_removed_obj = base + "/no_obj/test_pbr/000000/depth/000000.png"
+                    mask_hdf5_removed_obj = base + "/no_obj/0.hdf5"
+                    ref_image_path = base + "/RGB_ref.jpg"
+                    start_time = time.time()
+                    RGBD2MaskPC(depth_path=depth_path, 
+                                mask_hd5f_path=mask_hdf5_path,
+                                output_dir=output_dir,
+                                reprocessing_flag=True,
+                                depth_removed_obj= depth_removed_obj,
+                                mask_hd5f_removed_obj=mask_hdf5_removed_obj)
+                    end_time = time.time()
+                    print(f"{output_dir} is done, comsuming {end_time - start_time} s")
+               
+                break
+        break
+'''
+    base = "dataset/scene_RGBD_mask/id7/book_0001_purple" # only part need to be changed
 
     image_path = base + "/with_obj/test_pbr/000000/rgb/000000.jpg"
     depth_path = base + "/with_obj/test_pbr/000000/depth/000000.png"
@@ -342,20 +386,20 @@ if __name__ == "__main__":
     depth_removed_obj = base + "/no_obj/test_pbr/000000/depth/000000.png"
     mask_hdf5_removed_obj = base + "/no_obj/0.hdf5"
     ref_image_path = base + "/RGB_ref.jpg"
-
+'''
 
     
     #center_x, center_y = rgb_obj_dect(image_path, text_prompt)
     #print("rgb_obj_dect is done")
-    RGBD2MaskPC(depth_path=depth_path, 
-                mask_hd5f_path=mask_hdf5_path,
-                output_dir=output_dir,
-                reprocessing_flag=True,
-                depth_removed_obj= depth_removed_obj,
-                mask_hd5f_removed_obj=mask_hdf5_removed_obj
-               )
-    print("-----RGBD2MaskPC done-----")
-    RGB2RefMaskPC(depth_path=depth_path,
-                  ref_image_path=ref_image_path,
-                  out_dir=output_dir)
-    print("-----RGBD2RefMaskPC done-----")
+    #RGBD2MaskPC(depth_path=depth_path, 
+    #            mask_hd5f_path=mask_hdf5_path,
+    #            output_dir=output_dir,
+    #            reprocessing_flag=True,
+    #            depth_removed_obj= depth_removed_obj,
+    #            mask_hd5f_removed_obj=mask_hdf5_removed_obj
+    #           )
+    #print("-----RGBD2MaskPC done-----")
+    #RGB2RefMaskPC(depth_path=depth_path,
+    #              ref_image_path=ref_image_path,
+    #              out_dir=output_dir)
+    #print("-----RGBD2RefMaskPC done-----")
