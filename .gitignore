@@ -2,3 +2,5 @@ dataset
 outputs
 wandb
 config
+thirdpart
+GroundingDINO

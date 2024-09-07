@@ -44,6 +44,7 @@ class GeometryLanguageTrainer(BaseTrainer):
         
         #Subset
         subset_indice = list(range(self.cfg.dataset.size))
+        subset_indice = [70, 120, 220, 320]
         self.train_dataset = Subset(self.train_dataset, subset_indice)
 
         # Initialize data loaders
@@ -144,9 +145,10 @@ class GeometryLanguageTrainer(BaseTrainer):
             state_dict["ckpt_dict"] if "ckpt_dict" in state_dict else state_dict
         )
         if not self._is_distributed:
-            missing_keys = self.model.load_state_dict(
-                {k.replace("module.", ""): v for k, v in ckpt_dict.items()}
-            )
+            missing_keys = self.model.load_state_dict(ckpt_dict)
+            #missing_keys = self.model.load_state_dict(
+            #    {k.replace("module.", ""): v for k, v in ckpt_dict.items()}
+            #)
         else:
             missing_keys = self.model.load_state_dict(ckpt_dict)
         logger.info("Missing keys: {}".format(missing_keys))
@@ -389,6 +391,7 @@ class GeometryLanguageTrainer(BaseTrainer):
             self.model.eval()
             if epoch % 5 == 0:
                 self.model.inference_4cls(epoch) # debug
+                self.model.inference_heatmap_4cls(epoch)
                 self.save_state(epoch + 1)
 
                 #image_pil, phrase, file_name = self.model.inference_4cls()
