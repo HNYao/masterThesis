@@ -74,7 +74,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
             z_height = bbox[1][2] - bbox[0][2]
             x_width = bbox[4][0]-bbox[3][0]
             y_width = bbox[2][1]-bbox[0][1]
-            desk.blender_obj.location = ((x_min+x_max)/2, (y_min+y_max)/2,obj_pose[0][2] - z_height/2)
+            desk.blender_obj.location = ((x_min+x_max)/2, (y_min+y_max)/2,0 - z_height/2)
 
             desk_mat = desk.get_materials()[0]
             desk_mat.set_principled_shader_value("Roughness", np.random.uniform(0.8, 1.0))
@@ -98,7 +98,8 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
         bbox = obj_mesh[0].get_bound_box()
         bbox_center = np.mean(bbox, axis=0)
         #print(bbox_center)
-        obj_mesh[0].blender_obj.rotation_euler = (0,0, 0)
+        z_angle = math.radians(obj_pose[2])
+        obj_mesh[0].blender_obj.rotation_euler = (0,0,z_angle)
 
 
             
@@ -108,7 +109,7 @@ def bproc_gen_mask(scene_mesh_json, RGBD_out_dir, removed_obj = None):
         x_width = bbox[4][0]-bbox[3][0]
         y_width = bbox[2][1]-bbox[0][1]
 
-        obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],obj_pose[0][2]+z_height/2)
+        obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],0+z_height/2)
         mass, fiction_coeff = (0.4, 0.5)
         obj_mesh[0].enable_rigidbody(True, mass=mass, friction=mass * fiction_coeff, 
         linear_damping = 1.99, angular_damping = 0, collision_margin=0.0001)
@@ -327,7 +328,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
             z_height = bbox[1][2] - bbox[0][2]
             x_width = bbox[4][0]-bbox[3][0]
             y_width = bbox[2][1]-bbox[0][1]
-            desk.blender_obj.location = ((x_min+x_max)/2, (y_min+y_max)/2,obj_pose[0][2] - z_height/2)
+            desk.blender_obj.location = ((x_min+x_max)/2, (y_min+y_max)/2,0 - z_height/2)
 
             desk_mat = desk.get_materials()[0]
             desk_mat.set_principled_shader_value("Roughness", np.random.uniform(0.8, 1.0))
@@ -351,7 +352,8 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
             continue
 
         obj_mesh = bproc.loader.load_obj(obj_file_name)
-        obj_mesh[0].blender_obj.rotation_euler = (0, 0, 0)
+        z_rotation = math.radians(obj_pose[2])
+        obj_mesh[0].blender_obj.rotation_euler = (0, 0, z_rotation)
          
         obj_mesh[0].blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2]) 
         bbox = obj_mesh[0].get_bound_box()
@@ -360,7 +362,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         y_width = bbox[2][1]-bbox[0][1]
         #obj_mesh[0].blender_obj.location = (obj_pose[0][0]-x_width/2,obj_pose[0][1]-y_width/2,obj_pose[0][2]+z_height/2)
         #print(f"{obj_file_name} oringal position: {obj_mesh[0].blender_obj.location}")
-        obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],obj_pose[0][2]+z_height/2)
+        obj_mesh[0].blender_obj.location = (obj_pose[0][0],obj_pose[0][1],0+z_height/2)
         #obj_mesh[0].blender_obj.location= (0,0,obj_pose[0][2]+z_height/2)
         #print(f"{obj_file_name} new position: {obj_mesh[0].blender_obj.location}")
         mass, fiction_coeff = (0.4, 0.5)
@@ -526,6 +528,7 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
 
 if __name__ == "__main__":
     bproc.init()
+    
     # gerate depth.png and hdf5
     parent_dir = "dataset/scene_RGBD_mask"
 
@@ -539,7 +542,7 @@ if __name__ == "__main__":
             print(json_file_path, "-----")
             start_time = time.time()
             for removed_obj_path in data.keys():
-                if "desk" in removed_obj_path or "table"  in removed_obj_path:
+                if "desk" in removed_obj_path or "table"  in removed_obj_path: # do not remove desk or table
                     continue
                     print(removed_obj_path)
     
@@ -575,7 +578,7 @@ if __name__ == "__main__":
 
         #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id16_7.json"
     #removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
-    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id1.json"
+    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id1_5.json"
     removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
     scene_path = scene_mesh_json.split("/")[-1]  
     scene_id = scene_path.split(".")[0]  

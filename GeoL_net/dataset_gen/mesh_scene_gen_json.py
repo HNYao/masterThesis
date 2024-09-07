@@ -3,6 +3,7 @@ generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
     TODO: aabb bbox存在问题，例如pencil,判断出长宽高
     TODO:旋转显示器
+    TODO: 将所有场景normalize到一个x方向上[-1,1]的区间
 """
 import time
 from tqdm import tqdm
@@ -40,76 +41,77 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
     # 1. get the position, z-angle and scale of the desk or table
     # check if table or desk, otherwise None
-    desk_pcd= get_obj_from_scene(pcd_ply_path=ply_path, obj_index=14, npz_path=npz_path)
-    table_pcd = get_obj_from_scene(pcd_ply_path=ply_path, obj_index=7, npz_path=npz_path)
-    if desk_pcd is not None and len(desk_pcd.points) > 200:
-        desk_pcd = desk_pcd
-        desk_mesh_folder = 'dataset/obj/mesh/desk'
-    elif table_pcd is not None and len(table_pcd.points) > 200:
-        desk_pcd = table_pcd
-        desk_mesh_folder = 'dataset/obj/mesh/table'
-    else:
-        print('No table or desk!')
-        return None
+
+    #desk_pcd= get_obj_from_scene(pcd_ply_path=ply_path, obj_index=14, npz_path=npz_path)
+    #table_pcd = get_obj_from_scene(pcd_ply_path=ply_path, obj_index=7, npz_path=npz_path)
+    #if desk_pcd is not None and len(desk_pcd.points) > 200:
+    #    desk_pcd = desk_pcd
+    #    desk_mesh_folder = 'dataset/obj/mesh/desk'
+    #elif table_pcd is not None and len(table_pcd.points) > 200:
+    #    desk_pcd = table_pcd
+    #    desk_mesh_folder = 'dataset/obj/mesh/table'
+    #else:
+    #   print('No table or desk!')
+    #    return None
+
     
-    aabb_desk_pcd = desk_pcd.get_axis_aligned_bounding_box()
-    min_bound = aabb_desk_pcd.get_min_bound()
-    max_bound = aabb_desk_pcd.get_max_bound()
-    dimensions_desk_pcd = max_bound - min_bound
-    center_desk_pcd = (min_bound + max_bound) / 2.0
-    top_center_desk_pcd = np.array(center_desk_pcd)
-    top_center_desk_pcd[2] += dimensions_desk_pcd[2] / 2.0
+    #aabb_desk_pcd = desk_pcd.get_axis_aligned_bounding_box()
+    #min_bound = aabb_desk_pcd.get_min_bound()
+    #max_bound = aabb_desk_pcd.get_max_bound()
+    #dimensions_desk_pcd = max_bound - min_bound
+    #center_desk_pcd = (min_bound + max_bound) / 2.0
+    #top_center_desk_pcd = np.array(center_desk_pcd)
+    #top_center_desk_pcd[2] += dimensions_desk_pcd[2] / 2.0
 
     # get desk or table mesh obj from a random file in desk_mesh_folder
-    desk_mesh_subfolders = [os.path.join(desk_mesh_folder, name) for name in os.listdir(desk_mesh_folder)
-              if os.path.isdir(os.path.join(desk_mesh_folder, name))]
-    chosen_desk_mesh_file = random.choice(desk_mesh_subfolders)
-    desk_obj_files = [os.path.join(chosen_desk_mesh_file, name) for name in os.listdir(chosen_desk_mesh_file)
-             if name.endswith('.obj')]
-    
-    desk_mesh =  trimesh.load(desk_obj_files[0], process=False, skip_materials=True)
 
-
-    # optimize the z
-    optimized_z_desk = torch.tensor(0) # hard code
-    angle_deg_z_desk = optimized_z_desk.detach().numpy()
-    angle_deg_z_desk = np.round(angle_deg_z_desk / 90) * 90 # each 90 degree
-    #print("agnle desk:", angle_deg_z_desk)
-
-    # scale desk mesh
-    min_bound = desk_mesh.bounds[0]
-    max_bound = desk_mesh.bounds[1]
-    dimensions_desk_mesh = max_bound - min_bound 
-
-    center_desk_mesh = (min_bound + max_bound) / 2.0
-    top_center_desk_mesh = np.array(center_desk_mesh)
-    top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
-    
-    scaling_factors = dimensions_desk_pcd / dimensions_desk_mesh
-
-    scale_matrix = np.eye(4)
-    scale_matrix[0, 0] = scaling_factors[0]
-    scale_matrix[1, 1] = scaling_factors[1]
-    scale_matrix[2, 2] = scaling_factors[2]
-    desk_scale_matrix = scale_matrix
-    desk_mesh.apply_transform(desk_scale_matrix)
+    #desk_mesh.apply_transform(desk_scale_matrix)
     
     
-    min_bound = desk_mesh.bounds[0]
-    max_bound = desk_mesh.bounds[1]
-    dimensions_desk_mesh = max_bound - min_bound 
+    #min_bound = desk_mesh.bounds[0]
+    #max_bound = desk_mesh.bounds[1]
+    #dimensions_desk_mesh = max_bound - min_bound 
 
-    center_desk_mesh = (min_bound + max_bound) / 2.0
-    top_center_desk_mesh = np.array(center_desk_mesh)
-    top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
+    #center_desk_mesh = (min_bound + max_bound) / 2.0
+    #top_center_desk_mesh = np.array(center_desk_mesh)
+    #top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
 
-    mesh_scene = trimesh.Trimesh() # empty scene
+    #mesh_scene = trimesh.Trimesh() # empty scene
 
     list_bottom_centric = []
 
     #print("---------")
     #print("Creating mesh scene...")
-    dict_bbox_pos_sacle = bbox_pos_scale_all_obj(ply_path, npz_path)
+    dict_bbox_pos_sacle = bbox_pos_scale_all_obj(ply_path, npz_path) # the sizes of all bboxs
+
+    # get the global center
+    global_min_bound = [float('inf'), float('inf'), float('inf')]  # 初始化为无穷大
+    global_max_bound = [-float('inf'), -float('inf'), -float('inf')]  # 初始化为无穷小
+    for ins_label, item_instance in dict_bbox_pos_sacle.items():
+            min_bound = item_instance['min_bound']  # 获取每个实例的最小边界
+            max_bound = item_instance['max_bound']  # 获取每个实例的最大边界
+            for i in range(3):
+                global_min_bound[i] = min(global_min_bound[i], min_bound[i])
+                global_max_bound[i] = max(global_max_bound[i], max_bound[i])
+        
+    global_center = [
+        (global_min_bound[0] + global_max_bound[0]) / 2,  # x 坐标
+        (global_min_bound[1] + global_max_bound[1]) / 2,  # y 坐标
+        (global_min_bound[2] + global_max_bound[2]) / 2   # z 坐标 z坐标不需要特别关注：可以在blendproc阶段都改成0
+        ]
+    
+    global_translation = global_center # 将整个桌面物体的xy平面中心移到0，0
+    global_size = [
+        (global_max_bound[0] - global_min_bound[0]) ,  # x length
+        (global_max_bound[1] - global_min_bound[1]) ,  # y length
+        (global_max_bound[2] - global_min_bound[2])    # z length
+        ]
+    global_resize = 1.2 / global_size[0] # 以 x为准 （如果有误，改成以y为准） 需要对物体的size和pos进行调整
+    # 计算调整后的 ylength
+    y_len  = global_size[1] * global_resize #x 归一后 y的length
+    
+    if y_len > 0.8: # 就以y为准
+        global_resize = 0.8 / global_size[1]
 
 
     # 2. read mesh obj in sequence
@@ -134,9 +136,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         item_bbox_pos = item_bbox_center
         item_bbox_pos[2] = item_bbox_pos[2] - item_bbox_size[2] / 2 #z bottom
         item_bbox_pos[2] = 0
-
-        
-        
+  
         # convert to semantic label to keyword
             # index -- object name
         item_dict = {}
@@ -154,11 +154,10 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             data=json.load(file)
             keyword = data[keyword]
             
-        if keyword == "":
+        if keyword == "": # no corresponding obj
             # print(f"no {item_keyword}")
             continue
         
-
         folder_path = 'dataset/obj/mesh' # the dataset folder of texture obj
         subfolders = next(os.walk(folder_path))[1]
         if keyword in subfolders:
@@ -168,15 +167,11 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             subfolder = random.choice(subfolders) # select a obj randomly
             mesh_file_path = os.path.join(subfolder, 'mesh.obj')
             if os.path.exists(mesh_file_path):
-                #mesh_obj = trimesh.load_mesh(mesh_file_path, process=False, skip_materials=True, force="mesh")
-                # print(mesh_file_path)
                 mesh_obj = trimesh.load(mesh_file_path, process=False, skip_materials=True, force="mesh")
-                #print(f"get obj from {mesh_file_path}")
 
         if obj_exist == 0: #ModelNet does not have the obj
             #print(f'sorry we dont have {keyword} in texture obj dataset')
             continue
-
         
         # bbox
         aabb_min_bound = mesh_obj.bounds[0]
@@ -189,32 +184,24 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.mean()
             scale_matrix[2, 2] = scale_factors.mean()
-
-
         elif keyword in ["cup"]:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors.min() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.min()
             scale_matrix[2, 2] = scale_factors.min()
-
-
         else:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors[0] # align with the target
             scale_matrix[1, 1] = scale_factors[1]
             scale_matrix[2, 2] = scale_factors[2]
-
-        
+ 
         scale_matrix_list.append(scale_matrix)
         keyword_list.append(keyword) # keyword list
         mesh_obj.apply_transform(scale_matrix) # 1. scale
 
         aabb2_scaled_min = mesh_obj.bounds[0]
         aabb2_scaled_max = mesh_obj.bounds[1]
-        #extent2_scaled = aabb2_scaled_max - aabb2_scaled_min
-        #aabb_center = mesh_obj.centroid
-        #aabb_bottom_center = np.array(aabb_center)
-        #aabb_bottom_center[2] -= extent2_scaled[2] / 2.0  
+ 
         aabb_bottom_center = (aabb2_scaled_min + aabb2_scaled_max)/2
         aabb_bottom_center[2] = aabb2_scaled_min[2]
 
@@ -232,7 +219,6 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         sample_mesh_points_list.append(sample_mesh_points_expanded)
         sample_pcd_points_list.append(sample_pcd_points_expanded)
 
-    
         mesh_obj = move_trimeshobj_to_position(mesh_obj, end_position=item_bbox_pos, start_position=aabb_bottom_center) # 4. translate
         mesh_obj_list.append(mesh_obj) # mesh_obj_list
         mesh_file_path_list.append(mesh_file_path)
@@ -242,9 +228,8 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
     sample_mesh_points_list = np.concatenate(sample_mesh_points_list, axis=0)
     sample_pcd_points_list = np.concatenate(sample_pcd_points_list, axis=0)
-    start_time = time.time()
     optimized_z_list = optimize_rotation_batch(sample_mesh_points_list, sample_pcd_points_list, initial_angle=0, num_iterations=10, learning_rate=1)
-    end_time = time.time()
+
 
     assert len(keyword_list) == len(mesh_obj_list)
     for i in range(len(keyword_list)):
@@ -264,34 +249,69 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         #mesh_scene = trimesh.util.concatenate([mesh_scene, mesh_obj]) 为了速度 不生成mesh
         mesh_file_path = mesh_file_path_list[i]
         item_bbox_pos = item_bbox_pos_list[i]
-        pose_dict[mesh_file_path] = [item_bbox_pos, [scale_matrix[0,0], scale_matrix[1,1], scale_matrix[2,2]], angle_deg_z, mesh_bbox] # add obj mesh into dict
-
+        # pose_dict[mesh_file_path] = [item_bbox_pos, [scale_matrix[0,0], scale_matrix[1,1], scale_matrix[2,2]], angle_deg_z, mesh_bbox] # add obj mesh into dict
+        item_bbox_pos[0] = (item_bbox_pos[0] - global_translation[0]) * global_resize
+        item_bbox_pos[1] = (item_bbox_pos[1] - global_translation[1]) * global_resize
+        item_bbox_pos[2] = (item_bbox_pos[2] - global_translation[2]) * global_resize
+        pose_dict[mesh_file_path] = [item_bbox_pos, 
+                                     [scale_matrix[0,0]  * global_resize, scale_matrix[1,1]  * global_resize, scale_matrix[2,2] * global_resize], 
+                                     angle_deg_z, 
+                                     mesh_bbox # 后续未使用，不做调整
+                                     ]
 
 
     # final desk
-    avg_bottom_centric = sum(list_bottom_centric) / len(list_bottom_centric)
-    top_center_desk_pcd[2] = avg_bottom_centric
-    desk_mesh = move_trimeshobj_to_position(desk_mesh, top_center_desk_pcd, top_center_desk_mesh)
+    desk_mesh_folder  = 'dataset/obj/mesh/desk'
+    desk_mesh_subfolders = [os.path.join(desk_mesh_folder, name) for name in os.listdir(desk_mesh_folder)
+              if os.path.isdir(os.path.join(desk_mesh_folder, name))]
+    chosen_desk_mesh_file = random.choice(desk_mesh_subfolders)
+    desk_obj_files = [os.path.join(chosen_desk_mesh_file, name) for name in os.listdir(chosen_desk_mesh_file)
+             if name.endswith('.obj')]
+    
+    desk_mesh =  trimesh.load(desk_obj_files[0], process=False, skip_materials=True)
+
+
+    # optimize the z
+    optimized_z_desk = torch.tensor(0) # hard code
+    angle_deg_z_desk = optimized_z_desk.detach().numpy()
+    angle_deg_z_desk = np.round(angle_deg_z_desk / 90) * 90 # each 90 degree
+    #print("agnle desk:", angle_deg_z_desk)
+
+    # scale desk mesh
+    min_bound = desk_mesh.bounds[0]
+    max_bound = desk_mesh.bounds[1]
+    dimensions_desk_mesh = max_bound - min_bound 
+
+    #center_desk_mesh = (min_bound + max_bound) / 2.0
+    #top_center_desk_mesh = np.array(center_desk_mesh)
+    #top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
+    
+    scaling_factors_x = 1.4 / dimensions_desk_mesh[0] # desk x轴1.1
+    scaling_factors_y = max(y_len, 1) / dimensions_desk_mesh[1] # 最少y是1
+
+    scale_matrix = np.eye(4)
+    scale_matrix[0, 0] = scaling_factors_x
+    scale_matrix[1, 1] = scaling_factors_y
+    scale_matrix[2, 2] = scaling_factors_x
+    desk_scale_matrix = scale_matrix
+    
+    #top_center_desk_pcd[2] = avg_bottom_centric
+    #desk_mesh = move_trimeshobj_to_position(desk_mesh, top_center_desk_pcd, top_center_desk_mesh)
     # mesh_scene = trimesh.util.concatenate([mesh_scene, desk_mesh]) 为了速度 不生成mesh
+    
 
-
+    
+    # save the json
     last_slash_index = ply_path.rfind("/")
     last_dot_index = ply_path.rfind(".")
-
     filename = ply_path[last_slash_index + 1:last_dot_index]
-    #print('filename', filename)
-    #unique_file_path = get_unique_filename(directory=directory_mesh_save, filename=filename, extension="_mesh.obj")
-
     desk_scale_matrix.tolist()
     angle_deg_z_desk = angle_deg_z_desk.tolist()
-    pose_dict[desk_obj_files[0]] = [item_bbox_pos, [desk_scale_matrix[0,0], desk_scale_matrix[1,1], desk_scale_matrix[2,2]], angle_deg_z_desk]
+    pose_dict[desk_obj_files[0]] = [[0,0,0], [desk_scale_matrix[0,0], desk_scale_matrix[1,1], desk_scale_matrix[2,2]], angle_deg_z_desk]
 
-    #mesh_scene.export(unique_file_path)
     unique_json_path = get_unique_filename(directory=directory_json_save, filename=filename, extension=".json")
-    #print(pose_dict)
     with open(f"{unique_json_path}", "w") as json_file:
         json.dump(pose_dict, json_file, indent=4)  # The indent parameter is optional but makes the JSON more readable
-    #print(f"{unique_file_path} is done")
     print(f"{unique_json_path} is done") 
     print("-----------")
     return unique_json_path
@@ -299,7 +319,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 if __name__ == "__main__":
 
     # 打开并读取文件
-    
+    # generate batch 
     with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
         ungenerated_scene_ids = []
         for line in file:
@@ -318,10 +338,10 @@ if __name__ == "__main__":
     good = 0
     start_time = time.time()
     
-    for number in tqdm(range(100, 200), total=100-total_lines):
+    for number in tqdm(range(0, 200), total=200-total_lines):
         if number not in ungenerated_scene_ids:
             print(number)
-
+            
             ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id{number}.ply"
             npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id{number}.npz"
             result = generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
@@ -333,8 +353,8 @@ if __name__ == "__main__":
     print(f"运行时间: {end_time - start_time} 秒")
     print("good:", good)
     print("bad:", bad)
-'''
-    ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id16.ply"
-    npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id16.npz"
+    '''
+    ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id1.ply"
+    npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id1.npz"
     generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
     '''

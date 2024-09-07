@@ -17,6 +17,8 @@ import numpy as np
 from PIL import Image
 from clip.model import build_model, load_clip, tokenize
 
+# TODO: 修改geo net结构：不需要两个geonet分别提取场景和obj的特征了
+
 @registry.register_affordance_model(name="GeoL_net")
 class GeoL_net(nn.Module):
     def __init__(self, input_shape, target_input_shape):
@@ -157,7 +159,7 @@ class GeoL_net(nn.Module):
         #o3d.visualization.draw([point_cloud])
         o3d.io.write_point_cloud("outputs/point_cloud.ply_2cls", point_cloud)
     
-    def inference_heatmap_4cls(self):
+    def inference_heatmap_4cls(self,epoch):
         "conver the esimating value to self-dpsefined heatmap"
         pcs = self.model_pc # [B, Num_points, 3]
         feat = self.model_ouput.permute(0,2,1) # [B, Num_points, 4]
@@ -171,6 +173,7 @@ class GeoL_net(nn.Module):
         #normalized_class_1_feat = class_1_feat
         flattened = normalized_class_1_feat.detach().numpy().flatten()
         cmap = plt.get_cmap('turbo')
+        cmap = plt.get_cmap("viridis")
         color_mapped = cmap(flattened)[:, :3]  # 获取 RGB 值，忽略 alpha 通道
 
         # back to [B, Num_points, 3]
@@ -182,8 +185,10 @@ class GeoL_net(nn.Module):
         point_cloud.points = o3d.utility.Vector3dVector(pcs[0].cpu().numpy())
         point_cloud.colors = o3d.utility.Vector3dVector(colors[0])
         self.pc_heatmap = point_cloud
-        o3d.io.write_point_cloud("outputs/point_cloud_heatmap_4cls.ply", point_cloud)
-        self.color_backproj()
+        scene_id = self.file_name[0].split("/")[-2]
+        obj_id = self.file_name[0].split("/")[-1]
+        o3d.io.write_point_cloud(f"outputs/model_output/point_cloud/{scene_id}-{obj_id}-{epoch}_heatmap.ply", point_cloud)
+        
 
     def color_backproj(self, pc_ori=None):
         " bactproject the color from the fps-points to the whole point cloud"
