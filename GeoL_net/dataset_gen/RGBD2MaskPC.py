@@ -365,12 +365,16 @@ if __name__ == "__main__":
                     mask_hdf5_removed_obj = base + "/no_obj/0.hdf5"
                     ref_image_path = base + "/RGB_ref.jpg"
                     start_time = time.time()
-                    RGBD2MaskPC(depth_path=depth_path, 
-                                mask_hd5f_path=mask_hdf5_path,
-                                output_dir=output_dir,
-                                reprocessing_flag=True,
-                                depth_removed_obj= depth_removed_obj,
-                                mask_hd5f_removed_obj=mask_hdf5_removed_obj)
+                    ply_path = os.path.join(base, "mask.ply")
+                    if os.path.exists(ply_path):
+                        print(f"{output_dir}/mask.ply already exists")
+                    else:
+                        RGBD2MaskPC(depth_path=depth_path, 
+                                    mask_hd5f_path=mask_hdf5_path,
+                                    output_dir=output_dir,
+                                    reprocessing_flag=True,
+                                    depth_removed_obj= depth_removed_obj,
+                                    mask_hd5f_removed_obj=mask_hdf5_removed_obj)
                     end_time = time.time()
                     print(f"{output_dir} is done, comsuming {end_time - start_time} s")
                

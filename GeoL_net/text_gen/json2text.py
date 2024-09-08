@@ -1,6 +1,7 @@
 """
     Generate the text guidance from the json
-    TODO: 体积太小的物体不做参照物，例如plant 橡皮
+    TODO: 体积太小的物体不做参照物，例如plant 橡皮 pencil
+
 """
 import json
 import math
@@ -67,7 +68,7 @@ def json2text(json_path, out_dir=None):
         min_distance = float('inf')
         for obj2, pos2 in positions.items():
             if obj1 != obj2:
-                if "eraser" in obj2 or "pencil" in obj2:
+                if "eraser" in obj2 or "pencil" in obj2 or "plant" in obj2:
                     continue
                 distance = euclidean_distance(pos1, pos2)
                 if distance < min_distance:
@@ -118,7 +119,10 @@ if __name__ =="__main__":
     amount_dataset = 0
     for json_file_path in json_files:
         json_path = json_file_path
-        json2text(json_path=json_path)
+        try:
+            json2text(json_path=json_path)
+        except FileNotFoundError:
+            continue
         amount_dataset += 1
     
     print(amount_dataset)

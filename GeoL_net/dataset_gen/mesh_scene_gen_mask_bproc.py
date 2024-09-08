@@ -537,7 +537,16 @@ if __name__ == "__main__":
     json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
 
     for json_file_path in json_files:
+        #json_file_path = "dataset/scene_gen/scene_mesh_json/id1_2.json" # debug
         with open(json_file_path, 'r', encoding='utf-8') as file:
+            # if file exists, continue
+            scene_id = os.path.splitext(os.path.basename(json_file_path))[0]
+            target_folder = os.path.join(parent_dir, scene_id)
+            if os.path.exists(target_folder) and os.path.isdir(target_folder):
+                print(f"Data '{scene_id}' already exists. next")
+                continue
+
+
             data = json.load(file)  # 解析JSON文件内容为Python字典
             print(json_file_path, "-----")
             start_time = time.time()

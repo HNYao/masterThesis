@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from omegaconf import DictConfig
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, random_split
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
@@ -39,18 +39,30 @@ class GeometryLanguageTrainer(BaseTrainer):
         # Create datasets for training & validation, download if necessary
         dataset_cls = registry.get_dataset(self.cfg.dataset.name)
         print("dataset name:",self.cfg.dataset.name)
-        self.train_dataset = dataset_cls(split="train",
+        #self.train_dataset = dataset_cls(split="train",
+        #                                 root_dir=self.dataset_dir)
+        self.dataset = dataset_cls(split="train",
                                          root_dir=self.dataset_dir)
-        
         #Subset
         subset_indice = list(range(self.cfg.dataset.size))
-        subset_indice = [70, 120, 220, 320]
-        self.train_dataset = Subset(self.train_dataset, subset_indice)
+        #subset_indice = [70, 120, 220, 320] # for testing prediction
+        self.dataset = Subset(self.dataset, subset_indice)
+        train_size = int(0.9 * len(self.dataset))
+        val_size = len(self.dataset) - train_size
+        self.train_dataset, self.val_dataset = random_split(self.dataset, [train_size, val_size])
 
         # Initialize data loaders
         self.train_loader = DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
+            num_workers=self.cfg.training.dataset.num_workers,
+            drop_last=True,
+            pin_memory=True,
+        )
+
+        self.validation_loader = DataLoader(
+            self.val_dataset,
+            batch_size=2, # batschsize =2 for validation
             num_workers=self.cfg.training.dataset.num_workers,
             drop_last=True,
             pin_memory=True,
@@ -350,13 +362,38 @@ class GeometryLanguageTrainer(BaseTrainer):
         return avg_loss
 
     def evaluate(
-        self, epoch, val_loader, val_split
+        self
     ) -> Tuple[float, Dict[str, float]]:
-        None
+        self.model.eval()
+        total_loss = 0.0
+        running_loss = 0.0
+        num_batches = len(self.validation_loader)
+        loss_fn = registry.get_loss_fn(self.cfg.training.loss.name)(
+            self.cfg.training.loss[self.cfg.training.loss.name]
+            )
+        
+        for i, batch in enumerate(self.validation_loader):
+            # logger.info(
+            #     "[Process: {}] Step: {} done".format(self.local_rank, i)
+            # )
+            for key, val in batch.items():
+                if type(val) == list:
+                    continue
+                batch[key] = val.float().to(self.device)
+
+            # Make predictions for this batch
+            outputs = self.model(batch=batch)["affordance"].squeeze(1)
+
+
+            eval_loss = loss_fn(outputs, batch["mask"].permute(0,2,1))
+            total_loss += eval_loss.item()
+            running_loss += eval_loss.item()
+        avg_loss = total_loss / num_batches
+        return avg_loss
 
     def train(self):
         EPOCHS = self.cfg.training.epochs
-
+        self.model.train()
         logger.info(
             "[Worker {}] Is distributed: {}".format(
                 self.local_rank, self._is_distributed
@@ -376,6 +413,7 @@ class GeometryLanguageTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss = self.train_one_epoch(epoch)
+            eval_loss = self.evaluate()
 
             logger.info(
                 "[Process: {}] Synchronize training processes".format(
@@ -389,7 +427,7 @@ class GeometryLanguageTrainer(BaseTrainer):
             logger.info("[Process: {}] Evaluating...".format(self.local_rank))
             # Evaluate model
             self.model.eval()
-            if epoch % 5 == 0:
+            if epoch % 10 == 0:
                 self.model.inference_4cls(epoch) # debug
                 self.model.inference_heatmap_4cls(epoch)
                 self.save_state(epoch + 1)
@@ -409,6 +447,7 @@ class GeometryLanguageTrainer(BaseTrainer):
                     {
                         "train/loss_per_epoch": avg_loss,
                         "train/learning_rate": self.scheduler.get_last_lr()[0],
+                        "train/val_loss_per_epoch": eval_loss,
                     },
                 )
 
