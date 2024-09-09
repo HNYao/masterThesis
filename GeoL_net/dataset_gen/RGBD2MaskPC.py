@@ -12,6 +12,8 @@ from pytorch3d.ops import sample_farthest_points
 import random
 from tqdm import tqdm
 import time
+import matplotlib.pyplot as plt
+
 
 def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False, depth_removed_obj = None, mask_hd5f_removed_obj = None):
     """ transfer deph and mask hd5f to point cloud(mask)
@@ -152,6 +154,7 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
         points_scene = points_no_obj_scene
         colors = np.asarray(points_no_obj_scene.colors)
         points = np.asarray(points_no_obj_scene.points)
+    green_center = np.mean(green_points, axis=0)
     
     # 提取蓝色点云 other objs
     blue_mask = np.apply_along_axis(is_blue, 1, colors)
@@ -168,121 +171,46 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     colors[target_mask] = [1, 0, 0]  # 将这些点的颜色设置为红色 表示桌面
     points_scene.colors = o3d.utility.Vector3dVector(colors)
     
-    # 提取白色点
+    # 提取红色点
     red_mask = np.all(colors == [1, 0, 0], axis=1)
     red_points = points[red_mask]
-    
 
-    # 在白色点中随机选择 for collision detection
-    '''
-    number_selected = 4000
-    if len(white_points) > number_selected:
-        selected_indices = random.sample(range(len(white_points)), number_selected)
-        selected_white_points = white_points[selected_indices]
-    else:
-        selected_white_points = white_points
-    '''
-    
-    # 计算绿色点云的包围盒最高的中心点 green bbox max center
-    green_bbox = green_pcd.get_axis_aligned_bounding_box()
-    green_box_extent = green_bbox.get_extent()
-    collision_thershold = np.sqrt(green_box_extent[0]**2 + green_box_extent[1]**2 ) / 5 # for collision detection
-    green_bbox_max_center = green_bbox.get_center()
-    green_bbox_max_center[2] = green_bbox.get_max_bound()[2]
+    # 重新提取
+    black_mask = np.apply_along_axis(is_black, 1, colors)
+    green_mask = np.apply_along_axis(is_green, 1, colors)
+    red_mask = np.all(colors == [1, 0, 0], axis=1)
+    # 初始化 heatmap 值为 0
+    heatmap = np.zeros(len(points))
 
-    
-    '''
-    # 处理每个选定的白色点 for 
-    for white_point in tqdm(selected_white_points, desc="Processing white points"):
-        translation_vector = white_point  - green_bbox_max_center
-        green_pcd.translate(translation_vector)
-             
-        if not check_collision(green_pcd, blue_pcd, threshold=10): # 阈值需要大 因为点其实残缺和稀疏
-            colors[np.all(points == white_point, axis=1)] = [1, 0, 0]  # 红色
-            if np.sqrt((white_point[0] - green_bbox_max_center[0])**2 + (white_point[1] - green_bbox_max_center[1])**2) < 200:
-                colors[np.all(points == white_point, axis=1)] = [0, 1, 0]  # green
-            #print("red")
-        else:
-            colors[np.all(points == white_point, axis=1)] = [0, 0, 0]  # 黑色
-        # 恢复绿色点云位置
-    
-        green_pcd.translate(-translation_vector)
-    '''
-    # for collision detection
-    '''
-    distance_vectors = selected_white_points - green_bbox_max_center
-    green_points_tensor = torch.tensor(green_points)
-    green_points_expanded = green_points_tensor.unsqueeze(0).cuda()
-    green_points_fps, _ = sample_farthest_points(green_points_expanded, K=64)
-    distance_vectors_expanded = distance_vectors[:, np.newaxis, :]
-    moved_green_points = green_points_fps + torch.tensor(distance_vectors_expanded).cuda()
-    moved_green_points_tensor_fps = torch.tensor(moved_green_points, dtype=torch.float32)
-    blue_points_tensor = torch.tensor(blue_points, dtype=torch.float32).unsqueeze(0).cuda()
-    blue_points_tensor_fps, _ = sample_farthest_points(blue_points_tensor, K=4096)
-    blue_points_tensor_fps = blue_points_tensor_fps.expand(number_selected, -1, -1)
- 
-    distances = torch.cdist(moved_green_points_tensor_fps, blue_points_tensor_fps)
-    distances = chamfer_distance(moved_green_points, blue_points_tensor_fps, )
-    min_distances = torch.min(distances, dim=-1).values
-    final_min_dists = torch.min(min_distances, dim=-1).values
-    final_min_dists = final_min_dists.cpu().numpy()
-    '''
-    
-    # 筛选白色点
-    #is_white_point = np.any(np.all(points[:, np.newaxis] == selected_white_points, axis=2), axis=1)
-    
+    # 计算所有红色点与绿色点云中心的距离
+    dists = np.linalg.norm(red_points[:,:2] - green_center[:2], axis=1)
+    dists = dists ** 0.95
 
-    # 找到与白色点匹配的索引
-    #white_point_indices = np.where(is_white_point)[0]
-    #filtered_white_points = points[white_point_indices]
-    
+    # 对于蓝色或黑色点，直接将其 heatmap 设为 0
+    invalid_mask = blue_mask[red_mask] | black_mask[red_mask]
 
-    # 基于坐标匹配找出相应的最小距离
-    #dist_mask = np.all(filtered_white_points[:, np.newaxis, :] == selected_white_points, axis=2)
-    #matched_dists = np.dot(dist_mask, final_min_dists)
+    # 计算有效点的 heatmap 值 (距离为 0 时为 1，距离大于 10 时为 0，0 到 10 之间线性分布)
+    valid_mask = ~invalid_mask
+    valid_dists = dists[valid_mask]
 
-    # 修改颜色 (无碰撞 -> 红色)
-    #colors[white_point_indices] = [1, 0, 0]
+    heatmap_values = np.zeros_like(dists)
+    heatmap_values[valid_dists <= 150] = 1 - valid_dists[valid_dists <= 150] / 150
+    heatmap_values[valid_dists == 0] = 1  # 距离为 0 的点赋值为 1
+    heatmap[red_mask] = heatmap_values
 
-    # 进一步调整颜色 (接近绿色盒子中心 -> 绿色)
-    #distances_to_center = np.linalg.norm(filtered_white_points[:, :2] - green_bbox_max_center[:2], axis=1)
-    distances_to_center = np.linalg.norm(red_points[:, :2] - green_bbox_max_center[:2],ord=np.inf, axis=1)
+    # 使用 Turbo colormap
+    turbo_colormap = plt.get_cmap('turbo')
 
-    close_to_center_mask = distances_to_center < max(collision_thershold*3, 100)
-    red_point_indices = np.where(red_mask)[0]
-    colors[red_point_indices[close_to_center_mask]] = [0, 1, 0] # 靠近绿色点的白色点赋予绿色
- 
-    # 修改颜色 (有碰撞 -> 黑色)
-    #collision_mask = matched_dists <= collision_thershold
-    #colors[white_point_indices[collision_mask]] = [0, 0, 0]
-    
-    '''
-    for i in tqdm(range(number_selected)):
-        white_point = selected_white_points[i]
-        final_min_dist = final_min_dists[i]
-        if final_min_dist > 50: # no collision
-            colors[np.all(points == white_point, axis=1)] = [1, 0, 0]  # 红色
-            if np.sqrt((white_point[0] - green_bbox_max_center[0])**2 + (white_point[1] - green_bbox_max_center[1])**2) < 200:
-                colors[np.all(points == white_point, axis=1)] = [0, 1, 0]  # green
-            #print("red")
-        else:
-            colors[np.all(points == white_point, axis=1)] = [0, 0, 0]  # 黑色
-        # 恢复绿色点云位置
-    #distances, norm = chamfer_distance(moved_green_points_tensor_fps, blue_points_tensor_fps)
-    #min_distances_per_points = torch.min(distances, dim=-1).values
-    '''
+    # 对 heatmap 值为 0 的点（蓝色和黑色点以及距离大于 10 的红色点），设置颜色为 Turbo colormap 对应 0 值的颜色
+    heatmap_colors = np.zeros((len(points), 3))
+    heatmap_colors[red_mask] = turbo_colormap(heatmap_values)[:, :3]  # 将 heatmap 值转换为颜色
+
+    # 设置蓝色和黑色点的颜色为 Turbo colormap 中对应 0 的颜色
+    zero_color = turbo_colormap(0)[:3]
+    heatmap_colors[blue_mask | black_mask] = zero_color
 
     # 更新点云颜色
-    points_scene.colors = o3d.utility.Vector3dVector(colors)
-    colors = np.asarray(points_scene.colors)
-    points = np.asarray(points_scene.points)
-    #colors = np.asarray(points_scene.colors)
-    #red_mask = np.apply_along_axis(is_red, 1, colors)
-    #print(np.any(red_mask))
-    
-    
-    points_scene.points = o3d.utility.Vector3dVector(points)
-    points_scene.colors = o3d.utility.Vector3dVector(colors)
+    points_scene.colors = o3d.utility.Vector3dVector(heatmap_colors)
     return points_scene
 
 def remove_ground(point_cloud):
@@ -368,6 +296,12 @@ if __name__ == "__main__":
                     ply_path = os.path.join(base, "mask.ply")
                     if os.path.exists(ply_path):
                         print(f"{output_dir}/mask.ply already exists")
+                        RGBD2MaskPC(depth_path=depth_path, 
+                                    mask_hd5f_path=mask_hdf5_path,
+                                    output_dir=output_dir,
+                                    reprocessing_flag=True,
+                                    depth_removed_obj= depth_removed_obj,
+                                    mask_hd5f_removed_obj=mask_hdf5_removed_obj)
                     else:
                         RGBD2MaskPC(depth_path=depth_path, 
                                     mask_hd5f_path=mask_hdf5_path,
