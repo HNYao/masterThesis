@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 import cv2
 import hydra
+import random
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -38,13 +39,15 @@ class GeometryLanguageTrainer(BaseTrainer):
     def init_dataset(self) -> None:
         # Create datasets for training & validation, download if necessary
         dataset_cls = registry.get_dataset(self.cfg.dataset.name)
+
         print("dataset name:",self.cfg.dataset.name)
         #self.train_dataset = dataset_cls(split="train",
         #                                 root_dir=self.dataset_dir)
         self.dataset = dataset_cls(split="train",
                                          root_dir=self.dataset_dir)
-        #Subset
-        subset_indice = list(range(self.cfg.dataset.size))
+        #Subset random.sample(range(2001), self.cfg.dataset.size)
+        subset_indice = random.sample(range(2001), self.cfg.dataset.size)
+        #subset_indice = [100,400,600]
         #subset_indice = [70, 120, 220, 320] # for testing prediction
         self.dataset = Subset(self.dataset, subset_indice)
         train_size = int(0.9 * len(self.dataset))
@@ -99,6 +102,7 @@ class GeometryLanguageTrainer(BaseTrainer):
             self.optimizer = torch.optim.Adam(
                 trainable_params,
                 lr=self.cfg.training.lr,
+                eps=1e-3
             )
             logger.info(
                 "Total trainable parameters: {}/{}".format(
@@ -255,15 +259,15 @@ class GeometryLanguageTrainer(BaseTrainer):
             metrics, _ = self.metrics(outputs, batch, mode="train")
 
             if torch.isnan(loss):
-                o_inputs = torch.sigmoid(outputs)
+                #o_inputs = torch.sigmoid(outputs)
                 logger.info(
-                    "[Process: {}] Step: {}\t Loss: {}\t Metrics: {}\t Loss pre: {}\t P Mask: {} inp: {} - {}".format(
+                    "[Process: {}] Step: {}\t Loss: {}\t Metrics: {}\t Loss pre: {}\t P  inp: {} - {}".format(
                         self.local_rank,
                         i,
                         loss.item(),
                         metrics,
                         loss.item(),
-                        o_inputs.sum((1, 2)),
+                        #o_inputs.sum((1, 2)),
                         batch["image"].min(),
                         batch["image"].max(),
                     )
@@ -367,7 +371,7 @@ class GeometryLanguageTrainer(BaseTrainer):
         self.model.eval()
         total_loss = 0.0
         running_loss = 0.0
-        num_batches = len(self.validation_loader)
+        num_batches = len(self.validation_loader) 
         loss_fn = registry.get_loss_fn(self.cfg.training.loss.name)(
             self.cfg.training.loss[self.cfg.training.loss.name]
             )
@@ -413,7 +417,12 @@ class GeometryLanguageTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss = self.train_one_epoch(epoch)
-            eval_loss = self.evaluate()
+            if epoch % 50 == 0:
+                self.save_state(epoch + 1)
+            
+            if epoch% 5 ==0:
+                self.model.generate_heatmap(epoch) # debug
+            
 
             logger.info(
                 "[Process: {}] Synchronize training processes".format(
@@ -427,10 +436,7 @@ class GeometryLanguageTrainer(BaseTrainer):
             logger.info("[Process: {}] Evaluating...".format(self.local_rank))
             # Evaluate model
             self.model.eval()
-            if epoch % 10 == 0:
-                self.model.inference_4cls(epoch) # debug
-                self.model.inference_heatmap_4cls(epoch)
-                self.save_state(epoch + 1)
+            eval_loss = self.evaluate()
 
                 #image_pil, phrase, file_name = self.model.inference_4cls()
                 #self.log_img(epoch + 1, image_pil, phrase, file_name)
@@ -441,6 +447,7 @@ class GeometryLanguageTrainer(BaseTrainer):
                 #        epoch, avg_loss, avg_metrics
                 #    )
                 #)
+                
 
                 self.log(
                     epoch + 1,

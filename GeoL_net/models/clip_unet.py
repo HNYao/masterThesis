@@ -48,7 +48,7 @@ class CLIPUNetImgQuery(SPModel):
         )
         #frozen
         for param in self.clip.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         self.clip_out_dim = self.clip.output_shape[0]
 

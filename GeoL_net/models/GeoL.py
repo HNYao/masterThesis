@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from matplotlib import cm
 import torchvision
 import pytorch3d
 #print(torch.__version__) # 2.0.0
@@ -86,9 +87,9 @@ class GeoL_net(nn.Module):
         x_align = self.concate(x_rgb["affordance"], scene_pcs, self.instrics).permute(0,2,1) # [B, Num_pts, C_rgbfeat]
         #print("-----align shape:", x_align.shape)
         x = torch.cat((scene_pcs.permute(0,2,1), x_align, x_geo),dim=1) # []
-        #print("------x shape:", x.shape)
-        x = self.fusion_point_moudule(x.permute(0,2,1))
-        #x = x.permute(0,2,1)
+        
+        x = self.fusion_point_moudule(x.permute(0,1,2)) 
+        x = x.permute(0,2,1)
         #print("------fusion x shape:", x.shape)
         #print("------target shape:", batch["mask"].shape)
         output["affordance"] = x
@@ -98,6 +99,36 @@ class GeoL_net(nn.Module):
 
         return output
     
+    def generate_heatmap(self, epoch):
+        " generate heatmap during training"
+        pcs = self.model_pc # [B, Num_points, 3]
+        feat = self.model_ouput # [B, Num_points, 1]
+            # Normalize feat to [0, 1] for each batch independently
+        min_feat = feat.min(dim=1, keepdim=True)[0]  # Find min in each batch
+        max_feat = feat.max(dim=1, keepdim=True)[0]  # Find max in each batch
+        normalized_feat = (feat - min_feat) / (max_feat - min_feat + 1e-6)  # Avoid division by zero
+        # Convert normalized features to RGB using turbo colormap
+        turbo_colormap = cm.get_cmap('turbo', 256)  # Load turbo colormap with 256 levels
+        normalized_feat_np = normalized_feat.squeeze(-1).cpu().detach().numpy()  # Shape: [B, Num_points]
+        # Apply turbo colormap to normalized features (converts values to RGB)
+        color_maps = turbo_colormap(normalized_feat_np)[:, :, :3]  # Shape: [B, Num_points, 3], ignore alpha
+        # Generate point cloud with Open3D
+        for i in range(pcs.shape[0]):  # Iterate over batch
+            points = pcs[i].cpu().numpy()  # Shape: [Num_points, 3]
+            colors = color_maps[i]  # Shape: [Num_points, 3]
+
+            # Create Open3D point cloud object
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+
+            scene_id = self.file_name[i].split("/")[-2]
+            obj_id = self.file_name[i].split("/")[-1]
+
+            # Save the point cloud to a file (you can change the path format)
+            o3d.io.write_point_cloud(f"outputs/model_output/point_cloud/{scene_id}-{obj_id}-{epoch}_heatmap.ply", pcd)
+
+
     def inference_4cls(self, epoch):
         " Check the model outputs during training"
         pcs = self.model_pc # [B, Num_points, 3]
@@ -119,25 +150,6 @@ class GeoL_net(nn.Module):
         obj_id = self.file_name[0].split("/")[-1]
         o3d.io.write_point_cloud(f"outputs/model_output/point_cloud/{scene_id}-{obj_id}-{epoch}.ply", point_cloud)
 
-        # visualize and render the point cloud
-        #pcd = point_cloud
-        #R = pcd.get_rotation_matrix_from_axis_angle([np.pi, 0, 0])
-
-        #pcd.rotate(R, center=(0, 0, 0))
-        #vis = o3d.visualization.Visualizer()
-        #vis.create_window(visible=False)
-        #vis.add_geometry(pcd)
-        #vis.poll_events()
-        #vis.update_renderer()
-        #temp_image_path = "outputs/point_cloud_4cls_temp.png"
-        #img = vis.capture_screen_image(temp_image_path)
-        #img = np.asarray(img) * 255
-        #img = img.astype(np.uint8)
-        #image_pil = Image.fromarray(img.clip(0,255)).astype(np.uint8)
-        
-        #vis.destroy_window()
-
-        #return image_pil, self.phrase[0], self.file_name[0]
 
 
 

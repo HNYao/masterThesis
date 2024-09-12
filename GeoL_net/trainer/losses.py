@@ -3,6 +3,7 @@ import torch.nn as nn
 from omegaconf import DictConfig
 
 from GeoL_net.core.registry import registry
+from torch.nn import functional as F
 
 
 @registry.register_loss_fn(name="focal")
@@ -34,3 +35,15 @@ class SoftDiceLoss(nn.Module):
         union = inputs.sum(dims) + targets.sum(dims)
         dice = (2 * intersection) / (union + self.config.eps)
         return 1 - dice.mean()
+
+@registry.register_loss_fn(name="binary_ce")
+class BinaryCELoss(nn.Module):
+    def __init__(self, config: DictConfig):
+        super().__init__()
+        self.config = config
+
+    def forward(self, inputs, targets):
+        # inputs as logits
+        targets = targets.permute(0,2,1) 
+        loss = F.binary_cross_entropy_with_logits(inputs, targets)
+        return loss
