@@ -525,8 +525,188 @@ def bproc_gen_mask_removw_obj(scene_mesh_json, RGBD_out_dir, removed_obj = None)
         
     bproc.writer.write_hdf5(out_dir, data)
 
+def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_obj=None):
+    "Render both the scene with and without the removed object."
+
+    # Step 1: 加载场景数据
+    json_file_path = scene_mesh_json
+    with open(json_file_path, 'r') as f:
+        data = json.load(f)
+
+    mode = 'train'
+    cfg = dict(
+        H=480, 
+        W=640, 
+        K=[591.0125, 0, 322.525, 0, 590.16775, 244.11084, 0, 0, 1], 
+        cc_textures_path='resources'
+    )
+    K = np.array(cfg['K']).reshape(3, 3)
+
+    # Step 2: 定义相机内参
+    bproc.camera.set_intrinsics_from_K_matrix(K, cfg['W'], cfg['H'])
+
+    target_objects = []
+    x_min, x_max, y_min, y_max = 100, -100, 100, -100
+    exist_obj_amount = 0
+    obj_amount = len(data)
+
+    # Step 3: 一次性加载所有对象
+    for obj_file_name, obj_pose in data.items():
+        exist_obj_amount += 1
+        if exist_obj_amount == obj_amount:
+            # 最后一个对象，假设为桌面对象
+            obj_mesh = bproc.loader.load_obj(obj_file_name)
+            desk = obj_mesh[0]
+            desk.blender_obj.rotation_euler = (0, 0, 0)
+            desk.blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2])
+            bbox = desk.get_bound_box()
+            z_height = bbox[1][2] - bbox[0][2]
+            desk.blender_obj.location = ((x_min + x_max) / 2, (y_min + y_max) / 2, 0 - z_height / 2)
+
+            desk_mat = desk.get_materials()[0]
+            desk_mat.set_principled_shader_value("Roughness", np.random.uniform(0.8, 1.0))
+            desk_mat.set_principled_shader_value("Specular", np.random.uniform(0.8, 1.0))
+
+            material = desk.get_materials()[0]
+            desk.replace_materials(material)
+
+            desk.set_cp("category_id", 2)
+            desk.set_cp("scene_id", 2)
+
+            target_objects.append(desk)
+            break
+
+        # 加载每个对象
+        obj_mesh = bproc.loader.load_obj(obj_file_name)
+        z_rotation = math.radians(obj_pose[2])
+        obj_mesh[0].blender_obj.rotation_euler = (0, 0, z_rotation)
+        obj_mesh[0].blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2])
+        bbox = obj_mesh[0].get_bound_box()
+        z_height = bbox[1][2] - bbox[0][2]
+        obj_mesh[0].blender_obj.location = (obj_pose[0][0], obj_pose[0][1], 0 + z_height / 2)
+
+        # 设置材质
+        mat = obj_mesh[0].get_materials()[0]
+        mat.set_principled_shader_value("Roughness", np.random.uniform(0.8, 1.0))
+        mat.set_principled_shader_value("Specular", np.random.uniform(0.8, 1.0))
+
+        # 设置对象属性
+        if removed_obj in obj_file_name:
+            obj_mesh[0].set_cp("category_id", 4)
+            obj_mesh[0].set_cp("scene_id", 4)
+        else:
+            obj_mesh[0].set_cp("category_id", 1)
+            obj_mesh[0].set_cp("scene_id", 1)
+
+        target_objects.append(obj_mesh[0])
+
+        # 更新场景边界
+        x_min = min(x_min, bbox[0][0])
+        x_max = max(x_max, bbox[6][0])
+        y_min = min(y_min, bbox[0][1])
+        y_max = max(y_max, bbox[6][1])
+
+    # Step 4: 创建房间和光源
+    room_coeff = 10
+    room = [bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, 0, obj_pose[0][2] - z_height]),
+            bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, -room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[-1.570796, 0, 0]),
+            bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[1.570796, 0, 0]),
+            bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[room_coeff, 0, room_coeff + obj_pose[0][2] - z_height], rotation=[0, -1.570796, 0]),
+            bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[-room_coeff, 0, room_coeff+obj_pose[0][2] - z_height], rotation=[0, 1.570796, 0])]
+
+    # sample point light on shell
+    light_plane = bproc.object.create_primitive('PLANE', scale=[3, 3, 1], location=[0, 0, 10])
+    light_plane.set_name('light_plane')
+    light_plane_material = bproc.material.create('light_material')
+    light_plane_material.make_emissive(emission_strength=np.random.uniform(3,6), 
+                                emission_color=np.random.uniform([0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]))     
+    light_plane.replace_materials(light_plane_material)
+
+    # sample CC Texture and assign to room planes
+    
+    if cfg['cc_textures_path'] is not None:
+        cc_textures = bproc.loader.load_ccmaterials(cfg['cc_textures_path'])
+        for plane in room:
+            random_cc_texture = np.random.choice(cc_textures)
+            plane.replace_materials(random_cc_texture)
+    
+    # set attributes
+    room.append(light_plane)
+    for plane in room:
+        plane.set_cp('category_id', 3)
+
+    # Step 5: 设置相机视角
+    i = 0
+    radius_min, radius_max = (1.2, 1.5)
+    _radius = np.random.uniform(low=radius_min, high=radius_max) 
+    num_views= 1
+
+    while i < num_views:
+
+        poi = bproc.object.compute_poi(np.random.choice(target_objects, size=5))
+
+        noise =  np.random.randn() * (_radius / 10) 
+        inplane_rot = np.random.uniform(-0.7854, 0.7854) 
+
+        radius = _radius + noise
+        # Sample on sphere around ShapeNet object
+        location = bproc.sampler.part_sphere(poi, radius=radius, dist_above_center=0.05, mode="SURFACE") # dist_above_center: hight of the ring
+
+
+        # Compute rotation based on vector going from location towards ShapeNet object
+        rotation_matrix = bproc.camera.rotation_from_forward_vec(poi - location, inplane_rot=inplane_rot)
+
+        # Add homog cam pose based on location an rotation
+        #cam2world_matrix = bproc.math.build_transformation_mat(location, rotation_matrix)
+        rotation_matrix = [[1, 0, 0], [0,0.8,-0.6], [0,0.6,0.8]]
+        cam2world_matrix = bproc.math.build_transformation_mat([(x_min+x_max)/2, (y_min+y_max)/2 - 1, 1], rotation_matrix)
+        # print(location, rotation_matrix)
+        bproc.camera.add_camera_pose(cam2world_matrix)
+        i += 1
+
+    # Step 6: 渲染包含和不包含 removed_obj 的场景
+    for remove_flag in [False, True]:
+        # 控制 removed_obj 的可见性
+        for obj in target_objects:
+            if removed_obj and removed_obj in obj.get_name():
+                obj.blender_obj.hide_render = remove_flag  # True: 不渲染该对象, False: 渲染该对象
+            else:
+                obj.blender_obj.hide_render = False  # 其他对象始终渲染
+
+        bproc.renderer.set_max_amount_of_samples(1)
+        bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
+        data = bproc.renderer.render()
+
+        # Step 7: 保存渲染结果
+        out_dir = RGBD_out_dir
+        if remove_flag:
+            out_dir = os.path.join(RGBD_out_dir, "without_" + removed_obj)
+        else:
+            out_dir = os.path.join(RGBD_out_dir, "with_" + removed_obj)
+
+        # 保存文件
+        write_my(out_dir,
+            chunk_name='test_pbr',
+            dataset='',
+            target_objects=target_objects,
+            depths=data["depth"],
+            depths_noise=data["depth_kinect"],
+            colors=data["colors"],
+            instance_masks=data['instance_segmaps'],
+            category_masks=data['category_id_segmaps'],
+            instance_attribute_maps=data["instance_attribute_maps"],
+            color_file_format="JPEG",
+            ignore_dist_thres=10,
+            frames_per_chunk=1,
+            is_shapenet=False
+        )
+
+        bproc.writer.write_hdf5(out_dir, data)
+
+
 
 if __name__ == "__main__":
+    '''
     bproc.init()
     
     # gerate depth.png and hdf5
@@ -553,10 +733,7 @@ if __name__ == "__main__":
             for removed_obj_path in data.keys():
                 if "desk" in removed_obj_path or "table"  in removed_obj_path: # do not remove desk or table
                     continue
-                    print(removed_obj_path)
     
-    #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id16_7.json"
-    #removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
                 scene_mesh_json = json_file_path
                 removed_obj_path = removed_obj_path
 
@@ -583,31 +760,41 @@ if __name__ == "__main__":
                 bproc.clean_up()
             end_time = time.time()
             print(f"------Consume: {end_time - start_time} s--------")
-    '''  
-
-        #scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id16_7.json"
-    #removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
-    scene_mesh_json = "dataset/scene_gen/scene_mesh_json/id1_5.json"
-    removed_obj_path = "dataset/obj/mesh/cup/cup_0004_white/mesh.obj"
-    scene_path = scene_mesh_json.split("/")[-1]  
-    scene_id = scene_path.split(".")[0]  
-
-    removed_obj_name = removed_obj_path.split("/")[-2]
-
-    output_dir_with_obj = parent_dir + "/" + scene_id + "/"+ removed_obj_name +"/with_obj"
-    output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
-    print(output_dir_no_obj)
-    print(output_dir_with_obj)
-
-
-    
-    bproc_gen_mask(scene_mesh_json=scene_mesh_json,
-                RGBD_out_dir=output_dir_with_obj,
-                removed_obj=removed_obj_path)
-    bproc.clean_up()
-
-    bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
-                RGBD_out_dir=output_dir_no_obj,
-                removed_obj=removed_obj_path)
-    bproc.clean_up()
     '''
+    bproc.init()
+    parent_dir = "exps"
+    json_file_path = "dataset/scene_gen/scene_mesh_json/id1_2.json"
+    with open(json_file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)  # 解析JSON文件内容为Python字典
+        print(json_file_path, "-----")
+        start_time = time.time()
+        for removed_obj_path in data.keys():
+            if "desk" in removed_obj_path or "table"  in removed_obj_path: # do not remove desk or table
+                continue
+
+            scene_mesh_json = json_file_path
+            removed_obj_path = removed_obj_path
+
+            scene_path = scene_mesh_json.split("/")[-1]  
+            scene_id = scene_path.split(".")[0]  
+
+            removed_obj_name = removed_obj_path.split("/")[-2]
+
+            output_dir_with_obj = parent_dir + "/" + scene_id + "/"+ removed_obj_name +"/with_obj"
+            output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
+            print(output_dir_no_obj)
+            print(output_dir_with_obj)
+
+
+            
+            bproc_gen_mask(scene_mesh_json=scene_mesh_json,
+                        RGBD_out_dir=output_dir_with_obj,
+                        removed_obj=removed_obj_path)
+            bproc.clean_up()
+
+            bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
+                        RGBD_out_dir=output_dir_no_obj,
+                        removed_obj=removed_obj_path)
+            bproc.clean_up()
+        end_time = time.time()
+        print(f"------Consume: {end_time - start_time} s--------")
