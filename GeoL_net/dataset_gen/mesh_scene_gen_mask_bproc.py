@@ -581,6 +581,7 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
         z_rotation = math.radians(obj_pose[2])
         obj_mesh[0].blender_obj.rotation_euler = (0, 0, z_rotation)
         obj_mesh[0].blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2])
+        obj_mesh[0].set_name(obj_file_name)
         bbox = obj_mesh[0].get_bound_box()
         z_height = bbox[1][2] - bbox[0][2]
         obj_mesh[0].blender_obj.location = (obj_pose[0][0], obj_pose[0][1], 0 + z_height / 2)
@@ -615,11 +616,10 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[-room_coeff, 0, room_coeff+obj_pose[0][2] - z_height], rotation=[0, 1.570796, 0])]
 
     # sample point light on shell
-    light_plane = bproc.object.create_primitive('PLANE', scale=[3, 3, 1], location=[0, 0, 10])
-    light_plane.set_name('light_plane')
+    light_plane = bproc.object.create_primitive('SPHERE', scale=[1, 1, 1], location=[-1, -1, 2])
+    light_plane.set_name('light_point')
     light_plane_material = bproc.material.create('light_material')
-    light_plane_material.make_emissive(emission_strength=np.random.uniform(3,6), 
-                                emission_color=np.random.uniform([0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]))     
+    light_plane_material.make_emissive(emission_strength=np.random.uniform(3,6), emission_color=np.random.uniform([0.5, 0.5, 0.5, 1.0], [1.0, 1.0, 1.0, 1.0]))     
     light_plane.replace_materials(light_plane_material)
 
     # sample CC Texture and assign to room planes
@@ -668,21 +668,27 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     for remove_flag in [False, True]:
         # 控制 removed_obj 的可见性
         for obj in target_objects:
+            print(f"-------{obj.get_name()}-----")
             if removed_obj and removed_obj in obj.get_name():
                 obj.blender_obj.hide_render = remove_flag  # True: 不渲染该对象, False: 渲染该对象
+                print(f"-------not rendering {obj.get_name()}-----")
             else:
                 obj.blender_obj.hide_render = False  # 其他对象始终渲染
-
+        try:
+            bproc.renderer.enable_depth_output(activate_antialiasing=False)
+        except RuntimeError:
+            pass
         bproc.renderer.set_max_amount_of_samples(1)
         bproc.renderer.enable_segmentation_output(map_by=["instance", "category_id"])
         data = bproc.renderer.render()
 
+        data["depth_kinect"] = bproc.postprocessing.add_kinect_azure_noise(data["depth"], data["colors"], 10)
         # Step 7: 保存渲染结果
         out_dir = RGBD_out_dir
         if remove_flag:
-            out_dir = os.path.join(RGBD_out_dir, "without_" + removed_obj)
+            out_dir = os.path.join(RGBD_out_dir, "no_obj")
         else:
-            out_dir = os.path.join(RGBD_out_dir, "with_" + removed_obj)
+            out_dir = os.path.join(RGBD_out_dir, "with_obj")
 
         # 保存文件
         write_my(out_dir,
@@ -762,39 +768,45 @@ if __name__ == "__main__":
             print(f"------Consume: {end_time - start_time} s--------")
     '''
     bproc.init()
-    parent_dir = "exps"
-    json_file_path = "dataset/scene_gen/scene_mesh_json/id1_2.json"
-    with open(json_file_path, 'r', encoding='utf-8') as file:
-        data = json.load(file)  # 解析JSON文件内容为Python字典
-        print(json_file_path, "-----")
-        start_time = time.time()
-        for removed_obj_path in data.keys():
-            if "desk" in removed_obj_path or "table"  in removed_obj_path: # do not remove desk or table
+    parent_dir = "dataset/scene_RGBD_mask"
+
+    json_folder_path = "dataset/scene_gen/scene_mesh_json"
+    json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
+    for json_file_path in json_files:
+
+
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+
+            # if file exists, continue
+            scene_id = os.path.splitext(os.path.basename(json_file_path))[0]
+            target_folder = os.path.join(parent_dir, scene_id)
+            if os.path.exists(target_folder) and os.path.isdir(target_folder):
+                print(f"Data '{scene_id}' already exists. next")
                 continue
 
-            scene_mesh_json = json_file_path
-            removed_obj_path = removed_obj_path
+            data = json.load(file)  # 解析JSON文件内容为Python字典
+            print(json_file_path, "-----")
+            start_time = time.time()
+            for removed_obj_path in data.keys():
+                if "desk" in removed_obj_path or "table"  in removed_obj_path: # do not remove desk or table
+                    continue
 
-            scene_path = scene_mesh_json.split("/")[-1]  
-            scene_id = scene_path.split(".")[0]  
+                scene_mesh_json = json_file_path
+                removed_obj_path = removed_obj_path
 
-            removed_obj_name = removed_obj_path.split("/")[-2]
+                scene_path = scene_mesh_json.split("/")[-1]  
+                scene_id = scene_path.split(".")[0]  
 
-            output_dir_with_obj = parent_dir + "/" + scene_id + "/"+ removed_obj_name +"/with_obj"
-            output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
-            print(output_dir_no_obj)
-            print(output_dir_with_obj)
+                removed_obj_name = removed_obj_path.split("/")[-2]
 
+                output_dir_with_obj = parent_dir + "/" + scene_id + "/"+ removed_obj_name +"/with_obj"
+                output_dir_no_obj = parent_dir + "/" + scene_id + "/" + removed_obj_name +"/no_obj"
+                RGB_out_dir = parent_dir + "/" + scene_id + "/" + removed_obj_name
 
-            
-            bproc_gen_mask(scene_mesh_json=scene_mesh_json,
-                        RGBD_out_dir=output_dir_with_obj,
-                        removed_obj=removed_obj_path)
-            bproc.clean_up()
+                bproc_gen_mask_with_and_without_obj(scene_mesh_json=scene_mesh_json,
+                                                    RGBD_out_dir=RGB_out_dir,
+                                                    removed_obj=removed_obj_path)
+                bproc.clean_up()
 
-            bproc_gen_mask_removw_obj(scene_mesh_json=scene_mesh_json,
-                        RGBD_out_dir=output_dir_no_obj,
-                        removed_obj=removed_obj_path)
-            bproc.clean_up()
-        end_time = time.time()
-        print(f"------Consume: {end_time - start_time} s--------")
+            end_time = time.time()
+            print(f"------Consume: {end_time - start_time} s--------")

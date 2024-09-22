@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False, depth_removed_obj = None, mask_hd5f_removed_obj = None):
     """ transfer deph and mask hd5f to point cloud(mask)
     """
+    #pcd_mask_preprocessing = pcd_mask_preprocessing
+    pcd_mask_preprocessing = pcd_mask_preprocessing_red_label
     # get the mask png (with obj)
     mask_img_path = f"{output_dir}/mask_with_obj.png"
     mask_image = hdf52png(hdf5_path=mask_hd5f_path, output_dir=mask_img_path)
@@ -81,6 +83,7 @@ def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False,
 
         # camera rotation no obj
     if (depth_removed_obj is not None) and (mask_hd5f_removed_obj is not None):
+        pass
         points_no_obj_scene = (cam_rotation_matrix @ points_no_obj_scene.T).T
         #points_no_obj_scene = points_no_obj_scene - centroid
         colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
@@ -88,8 +91,8 @@ def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False,
         
         # save the pcd no obj scene
         pcd_no_obj_scene = remove_ground(pcd_no_obj_scene)
-        pcd_ori_path = f"{output_dir}/pc_ori.ply"
-        o3d.io.write_point_cloud(pcd_ori_path, pcd_no_obj_scene)
+        #pcd_ori_path = f"{output_dir}/pc_ori.ply"
+        #o3d.io.write_point_cloud(pcd_ori_path, pcd_no_obj_scene)
 
     if reprocessing_flag == True:
         if (depth_removed_obj is not None) and (mask_hd5f_removed_obj is not None):
@@ -101,8 +104,10 @@ def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, reprocessing_flag=False,
     points_scene = remove_ground(points_scene)
     
     # pc_mask_path
-    pc_mask_path = f"{output_dir}/mask.ply"
+    pc_mask_path = f"{output_dir}/mask_red.ply"
     o3d.io.write_point_cloud(pc_mask_path, points_scene)
+
+   
 
 def is_blue(color, threshold=0.9):
     return color[0] < (1 - threshold) and color[1] < (1 - threshold) and color[2] > threshold
@@ -120,7 +125,7 @@ def check_collision(green_pcd, other_pcd, threshold=0.001):
     # 计算绿色点云每个点到最近邻点的距离
     distances = green_pcd.compute_point_cloud_distance(other_pcd)
     # 如果最近邻点的最小距离小于阈值，则认为存在碰撞
-    #print("distance:", np.min(distances))
+    # print("distance:", np.min(distances))
     return np.min(distances) <= threshold
 
 def check_collisiton_batch(green_pcds, other_pcds, threshold=0.001):
@@ -140,6 +145,7 @@ def compute_distance_matrix(points_a, points_b):
     return distances
 
 def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
+    " generate turbo heatmap label"
 
     colors = np.asarray(points_scene.colors)
     points = np.asarray(points_scene.points)
@@ -212,6 +218,74 @@ def pcd_mask_preprocessing(points_scene, points_no_obj_scene = None):
     # 更新点云颜色
     points_scene.colors = o3d.utility.Vector3dVector(heatmap_colors)
     return points_scene
+
+def pcd_mask_preprocessing_red_label(points_scene, points_no_obj_scene=None):
+    "generate red label"
+
+    colors = np.asarray(points_scene.colors)
+    points = np.asarray(points_scene.points)
+
+    # 提取绿色点云 removed obj
+    green_mask = np.apply_along_axis(is_green, 1, colors)
+    green_points = points[green_mask]
+    green_pcd = o3d.geometry.PointCloud()
+    green_pcd.points = o3d.utility.Vector3dVector(green_points)
+
+    if points_no_obj_scene is not None:
+        points_scene = points_no_obj_scene
+        colors = np.asarray(points_no_obj_scene.colors)
+        points = np.asarray(points_no_obj_scene.points)
+    green_center = np.mean(green_points, axis=0)
+
+    # 提取蓝色点云 other objs
+    blue_mask = np.apply_along_axis(is_blue, 1, colors)
+    blue_points = points[blue_mask]
+    blue_pcd = o3d.geometry.PointCloud()
+    blue_pcd.points = o3d.utility.Vector3dVector(blue_points)
+
+    # 提取黑色点云 
+    black_mask = np.apply_along_axis(is_black, 1, colors)
+    z_max = blue_pcd.get_axis_aligned_bounding_box().get_max_bound()[2]
+    z_center = blue_pcd.get_axis_aligned_bounding_box().get_center()[2]
+    z_range_mask = (points[:, 2] <= z_max + 10) & (points[:, 2] >= z_center)
+    target_mask = z_range_mask & black_mask
+    colors[target_mask] = [1, 0, 0]  # 将这些点的颜色设置为红色 表示桌面
+    points_scene.colors = o3d.utility.Vector3dVector(colors)
+
+    # 提取红色点
+    red_mask = np.all(colors == [1, 0, 0], axis=1)
+    red_points = points[red_mask]
+
+    # 重新提取
+    black_mask = np.apply_along_axis(is_black, 1, colors)
+    green_mask = np.apply_along_axis(is_green, 1, colors)
+    red_mask = np.all(colors == [1, 0, 0], axis=1)
+
+    # 计算所有红色点与绿色点云中心的距离
+    dists = np.linalg.norm(red_points[:, :2] - green_center[:2], axis=1)
+    dists = dists ** 0.95  # 可调整距离的幂次以改变效果
+
+    # 初始化颜色矩阵（全为0，RGB）
+    heatmap_colors = np.zeros((len(points), 3))
+
+    # 对于红色点进行处理
+    valid_dists = dists.copy()
+    valid_dists[valid_dists > 150] = 150  # 将所有大于150的距离值截断为150
+
+    # 将距离映射到R通道值，距离为0时R=1，距离为150时R=0
+    r_channel_values = 1 - (valid_dists / 150)
+    
+    # 将映射后的R通道值赋给红色点的R通道，G和B通道保持为0
+    heatmap_colors[red_mask, 0] = r_channel_values  # 只设置红色通道
+
+    # 对蓝色和黑色点，保持颜色为0（默认）
+    heatmap_colors[blue_mask | black_mask] = [0, 0, 0]
+
+    # 更新点云颜色
+    points_scene.colors = o3d.utility.Vector3dVector(heatmap_colors)
+
+    return points_scene
+
 
 def remove_ground(point_cloud):
     points = np.asarray(point_cloud.points)
