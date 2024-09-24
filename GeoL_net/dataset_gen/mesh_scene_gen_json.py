@@ -23,7 +23,6 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     OBJ with out texture
     Remove objects with semantic labels greater than 40 from the point cloud scene and replace them with mesh obj.
     1. check if there is desk or table 
-        # TODO: only keep the obj and calculate the center and size of desk 
     2. get the pos and scale of the desk or table
     3. write down the obj_file_name, position, z_angle, scale into json file 
     
@@ -36,81 +35,39 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     Returns:
     mesh scene, json file
     """
-
+    # 1. get the global center and size
     pose_dict = {} # obj_file_name: [position, scale, angle, bbox]
-
-    # 1. get the position, z-angle and scale of the desk or table
-    # check if table or desk, otherwise None
-
-    #desk_pcd= get_obj_from_scene(pcd_ply_path=ply_path, obj_index=14, npz_path=npz_path)
-    #table_pcd = get_obj_from_scene(pcd_ply_path=ply_path, obj_index=7, npz_path=npz_path)
-    #if desk_pcd is not None and len(desk_pcd.points) > 200:
-    #    desk_pcd = desk_pcd
-    #    desk_mesh_folder = 'dataset/obj/mesh/desk'
-    #elif table_pcd is not None and len(table_pcd.points) > 200:
-    #    desk_pcd = table_pcd
-    #    desk_mesh_folder = 'dataset/obj/mesh/table'
-    #else:
-    #   print('No table or desk!')
-    #    return None
-
-    
-    #aabb_desk_pcd = desk_pcd.get_axis_aligned_bounding_box()
-    #min_bound = aabb_desk_pcd.get_min_bound()
-    #max_bound = aabb_desk_pcd.get_max_bound()
-    #dimensions_desk_pcd = max_bound - min_bound
-    #center_desk_pcd = (min_bound + max_bound) / 2.0
-    #top_center_desk_pcd = np.array(center_desk_pcd)
-    #top_center_desk_pcd[2] += dimensions_desk_pcd[2] / 2.0
-
-    # get desk or table mesh obj from a random file in desk_mesh_folder
-
-    #desk_mesh.apply_transform(desk_scale_matrix)
-    
-    
-    #min_bound = desk_mesh.bounds[0]
-    #max_bound = desk_mesh.bounds[1]
-    #dimensions_desk_mesh = max_bound - min_bound 
-
-    #center_desk_mesh = (min_bound + max_bound) / 2.0
-    #top_center_desk_mesh = np.array(center_desk_mesh)
-    #top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
-
-    #mesh_scene = trimesh.Trimesh() # empty scene
-
     list_bottom_centric = []
 
-    #print("---------")
-    #print("Creating mesh scene...")
     dict_bbox_pos_sacle = bbox_pos_scale_all_obj(ply_path, npz_path) # the sizes of all bboxs
 
-    # get the global center
-    global_min_bound = [float('inf'), float('inf'), float('inf')]  # 初始化为无穷大
-    global_max_bound = [-float('inf'), -float('inf'), -float('inf')]  # 初始化为无穷小
+    # get the global center and size
+    global_min_bound = [float('inf'), float('inf'), float('inf')]  # initialization inf
+    global_max_bound = [-float('inf'), -float('inf'), -float('inf')]  # initialization -inf
     for ins_label, item_instance in dict_bbox_pos_sacle.items():
-            min_bound = item_instance['min_bound']  # 获取每个实例的最小边界
-            max_bound = item_instance['max_bound']  # 获取每个实例的最大边界
+            min_bound = item_instance['min_bound']  # min_bound of each instance
+            max_bound = item_instance['max_bound']  # max_bound of each instance
             for i in range(3):
                 global_min_bound[i] = min(global_min_bound[i], min_bound[i])
                 global_max_bound[i] = max(global_max_bound[i], max_bound[i])
         
     global_center = [
-        (global_min_bound[0] + global_max_bound[0]) / 2,  # x 坐标
-        (global_min_bound[1] + global_max_bound[1]) / 2,  # y 坐标
-        (global_min_bound[2] + global_max_bound[2]) / 2   # z 坐标 z坐标不需要特别关注：可以在blendproc阶段都改成0
+        (global_min_bound[0] + global_max_bound[0]) / 2,  # x coordinate
+        (global_min_bound[1] + global_max_bound[1]) / 2,  # y coordinate
+        (global_min_bound[2] + global_max_bound[2]) / 2   # z coordinate, but not used(will be set to 0 in blenderproc)
         ]
     
-    global_translation = global_center # 将整个桌面物体的xy平面中心移到0，0
+    global_translation = global_center # move the xy-plane center of tabletop to (0,0)  将整个桌面物体的xy平面中心移到0，0
     global_size = [
         (global_max_bound[0] - global_min_bound[0]) ,  # x length
         (global_max_bound[1] - global_min_bound[1]) ,  # y length
         (global_max_bound[2] - global_min_bound[2])    # z length
         ]
     global_resize = 1.2 / global_size[0] # 以 x为准 （如果有误，改成以y为准） 需要对物体的size和pos进行调整
-    # 计算调整后的 ylength
+    # update ylength
     y_len  = global_size[1] * global_resize #x 归一后 y的length
     
-    if y_len > 0.8: # 就以y为准
+    if y_len > 0.8: # if y is too long, resize to 0.8
         global_resize = 0.8 / global_size[1]
 
 
@@ -189,10 +146,10 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             scale_matrix[0, 0] = scale_factors.min() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.min()
             scale_matrix[2, 2] = scale_factors.min()
-        else:
+        elif keyword in ["pen, pencil"]:
             scale_matrix = np.eye(4)
-            scale_matrix[0, 0] = scale_factors[0] # align with the target
-            scale_matrix[1, 1] = scale_factors[1]
+            scale_matrix[0, 0] = scale_factors[2] # the z length is the standard
+            scale_matrix[1, 1] = scale_factors[2]
             scale_matrix[2, 2] = scale_factors[2]
  
         scale_matrix_list.append(scale_matrix)
@@ -287,7 +244,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     #top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
     
     scaling_factors_x = 1.4 / dimensions_desk_mesh[0] # desk x轴1.1
-    scaling_factors_y = max(y_len, 1) / dimensions_desk_mesh[1] # 最少y是1
+    scaling_factors_y = max(y_len-0.4, 1) / dimensions_desk_mesh[1] # 最少y是1
 
     scale_matrix = np.eye(4)
     scale_matrix[0, 0] = scaling_factors_x
@@ -323,14 +280,11 @@ if __name__ == "__main__":
     with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
         ungenerated_scene_ids = []
         for line in file:
-            #print(line.strip())
             try:
                 number = int(line.strip())
-                #print("number:", number)
                 ungenerated_scene_ids.append(number)
             except ValueError:
                 pass
-                #print("value error") 
         total_lines = sum(1 for _ in file)
 
     #print(ungenerated_scene_ids)
@@ -338,7 +292,8 @@ if __name__ == "__main__":
     good = 0
     start_time = time.time()
     
-    for number in tqdm(range(0, 200), total=200-total_lines):
+    for number in tqdm(range(0, 750), total=750-total_lines):
+    
         if number not in ungenerated_scene_ids:
             print(number)
             
