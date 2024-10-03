@@ -268,6 +268,7 @@ def test_FetureConcat():
 
 
     image = cv2.imread("dataset/scene_RGBD_mask/id9_2/eye_glasses_0001_orangeblack/no_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR)
+    image = shift_image(image, 0, 50) # shift image
     #depth_image = cv2.imread("dataset/scene_RGBD_mask/id196_2/bottle_0002_glass/no_obj/test_pbr/000000/depth/000000.png", cv2.IMREAD_UNCHANGED)
     #depth = np.array(depth_image)
     #print(image.shape)
@@ -301,8 +302,81 @@ def test_FetureConcat():
     #print(feature)
     featureconcat.feature_visualization(feature, pc_tensor)
 
+def pcdheatmap2img(ply_path, img_path, is_mask=False):
+    cam_rotation_matrix = np.array([
+        [1, 0, 0],
+        [0,0.8,-0.6],
+        [0,0.6,0.8]
+    ])
+    intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],
+            [  0.     , 590.16775, 244.11084],
+            [  0.     ,   0.     ,   1.     ]])
+    image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    
+    image_np = image.astype(np.float32)
+
+    image_tensor = torch.tensor(image_np).permute(2, 0, 1).unsqueeze(0)  # [B, C, H, W]
+
+    pc = o3d.io.read_point_cloud("outputs/model_output/point_cloud/id9_2-eye_glasses_0001_orangeblack-195_heatmap.ply") # 
+    
+    pc_points = np.array(pc.points)
+
+    if is_mask:
+        pc_points = pc_points @ cam_rotation_matrix
+    #pc_points = pc_points @ cam_rotation_matrix # if mask
+
+    #pc_points = pc_points @ np.linalg.inv(cam_rotation_matrix)
+
+    query_points = torch.tensor(pc_points, dtype=torch.float32).unsqueeze(0)  # [B, N, 3]
+
+    pc_colors = np.array(pc.colors)
+    query_colors =  torch.tensor(pc_colors, dtype=torch.float32).unsqueeze(0)  # [B, N, 3]
+    sample_ids = np.random.choice(np.arange(query_colors.size(1)), 2048)
+
+    query_colors = query_colors[:, sample_ids]
+    query_points = query_points[:, sample_ids]
+
+    projector = ProjectColorOntoImage_v2()
+    output_image = projector(image_grid=image_tensor, 
+                             query_points=query_points, 
+                             query_colors = query_colors, 
+                             intrinsics = intrinsics)
+    #save_path = "exps/heatmap_backalign.png"
+
+    for i, img in enumerate(output_image):
+        if img.ndim == 3:
+            
+            color_image = T.ToPILImage()(image_tensor[i].cpu())
+            pil_image = T.ToPILImage()(img.cpu())
+            
+            image_np = np.clip(pil_image, 0, 255)
+            #color_image_np = np.array(color_image)
+            color_image_np = np.floor(color_image)
+            color_image_np = np.clip(color_image_np, 0, 255)
+            color_image_np = np.uint8(color_image_np)
+            # image_np = cv2.blur(image_np, (50, 50))
+            
+            image_np = cv2.addWeighted(image_np, 0.3, color_image_np, 0.7, 0.0)
+            pil_image = Image.fromarray(np.uint8(image_np))
+            #pil_image = Image.fromarray(np.float32(image_np))
+            #pil_image.save(save_path)
+            #print(f"img is saved {save_path}")
+    return pil_image
+
+
+def shift_image(img, shift_x, shift_y):
+    h, w = img.shape[:2]
+    M = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
+    return cv2.warpAffine(img, M, (w, h))
+
+
+
 if __name__ == "__main__":
-    #test_FetureConcat()
+##### test_FetureConcat    
+    test_FetureConcat()
+
+##### test ProjectColorOntoImage_v2
+'''
     cam_rotation_matrix = np.array([
         [1, 0, 0],
         [0,0.8,-0.6],
@@ -356,11 +430,11 @@ if __name__ == "__main__":
             color_image_np = np.uint8(color_image_np)
             # image_np = cv2.blur(image_np, (50, 50))
             
-            image_np = cv2.addWeighted(image_np, 0.6, color_image_np, 0.4, 0.0)
+            image_np = cv2.addWeighted(image_np, 0.3, color_image_np, 0.7, 0.0)
             pil_image = Image.fromarray(np.uint8(image_np))
             #pil_image = Image.fromarray(np.float32(image_np))
             pil_image.save(save_path)
             print(f"img is saved {save_path}")
         else:
             print("incorrect shape")
-    
+'''

@@ -228,30 +228,20 @@ class GeoAffordModule(nn.Module):
         super(GeoAffordModule, self).__init__()
         
         self.pointnet2 = PointNet2SemSegMSG(True)
-        #self.object_point2 = PointNet2SemSegSSGShape({'feat_dim': feat_dim})
         self.fc_layer = nn.Sequential(
-            nn.Conv1d(48, 4, kernel_size=1, bias=False),
-            nn.BatchNorm1d(4),
+            nn.BatchNorm1d(48),
             nn.ReLU(True),
         )
 
-        
-        self.fp_layer = MyFPModule()
 
     # scene_pcs: B x N x 3 (float), with the 0th point to be the query point
     # acting_pcs: B x M x 3 (float)
     # pred_result_logits: B, whole_feats: B x F x N, acting_feats: B x F
     def forward(self, scene_pcs, acting_pcs):
         whole_feats = self.pointnet2(scene_pcs)     # B x 48 x N 
-        #acting_feats, acting_global_feats = self.object_point2(acting_pcs.repeat(1, 1, 2))    # B x F x M, B x F
-        #acting_global_feats = acting_global_feats.unsqueeze(-1).repeat(1,1,2048) # B x F x N
-        #scene_act_feats = torch.cat([whole_feats, acting_global_feats], dim=1) # B x 48 x N
         scene_act_feats = whole_feats
-        #print("scene_act_feats shape:", scene_act_feats.shape) 
-        #pred_label = nn.LogSoftmax(whole_feats,dim=1)
         pred_feat = self.fc_layer(scene_act_feats)
-        #pred_label = nn.functional.softmax(pred_feat,dim=1)
-        return pred_feat
+        return pred_feat # B x 48 x N 
     # scene_pcs: B x N x 3 (float)
     # acting_pcs: B x M x 3 (float)
     def inference(self, scene_pcs, acting_pcs, num_sample_pts=1000):
@@ -368,7 +358,6 @@ class FusionPointLayer(nn.Module):
             nn.Conv1d(23, 8, kernel_size=1, bias=False),
             nn.Conv1d(8, 1, kernel_size=1, bias=False),
             nn.BatchNorm1d(1),
-            #nn.ReLU(True),
         )
         self.fp_layer = MyFPModule()
 
