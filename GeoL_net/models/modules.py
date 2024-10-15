@@ -151,9 +151,9 @@ class ProjectColorOntoImage(nn.Module):
         Parameters
         ----------
         image_grid : torch.Tensor
-            Image grid with shape [B, C, H, W] where C is the number of channels (typically 3 for RGB)
+            Image grid with shape [1, C, H, W] where C is the number of channels (typically 3 for RGB)
         query_points : torch.Tensor
-            3D points with shape [B, N, 3]
+            3D points with shape [1, N, 3]
         query_colors : torch.Tensor
             Colors for each query point, shape [B, N, 3] (RGB values)
         intrinsics : torch.Tensor or np.ndarray
@@ -164,33 +164,24 @@ class ProjectColorOntoImage(nn.Module):
         torch.Tensor
             Image grid with query points' colors projected onto it, shape [B, C, H, W]
         """
-        batch_size, _, height, width = image_grid.shape
+        _, height, width = image_grid.shape
+        batch_size = 1
 
         # Step 1: Project 3D query points to 2D pixel coordinates
         query_grids = self.project_3d(query_points, intrinsics)  # [B, 2, N]
     
         # # Step 2: Normalize pixel coordinates to the range [-1, 1] for grid_sample
-        # query_grids[:, 0] = (query_grids[:, 0] / (width - 1)) * 2 - 1
-        # query_grids[:, 1] = (query_grids[:, 1] / (height - 1)) * 2 - 1
         query_grids = query_grids.permute(0, 2, 1)[:, :, None]  # [B, N, 1, 2]
 
-        # # Step 3: Use grid_sample to interpolate colors at projected pixel positions
-        # interpolated_colors = F.grid_sample(
-        #     image_grid, query_grids, mode="bilinear", align_corners=True
-        # )  # [B, C, N, 1]
-
         # Step 4: Blend the query_colors into the image at the projected points using the interpolated positions
-        image_grid_updated = image_grid.clone()
+        image_grid_updated = image_grid.clone().unsqueeze(0)  # [B, C, H, W]
         query_grids = query_grids.squeeze(2)  # [B, N, 2]
         for b in range(batch_size):
-            # Convert from normalized [-1, 1] to pixel coordinates
-            # projected_pixels_x = ((query_grids[b, :, 0] + 1) * 0.5 * (width - 1)).long()
-            # projected_pixels_y = ((query_grids[b, :, 1] + 1) * 0.5 * (height - 1)).long()
             projected_pixels_x = (query_grids[b, :, 0] - 0.5).floor().long() # [N]
             projected_pixels_y = (query_grids[b, :, 1] - 0.5).floor().long() # [N]
             projected_pixels_x = projected_pixels_x.clamp(0, width - 1)
             projected_pixels_y = projected_pixels_y.clamp(0, height - 1)
-            image_grid_updated[b, :, projected_pixels_y, projected_pixels_x] = query_colors[b].T
+            image_grid_updated[b, :, projected_pixels_y, projected_pixels_x] = query_colors.to(torch.float32).T
 
 
         return image_grid_updated
@@ -252,6 +243,45 @@ class ProjectColorOntoImage_v2(nn.Module):
 
             # Update the image grid
             image_grid_updated[b] = avg_colors
+
+        return image_grid_updated
+
+
+class ProjectColorOntoImage_v3(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.project_3d = Project3D()
+
+    def forward(self, image_grid, query_points,  query_colors, intrinsics):
+        """
+        Parameters
+        ----------
+        image_grid : torch.Tensor
+            Image grid with shape [B, C, H, W] where C is the number of channels (typically 3 for RGB)
+        query_points : torch.Tensor
+            3D points with shape [B, N, 3]
+        query_colors : torch.Tensor
+            Colors for each query point, shape [B, N, 3] (RGB values)
+        intrinsics : torch.Tensor or np.ndarray
+            Camera intrinsics, shape [3, 3]
+
+        Returns
+        -------
+        torch.Tensor
+            Image grid with query points' colors projected onto it, shape [B, C, H, W]
+        """
+        batch_size, _, height, width = image_grid.shape
+
+        # Step 1: Project 3D query points to 2D pixel coordinates
+        query_grids = self.project_3d(query_points, intrinsics)  # [B, 2, N]
+        query_grids = query_grids.permute(0, 2, 1)  # [B, N, 2]
+
+        # Step 2: Create pixel grid for the image
+        y_coords, x_coords = torch.meshgrid(torch.arange(height), torch.arange(width), indexing='ij')  # [H, W]
+        pixel_grid = torch.stack([x_coords, y_coords], dim=-1).float().to(query_grids.device)  # [H, W, 2]
+        pixel_grid = pixel_grid.view(-1, 2)  # [H*W, 2]
+
+        image_grid_updated = image_grid.clone()
 
         return image_grid_updated
 

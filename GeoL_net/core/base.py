@@ -90,9 +90,20 @@ class BaseTrainer:
     def log(self, step, metrics):
         wandb.log({**metrics, "step": step})
 
-    def log_img(self, step, img_pil, phrase, file_name):
+    def log_img(self, step, img_pil, cls,  phrase="None", file_name="None"):
         image = wandb.Image(img_pil, caption=f"{file_name} -- {phrase}--STEP: {step}")
-        wandb.log({"Rendered Point Cloud": image})
+        wandb.log({f"{cls}": image})
+
+    def log_img_batch(self, step, img_batch, phrase="None", file_name="None"):
+        wandb.log({"batch_images": [wandb.Image(img) for img in img_batch]})
+
+    def log_img_table(self, step, img_batch, gt_batch, phrase="None", file_name="None"):
+        wandb_Images = [wandb.Image(img, caption=f"{phrase[i]}-step:{step}") for i, img in enumerate(img_batch)]
+        wandb_Images_gt = [wandb.Image(img, caption=f"{gt_batch[i]}-step:{step}") for i, img in enumerate(gt_batch)]
+        table = wandb.Table(columns=["Pred","GT", "phrase", "file_name"])
+        for i, img in enumerate(wandb_Images):
+            table.add_data(img,wandb_Images_gt[i],phrase[i], file_name[i])
+        wandb.log({"Image Grid with Captions": table})
 
     @abstractmethod
     def init_dataset(self) -> None:

@@ -228,10 +228,6 @@ class GeoAffordModule(nn.Module):
         super(GeoAffordModule, self).__init__()
         
         self.pointnet2 = PointNet2SemSegMSG(True)
-        self.fc_layer = nn.Sequential(
-            nn.BatchNorm1d(48),
-            nn.ReLU(True),
-        )
 
 
     # scene_pcs: B x N x 3 (float), with the 0th point to be the query point
@@ -239,8 +235,7 @@ class GeoAffordModule(nn.Module):
     # pred_result_logits: B, whole_feats: B x F x N, acting_feats: B x F
     def forward(self, scene_pcs, acting_pcs):
         whole_feats = self.pointnet2(scene_pcs)     # B x 48 x N 
-        scene_act_feats = whole_feats
-        pred_feat = self.fc_layer(scene_act_feats)
+        pred_feat = whole_feats
         return pred_feat # B x 48 x N 
     # scene_pcs: B x N x 3 (float)
     # acting_pcs: B x M x 3 (float)
@@ -350,13 +345,12 @@ class PointNet2SemSegMSG_fusion(PointNet2SemSegSSG):
         )
 
 class FusionPointLayer(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim=256):
         super(FusionPointLayer, self).__init__()
         
         #self.pointnet2 = PointNet2SemSegMSG_fusion(True)
         self.fc_layer = nn.Sequential(
-            nn.Conv1d(23, 8, kernel_size=1, bias=False),
-            nn.Conv1d(8, 1, kernel_size=1, bias=False),
+            nn.Conv1d(input_dim, 1, kernel_size=1, bias=False),
             nn.BatchNorm1d(1),
         )
         self.fp_layer = MyFPModule()

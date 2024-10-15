@@ -45,7 +45,9 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
             "role": "system", 
             "content": "You are an assistant that helps people place objects on the table.\
                   You are given a image of the tabletop and an target object to be placed. \
-                    You should determine the anchor object with color description and in which direction the target object should be placed relative to the anchor object."
+                    You should determine the anchor object with color description and in which direction the target object should be placed relative to the anchor object.\
+                      and you should given how many pixels the target object should be placed relative to the anchor object in the direction.\
+                    "
                     },
           {
           "role": "assistant",
@@ -56,15 +58,19 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
                 1. Mouse. I am a right-handed. Please answer:
                     anchor: white monitor
                     direction: right front
+                    picxels: 10
                 2. Mouse. I am a left-handed. Please answer:
                     anchor: white monitor 
                     direction: left front
+                    picxels: 20
                 3. bottle. Please answer:
                     anchor: black bottle
                     direction: front
+                    pxiels: 5
                 4. phone. I like playing mobile games and drinking coffee. Please answer:
                     anchor: blue cup
                     direction: right
+                    picxels: 10
           """,
             },
           {
@@ -72,7 +78,7 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
             "content": [
               {
                 "type": "text",
-                "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info} Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n"
+                "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info} Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n picxels: <number of pixels>"
               },
               {
                 "type": "image_url",
@@ -151,8 +157,8 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
 
         reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
         print(reponse.json()['choices'][0]['message']['content'])
-    anchor, diraction = extract_response(reponse.json()['choices'][0]['message']['content'])
-    return anchor, diraction
+    anchor, diraction, pixels = extract_response(reponse.json()['choices'][0]['message']['content'])
+    return anchor, diraction, pixels
 
 def extract_response(response: str) -> str:
     """
@@ -167,11 +173,12 @@ def extract_response(response: str) -> str:
     response = response.split("\n")
     anchor = response[0].split(":")[1].strip()
     direction = response[1].split(":")[1].strip()
-    return anchor, direction
+    pixels = response[2].split(":")[1].strip()
+    return anchor, direction, pixels
 
 if __name__ == "__main__":
-    image_path = "dataset/scene_RGBD_mask/id695_2/keyboard_0004_normal/no_obj/test_pbr/000000/rgb/000000.jpg"
-    #mode = "object_placement"
-    mode = "scene_understanding"
-    anchor, direction = chatgpt_condition(image_path, mode)
-    print(anchor, direction)
+    image_path = "dataset/scene_RGBD_mask/id695_2/monitor_0011_white/with_obj/test_pbr/000000/rgb/000000.jpg"
+    mode = "object_placement"
+    #mode = "scene_understanding"
+    anchor, direction, pixels = chatgpt_condition(image_path, mode)
+    print(anchor, direction, pixels)
