@@ -1888,9 +1888,9 @@ class GeoL_net_v8(nn.Module):
         self.device = "cuda" # cpu for dataset
         self.lang_fusion_type = 'mult' # hard code from CLIPlingunet
         self._load_clip()
-        self.instrics = np.array([[591.0125 ,   0.     , 322.525  ],
-                                  [  0.     , 590.16775, 244.11084],
-                                  [  0.     ,   0.     ,   1.     ]])
+        self.instrics = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+        
+        #self.instrics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # for real world data
         #self.fusion_point_moudule = FusionPointLayer(input_dim=256) #0.3kw
         self.direction_mlp = nn.Sequential(
             nn.Linear(1024,256),
