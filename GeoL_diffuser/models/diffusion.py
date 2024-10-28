@@ -5,10 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from copy import deepcopy
-from GeoL_diffuser.models.utils.guidance_loss import verify_guidance_config_list
+from GeoL_diffuser.models.utils.guidance_loss import verify_guidance_config_list, DiffuserGuidance
+from clip.model import build_model, load_clip, tokenize
 
 
-def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
+def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32, device="cuda"):
     """
     cosine schedule
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
@@ -19,7 +20,7 @@ def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     betas_clipped = np.clip(betas, a_min=0, a_max=0.999)
-    return torch.tensor(betas_clipped, dtype=dtype)
+    return torch.tensor(betas_clipped, dtype=dtype, device=device)
 
 class WeightedLoss(nn.Module): 
     def __init__(self):
@@ -126,13 +127,109 @@ class MLP(nn.Module):
         x = self.mid_layer(x)
         return self.final_layer(x)
 
+class AffordanceEncoder(nn.Module):
+    def __init__(self, state_dim=1, hidden_dim=256, device="cuda"):
+        super(AffordanceEncoder, self).__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.hidden_dim = hidden_dim
+
+        self.encoder = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
+    def forward(self, state):
+        return self.encoder(state)
+
+class PCPositionEncoder(nn.Module):
+    def __init__(self, state_dim=3, hidden_dim=256, device="cuda"):
+        super(PCPositionEncoder, self).__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.hidden_dim = hidden_dim
+
+        self.encoder = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
+    def forward(self, state):
+        return self.encoder(state).to(self.device)
+
+class ObjectNameEncoder(nn.Module):
+    """
+    encode the object text name by clip
+    """
+    def __init__(self, out_dim, device) -> None:
+        super().__init__()
+        self.device = device
+        self.out_dim = out_dim
+        self._load_clip()
+
+    def _load_clip(self):
+        model, _ = load_clip("RN50", device=self.device)
+        self.clip_rn50 = build_model(model.state_dict()).to(self.device) #10kw frozen
+        del model
+        #Frozen clip
+        for param in self.clip_rn50.parameters():
+            param.requires_grad = False
+    
+    def encode_text(self, x):
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+
+        return text_feat, text_emb
+
+    def forward(self, x):
+        text_feat, text_emb= self.encode_text(x)
+        return text_feat
+
+class MapUnet(nn.Module):
+    def __init__(self,
+                 transition_dim,
+                 cond_dim, 
+                 time_dim,
+                 dim_mults = (1, 2, 4, 8)) -> None:
+        super().__init__()
+
+        dims = [transition_dim, *map(lambda m: time_dim * m, dim_mults)]
+        in_out = list(zip(dims[:-1], dims[1:]))
+
+        self.time_dim = time_dim
+        self.time_mlp = nn.Sequential(
+            SinusoidalPosEmb(time_dim),
+            nn.Linear(time_dim, time_dim * 4),
+            nn.Mish(),
+            nn.Linear(time_dim * 4, time_dim),
+        )
+
+        condim = cond_dim + time_dim
+
+        self.downs = nn.ModuleList([])
+        self.ups = nn.ModuleList([])
+        num_resolution = len(in_out)
+    
+
+
 
 class Diffusion(nn.Module):
     def __init__(
             self, 
             loss_type, 
-            action_weight=1.0, 
-            loss_discount=1.0, 
             beta_schedule="cosine", 
             clip_denoised=True, 
             predict_epsilon=True ,
@@ -149,6 +246,12 @@ class Diffusion(nn.Module):
 
         self.model = MLP(self.state_dim, self.action_dim, self.hidden_dim, self.device).to(kwargs["device"])
 
+        # feat extractor
+        self.affordance_encoder = AffordanceEncoder(state_dim=1, hidden_dim=256, device=self.device)
+        self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
+        self.obj_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
+        self.object_name_encoder = ObjectNameEncoder(out_dim=512, device=self.device)
+
         self.ema_model = deepcopy(self.model)
         self.ema = EMA(decay = 0.999)
         self.ema_decay = 0.999
@@ -159,10 +262,10 @@ class Diffusion(nn.Module):
         if beta_schedule == "linear":
             betas = torch.linspace(0.0001, 0.02, self.T, dtype=torch.float32, device=self.device) # beta params
         if beta_schedule == "cosine":
-            betas = cosine_beta_schedule(timesteps=self.T, dtype=torch.float32)
+            betas = cosine_beta_schedule(timesteps=self.T, dtype=torch.float32, device=self.device)
         
         alphas = 1.0 - betas
-        alphas_cumprod = torch.cumprod(alphas, axis=0) # e.g. [1, 2, 3] -> [1, 1*2, 1*2*3] 
+        alphas_cumprod = torch.cumprod(alphas, axis=0).to(self.device) # e.g. [1, 2, 3] -> [1, 1*2, 1*2*3] 
         alphas_cumprod_prev = torch.cat([torch.ones(1, device=self.device), alphas_cumprod[:-1]])
 
         # resigter as buffer
@@ -195,6 +298,42 @@ class Diffusion(nn.Module):
 
         # for guided sampling
         self.current_guidance = None
+    
+    #------------------------------------------ aux_info ------------------------------------------#
+    def get_aux_info(self, data_batch):
+        affordance = data_batch["affordance"] #[batch_size, num_points, affordance_dim=1]
+        pc_position = data_batch["pc_position"] #[batch_size, num_points, pc_position_dim=3]
+        object_name = data_batch["object_name"] #[batch_size, ]
+        object_pc_position = data_batch["object_pc_position"] #[batch_size, obj_points, object_pc_position_dim=3]
+
+        affordance_feat = self.affordance_encoder(affordance) # [batch_size, num_points, hidden_dim]
+        pc_position_feat = self.pc_position_encoder(pc_position) # [batch_size, num_points, hidden_dim]
+        object_name_feat = self.object_name_encoder(object_name) # [batch_size, hidden_dim]
+        object_pc_position_feat = self.pc_position_encoder(object_pc_position) # [batch_size, obj_points, hidden_dim]
+
+        # TODO: combine the feats
+        aux_info = {
+            "cond_feat": torch.cat([affordance_feat, pc_position_feat], dim=1),
+            "non_cond_feat": torch.cat([affordance_feat, pc_position_feat], dim=1) # TODO: add new feats
+        }
+
+        return aux_info
+
+        
+
+
+    #------------------------------------------ scale and descale ------------------------------------------#
+    def scale_pose(self, pose_4d, min_bound, max_bound):
+        """
+        scale the pose_4d to [-1, 1]
+        """
+        return 2 * (pose_4d - min_bound) / (max_bound - min_bound) - 1
+    
+    def descale_pose(self, pose_4d_scaled, min_bound, max_bound):
+        """
+        descale the pose_4d to the original range
+        """
+        return 0.5 * (pose_4d_scaled + 1) * (max_bound - min_bound) + min_bound
 
     #------------------------------------------ guidance utils ------------------------------------------#
 
@@ -277,21 +416,35 @@ class Diffusion(nn.Module):
         )
 
 
-    def p_mean_variance(self, x, t, s):
-        pred_noise = self.model(x, t, s) # noise predicted by the model
-        x_recon = self.predict_start_from_noise(x, t, pred_noise) # x_0 predicted based on the model predicted from the model
-        x_recon.clamp_(-1, 1) # for stability
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_recon, x, t)
-        return model_mean, posterior_log_variance # log makes it stable
+    def p_mean_variance(self, x, t, aux_info):
+        model_prediction = self.model(x, t, aux_info["cond_feat"])
+        class_free_guid_w = 0.5 # NOTE: hard-coded for now
+        if class_free_guid_w != 0:
+            x_non_cond = x.clone()
+            model_non_cond_prediction = self.model(x_non_cond, aux_info["non_cond_feat"], t=t)
+            if not self.predict_epsilon:
+                model_pred_noise = self.predict_noise_from_start(x_t=x, t=t, x_start=model_prediction)
+                model_non_cond_pred_noise = self.predict_noise_from_start(x_t=x_non_cond, t=t, x_start=model_non_cond_prediction)
+                class_free_guid_noise = (
+                    (1 + class_free_guid_w) * model_pred_noise - class_free_guid_w * model_non_cond_pred_noise
+                ) # compose noise
 
-    def p_sample(self, x, t, s):
+                model_prediction = self.predict_start_from_noise(x=x, t=t, pred_noise=class_free_guid_noise)
+        x_recon = self.predict_start_from_noise(x, t, model_prediction)
+        x_recon.clamp_(-1, 1)
+        
+        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_recon, x, t)
+        
+        return model_mean, posterior_variance, posterior_log_variance, (x_recon, x, t) # log makes it stable
+
+    def p_sample(self, x, t, data_batch, aux_info, num_samp=1, *args, **kwargs):
         """
         denosie, single step
         """
         b, *_, device = *x.shape, x.device
 
         # get the mean and variance
-        model_mean, model_log_variance = self.p_mean_variance(x, t, s)
+        model_mean, _, model_log_variance, q_posterior_in = self.p_mean_variance(x=x, t=t, aux_info=aux_info)
 
         # random noise
         noise = torch.randn_like(x)
@@ -301,30 +454,39 @@ class Diffusion(nn.Module):
 
 
 
-    def p_sample_loop(self, state, shape, *args, **kwargs):
+    def p_sample_loop(
+            self, 
+            shape, 
+            data_batch,
+            aux_info,
+            num_samp,
+            *args, 
+            **kwargs):
         """
         denosise, loop
         """
         device = self.device
-        batch_size = state.shape[0]
-        x = torch.randn(shape, device=device, requires_grad=False)
+        batch_size = shape[0]
+        x = torch.randn(shape, device=device) # random noise
 
         for i in reversed(range(0, self.T)): # reverse, denoise from the last step
-            t = torch.full((batch_size,), i, device=device, dtype=torch.long)
-            x = self.p_sample(x, t, state)
+            t = torch.full((batch_size * num_samp,), i, device=device, dtype=torch.long) # timestep
+            x = self.p_sample(x, t, data_batch, aux_info, num_samp=num_samp, *args, **kwargs) # denoise
         
         # TODO: add unormalize
+        out_dict = {"pred_pose_4d": x}
 
-        return x
+        return out_dict
 
 
-    def sample(self, state, *args, **kwargs):
+    def condition_sample(self, data_batch, aux_info, num_samp=1,  *args, **kwargs):
         """
-        state: [batch_size, state_dim]
+        TODO
         """
-        batch_size = state.shape[0]
-        shape = [batch_size, self.action_dim]
-        action = self.p_sample_loop(state, shape, *args, **kwargs)
+        batch_size = data_batch["affordance"].shape[0]
+        
+        shape = (batch_size, num_samp, self.state_dim)
+        action = self.p_sample_loop(shape, data_batch, aux_info, num_samp=num_samp, *args, **kwargs)
         return action.clamp_(-1, 1)
 
     # ------------------- Training ----------------
@@ -366,33 +528,51 @@ class Diffusion(nn.Module):
         return self.p_losses(x, state, t, weights)
     
 
-    def forward(self, state, *args, **kwargs):
-        return self.sample(state, *args, **kwargs)
+    def forward(self, data_batch, num_samp=1, *args, **kwargs):
+        aux_info = self.get_aux_info(data_batch)
+        cond_samp_out = self.condition_sample(
+            data_batch,
+            horizon=None,
+            aux_info=aux_info,
+            num_samp=num_samp, 
+            *args, 
+            **kwargs)
+        pose_4d_scaled = cond_samp_out["pred_pose_4d"]
+
+        gt_pose_4d_min_bound = data_batch["gt_pose_4d_min_bound"]
+        gt_pose_4d_max_bound = data_batch["gt_pose_4d_max_bound"]
+
+        pose_4d = self.descale_pose(pose_4d_scaled, gt_pose_4d_min_bound, gt_pose_4d_max_bound)
+
+        outputs = {"predictions": pose_4d}
+        
+        return outputs
 
 
 if __name__ == "__main__":
 
-    device = "cpu"
+    device = "cuda"
     num_epoch = 1000
-    x = torch.randn(256, 2, device=device)
-    state = torch.randn(256, 11, device=device)
-    model = Diffusion(loss_type="l2",predict_epsilon=True, obs_dim=11, act_dim=2, hidden_dim=256,  T=100, device=device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-1)
+    diffuser = Diffusion(
+        loss_type="l1",
+        beta_schedule="cosine",
+        clip_denoised=True,
+        predict_epsilon=True,
+        obs_dim=4,
+        act_dim=2,
+        hidden_dim=256,
+        T=16,
+        device=device
+    ).to("cuda")
 
-    for i in range(num_epoch):
-        action = model(state)
-        loss = model.loss(x, state)
+    data_batch = {}
+    data_batch["affordance"] = torch.randn(2, 2048, 1).to(device)
+    data_batch["pc_position"] = torch.randn(2, 2048, 3).to(device)
+    data_batch["object_name"] = ["black keyboard", "white mouse"]
+    data_batch["object_pc_position"] = torch.randn(2, 512, 3).to(device)
 
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        print(f"epoch: {i}, loss: {loss.item()}")
 
-    action = model(state)
-
-    loss = model.loss(x, state)
-
-    print(f"action: {action}, loss: {loss.item()}")
-
-        
+    aux_info = diffuser.get_aux_info(data_batch)
+    
+    for _ in range(1):
+        out_info = diffuser.condition_sample(data_batch, aux_info, num_samp=1)
