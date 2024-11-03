@@ -8,6 +8,8 @@ import open3d as o3d
 import cv2
 import clip
 from models.diffusion import Diffusion
+from torch.optim import optim
+from models.helpers import EMA
 
 VLM, VLM_TRANSFORM = clip.load("ViT-B/16", jit=False)
 VLM.eval()
@@ -29,6 +31,13 @@ class PoseDiffusionModel(pl.LightningModule):
 
         # set up EMA
         self.use_ema = self.algo_config.ema.use_ema
+        print("DIFFUSER: using EMA... val and get_action will use ema model")
+        self.ema = EMA(algo_config.ema.ema_decay)
+        self.ema_policy = copy.deepcopy(self.nets["policy"])
+        self.ema_policy.requires_grad_(False)
+        self.ema_update_every = algo_config.ema.ema_step
+        self.ema_start_step = algo_config.ema.ema_start_step
+        self.reset_parameters()
 
         self.curr_train_step = 0
     
@@ -41,6 +50,15 @@ class PoseDiffusionModel(pl.LightningModule):
         curr_policy = self.nets['policy']
         output = curr_policy(data_batch, num_samp)
         return output
+
+    def reset_parameters(self):
+        self.ema_policy.load_state_dict(self.nets["policy"].state_dict())
+
+    def step_ema(self, step):
+        if step < self.ema_start_step:
+            self.reset_parameters()
+            return
+        self.ema.update_model_average(self.ema_policy, self.nets["policy"])
 
     def configure_optimizers(self):
         optim_params = self.algo_config.optimization

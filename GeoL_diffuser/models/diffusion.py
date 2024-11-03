@@ -5,8 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from copy import deepcopy
+from collections import OrderedDict
 from GeoL_diffuser.models.utils.guidance_loss import verify_guidance_config_list, DiffuserGuidance
+from GeoL_diffuser.dataset.dataset import PoseDataset_overfit
+from torch.utils.data import DataLoader
+from GeoL_net.models.GeoL import FeaturePerceiver
+from GeoL_diffuser.models.temporal import TemporalMapUnet
 from clip.model import build_model, load_clip, tokenize
+import GeoL_diffuser.models.tensor_utils as TensorUtils
 
 
 def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32, device="cuda"):
@@ -136,13 +142,13 @@ class AffordanceEncoder(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
         )
 
     def forward(self, state):
@@ -157,13 +163,13 @@ class PCPositionEncoder(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Mish(),
         )
 
     def forward(self, state):
@@ -198,32 +204,22 @@ class ObjectNameEncoder(nn.Module):
         text_feat, text_emb= self.encode_text(x)
         return text_feat
 
-class MapUnet(nn.Module):
-    def __init__(self,
-                 transition_dim,
-                 cond_dim, 
-                 time_dim,
-                 dim_mults = (1, 2, 4, 8)) -> None:
-        super().__init__()
+class ReduceNet(nn.Module):
+    def __init__(self, state_dim=4, hidden_dim=512, device="cuda"):
+        super(ReduceNet, self).__init__()
+        self.conv1 = nn.Conv1d(state_dim, hidden_dim, 1)
+        self.conv2 = nn.Conv1d(hidden_dim, hidden_dim, 1)
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Linear(hidden_dim, hidden_dim)
+        self.mish = nn.Mish()
 
-        dims = [transition_dim, *map(lambda m: time_dim * m, dim_mults)]
-        in_out = list(zip(dims[:-1], dims[1:]))
-
-        self.time_dim = time_dim
-        self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(time_dim),
-            nn.Linear(time_dim, time_dim * 4),
-            nn.Mish(),
-            nn.Linear(time_dim * 4, time_dim),
-        )
-
-        condim = cond_dim + time_dim
-
-        self.downs = nn.ModuleList([])
-        self.ups = nn.ModuleList([])
-        num_resolution = len(in_out)
-    
-
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = self.mish(self.conv1(x))
+        x = self.mish(self.conv2(x))
+        x = self.pool(x).squeeze(-1)
+        x= self.fc(x)
+        return x
 
 
 class Diffusion(nn.Module):
@@ -232,7 +228,9 @@ class Diffusion(nn.Module):
             loss_type, 
             beta_schedule="cosine", 
             clip_denoised=True, 
-            predict_epsilon=True ,
+            predict_epsilon=False ,
+            supervise_epsilons=False,
+            horizon = 8,
             **kwargs
         ): 
         super(Diffusion, self).__init__()
@@ -242,21 +240,30 @@ class Diffusion(nn.Module):
         self.T = kwargs["T"]
         self.clip_denoised = clip_denoised
         self.predict_epsilon = predict_epsilon
+        self.supervise_epsilons = supervise_epsilons
         self.device = torch.device(kwargs["device"])
 
-        self.model = MLP(self.state_dim, self.action_dim, self.hidden_dim, self.device).to(kwargs["device"])
+        self.horizon = horizon
+        self.output_dim = 4
+        self.base_dim = 32 # time_dim
+
+        self.model = TemporalMapUnet(
+            horizon=self.horizon,
+            transition_dim=self.state_dim,
+            cond_dim=256+256,
+            output_dim=self.output_dim,
+            dim=self.base_dim, # time_dim
+            dim_mults=(2, 4, 8),
+            use_preceiver=True
+        ).to(self.device)
 
         # feat extractor
         self.affordance_encoder = AffordanceEncoder(state_dim=1, hidden_dim=256, device=self.device)
         self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
         self.obj_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
         self.object_name_encoder = ObjectNameEncoder(out_dim=512, device=self.device)
+        self.reuducenet = ReduceNet(state_dim=4, hidden_dim=512, device=self.device)
 
-        self.ema_model = deepcopy(self.model)
-        self.ema = EMA(decay = 0.999)
-        self.ema_decay = 0.999
-        self.ema_start = 2000
-        self.ema_update_freq = 1
         self.step = 0
 
         if beta_schedule == "linear":
@@ -306,15 +313,19 @@ class Diffusion(nn.Module):
         object_name = data_batch["object_name"] #[batch_size, ]
         object_pc_position = data_batch["object_pc_position"] #[batch_size, obj_points, object_pc_position_dim=3]
 
-        affordance_feat = self.affordance_encoder(affordance) # [batch_size, num_points, hidden_dim]
+
         pc_position_feat = self.pc_position_encoder(pc_position) # [batch_size, num_points, hidden_dim]
+        affordance_feat = self.affordance_encoder(affordance) # [batch_size, num_points, hidden_dim]
         object_name_feat = self.object_name_encoder(object_name) # [batch_size, hidden_dim]
         object_pc_position_feat = self.pc_position_encoder(object_pc_position) # [batch_size, obj_points, hidden_dim]
+        cond_feat = self.reuducenet(torch.cat([affordance, pc_position], dim=2)) # [batch_size, hidden_dim]
 
         # TODO: combine the feats
         aux_info = {
-            "cond_feat": torch.cat([affordance_feat, pc_position_feat], dim=1),
-            "non_cond_feat": torch.cat([affordance_feat, pc_position_feat], dim=1) # TODO: add new feats
+            "cond_feat": cond_feat,
+            "non_cond_feat": cond_feat, # TODO: add new feats and it is not non cond right now
+            "gt_pose_4d_min_bound": data_batch["gt_pose_4d_min_bound"],
+            "gt_pose_4d_max_bound": data_batch["gt_pose_4d_max_bound"],
         }
 
         return aux_info
@@ -326,14 +337,42 @@ class Diffusion(nn.Module):
     def scale_pose(self, pose_4d, min_bound, max_bound):
         """
         scale the pose_4d to [-1, 1]
+        pose_4d: B * H * 4
         """
-        return 2 * (pose_4d - min_bound) / (max_bound - min_bound) - 1
+        if len(pose_4d.shape) == 3:
+            min_bound_batch = min_bound.unsqueeze(1)
+            max_bound_batch = max_bound.unsqueeze(1)
+        elif len(pose_4d.shape) == 4:
+            min_bound_batch = min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_4d")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_4d = (pose_4d - min_bound_batch) / (scale+1e-6)
+        pose_4d = 2 * pose_4d - 1
+        pose_4d = pose_4d.clamp(-1, 1)
+
+        return pose_4d
     
-    def descale_pose(self, pose_4d_scaled, min_bound, max_bound):
+    def descale_pose(self, pose_4d, min_bound, max_bound):
         """
         descale the pose_4d to the original range
+        pose_4d: B * N * H * 4
         """
-        return 0.5 * (pose_4d_scaled + 1) * (max_bound - min_bound) + min_bound
+        if len(pose_4d.shape)==3:
+            min_bound_batch = min_bound.unsqueeze(1)
+            max_bound_batch = max_bound.unsqueeze(1)
+        elif len(pose_4d.shape)==4:
+            min_bound_batch = min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_4d")
+        
+        scale = max_bound_batch - min_bound_batch
+        pose_4d = (pose_4d + 1) / 2
+        pose_4d = pose_4d * scale + min_bound_batch
+        return pose_4d
 
     #------------------------------------------ guidance utils ------------------------------------------#
 
@@ -354,13 +393,6 @@ class Diffusion(nn.Module):
     def clear_guidance(self):
         self.current_guidance = None
 
-    def update_ema(self):
-        self.step += 1
-        if self.step % self.ema_update_freq == 0:
-            if self.step < self.ema_start:
-                self.ema_model.load_state_dict(self.model.state_dict())
-            else:
-                self.ema.update_model_average(self.ema_model, self.model)
     #------------------------------------------ TBD ------------------------------------------#
 
     def get_loss_weights(self, action_weight, discount):
@@ -403,40 +435,65 @@ class Diffusion(nn.Module):
 
 
     
-    def predict_start_from_noise(self, x, t, pred_noise):
+    def predict_start_from_noise(self, x, t, pred_noise, force_noise=False):
         """
             get the x_0 (e.g. denoised img) from x_t and noise 
             x_0 = xt - sqrt(1 - alpha_t cumprod) * noise / sqrt(alpha_t cumprod)
 
             x: x in step t
         """
+        if force_noise:
+            return (
+                extract(self.sqrt_recip_alphas_cumprod, t, x.shape) * x
+                - extract(self.sqrt_recipm1_alphas_cumprod, t, x.shape) * pred_noise
+            )
+        else:
+            return pred_noise
+
+    def predict_noise_from_start(self, x_t, t, x_start):
         return (
-            extract(self.sqrt_recip_alphas_cumprod, t, x.shape) * x
-            - extract(self.sqrt_recipm1_alphas_cumprod, t, x.shape) * pred_noise
+            extract(
+                self.sqrt_recip_one_minus_alphas_cumprod.to(x_t.device), t, x_t.shape
+            )
+            * x_t
+            - extract(
+                self.sqrt_alphas_over_one_minus_alphas_cumprod.to(x_t.device),
+                t,
+                x_t.shape,
+            )
+            * x_start
         )
 
 
     def p_mean_variance(self, x, t, aux_info):
-        model_prediction = self.model(x, t, aux_info["cond_feat"])
+        model_prediction = self.model(x, aux_info["cond_feat"], t) # x.shape = [b, state_dim=4] t.shape = [b, ], aux_info["cond_feat"].shape = [b, num_points, hidden_dim]
         class_free_guid_w = 0.5 # NOTE: hard-coded for now
         if class_free_guid_w != 0:
             x_non_cond = x.clone()
-            model_non_cond_prediction = self.model(x_non_cond, aux_info["non_cond_feat"], t=t)
+            model_non_cond_prediction = self.model(x_non_cond, aux_info["non_cond_feat"], t)
             if not self.predict_epsilon:
                 model_pred_noise = self.predict_noise_from_start(x_t=x, t=t, x_start=model_prediction)
                 model_non_cond_pred_noise = self.predict_noise_from_start(x_t=x_non_cond, t=t, x_start=model_non_cond_prediction)
                 class_free_guid_noise = (
                     (1 + class_free_guid_w) * model_pred_noise - class_free_guid_w * model_non_cond_pred_noise
                 ) # compose noise
+                model_prediction = self.predict_start_from_noise(x=x, t=t, pred_noise=class_free_guid_noise, force_noise=True)
+            else:
+                model_pred_noise = model_prediction
+                model_non_cond_pred_noise = model_non_cond_prediction
+                class_free_guid_noise = (
+                    (1 + class_free_guid_w) * model_pred_noise - class_free_guid_w
+                )
+                model_prediction = class_free_guid_noise
 
-                model_prediction = self.predict_start_from_noise(x=x, t=t, pred_noise=class_free_guid_noise)
-        x_recon = self.predict_start_from_noise(x, t, model_prediction)
+        x_recon = self.predict_start_from_noise(x=x, t=t, pred_noise=model_prediction, force_noise=self.predict_epsilon)
         x_recon.clamp_(-1, 1)
         
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_recon, x, t)
         
         return model_mean, posterior_variance, posterior_log_variance, (x_recon, x, t) # log makes it stable
 
+    @torch.no_grad()
     def p_sample(self, x, t, data_batch, aux_info, num_samp=1, *args, **kwargs):
         """
         denosie, single step
@@ -450,10 +507,11 @@ class Diffusion(nn.Module):
         noise = torch.randn_like(x)
         
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise # pred image
+        x_out = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise #
+        return x_out
 
 
-
+    @torch.no_grad()
     def p_sample_loop(
             self, 
             shape, 
@@ -469,25 +527,30 @@ class Diffusion(nn.Module):
         batch_size = shape[0]
         x = torch.randn(shape, device=device) # random noise
 
+        x = TensorUtils.join_dimensions(x, begin_axis=0, end_axis=2) # [batch_size * num_samp, horizon, state_dim]
+        aux_info = TensorUtils.repeat_by_expand_at(aux_info, repeats=num_samp, dim=0)
+
         for i in reversed(range(0, self.T)): # reverse, denoise from the last step
             t = torch.full((batch_size * num_samp,), i, device=device, dtype=torch.long) # timestep
-            x = self.p_sample(x, t, data_batch, aux_info, num_samp=num_samp, *args, **kwargs) # denoise
+            x = self.p_sample(x, t, data_batch, aux_info, num_samp=num_samp) # denoise
         
-        # TODO: add unormalize
+        x = TensorUtils.reshape_dimensions(x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp))
+
         out_dict = {"pred_pose_4d": x}
 
         return out_dict
 
-
-    def condition_sample(self, data_batch, aux_info, num_samp=1,  *args, **kwargs):
+    @torch.no_grad()
+    def condition_sample(self, data_batch, aux_info, num_samp=1):
         """
         TODO
         """
         batch_size = data_batch["affordance"].shape[0]
         
-        shape = (batch_size, num_samp, self.state_dim)
-        action = self.p_sample_loop(shape, data_batch, aux_info, num_samp=num_samp, *args, **kwargs)
-        return action.clamp_(-1, 1)
+        shape = (batch_size, num_samp, self.horizon, self.state_dim) #[batch_size, num_samp=1, horizon=80, state_dim=4]
+        action = self.p_sample_loop(shape, data_batch, aux_info, num_samp=num_samp)
+        action['pred_pose_4d'] = action['pred_pose_4d'].clamp(-1, 1)
+        return action
 
     # ------------------- Training ----------------
     
@@ -507,36 +570,55 @@ class Diffusion(nn.Module):
 
         return sample
     
-    def p_losses(self, x_start, state, t, weights=1.0):
+    def p_losses(self, x_start, t, aux_info={}):
         noise = torch.randn_like(x_start)
 
         x_noisy = self.q_sample(x_start, t, noise)
 
-        x_recon = self.model(x_noisy, t, state)
+        model_prediction = self.model(x_noisy, aux_info["cond_feat"], t)
+        x_recon = self.predict_start_from_noise(x=x_noisy, t=t, pred_noise=model_prediction, force_noise=self.predict_epsilon)
 
-        assert noise.shape == x_recon.shape
-
-        if self.predict_epsilon:
-            loss = self.loss_fn(x_recon, noise, weights)
+        if not self.predict_epsilon:
+            noise_pred = self.predict_noise_from_start(x_t=x_noisy, t=t, x_start=x_recon)
         else:
-            loss = self.loss_fn(x_recon, x_start, weights)
+            x_recon = self.predict_start_from_noise(x=x_noisy, t=t, pred_noise=model_prediction, force_noise=True)
+            noise_pred = model_prediction
+        
+        if self.supervise_epsilons:
+            assert self.predict_epsilon
+            loss = self.loss_fn(noise_pred, noise)
+        else:
+            assert not self.predict_epsilon
+            loss = self.loss_fn(x_recon, x_start)
+
+
         return loss
     
-    def loss(self, x, state, weights=1.0):
+    def loss(self, x, aux_info={}):
         batch_size = len(x)
         t = torch.randint(0, self.T, (batch_size,), device=self.device).long()
-        return self.p_losses(x, state, t, weights)
+        return self.p_losses(x, t, aux_info=aux_info)
     
+    def compute_losses(self, data_batch):
+        aux_info = self.get_aux_info(data_batch)
+        pose_4d = data_batch["gt_pose_4d"]
+        gt_pose_4d_min_bound = data_batch["gt_pose_4d_min_bound"]
+        gt_pose_4d_max_bound = data_batch["gt_pose_4d_max_bound"]
+        
+        x = self.scale_pose(pose_4d, gt_pose_4d_min_bound, gt_pose_4d_max_bound)
+        diffusion_loss = self.loss(x, aux_info=aux_info)
+        losses = OrderedDict(
+            diffusion_loss = diffusion_loss
+        )
+        return losses
 
     def forward(self, data_batch, num_samp=1, *args, **kwargs):
         aux_info = self.get_aux_info(data_batch)
         cond_samp_out = self.condition_sample(
             data_batch,
-            horizon=None,
             aux_info=aux_info,
             num_samp=num_samp, 
-            *args, 
-            **kwargs)
+            )
         pose_4d_scaled = cond_samp_out["pred_pose_4d"]
 
         gt_pose_4d_min_bound = data_batch["gt_pose_4d_min_bound"]
@@ -557,11 +639,12 @@ if __name__ == "__main__":
         loss_type="l1",
         beta_schedule="cosine",
         clip_denoised=True,
-        predict_epsilon=True,
+        predict_epsilon=False,
+        supervise_epsilons=False,
         obs_dim=4,
         act_dim=2,
         hidden_dim=256,
-        T=16,
+        T=1000,
         device=device
     ).to("cuda")
 
@@ -570,9 +653,36 @@ if __name__ == "__main__":
     data_batch["pc_position"] = torch.randn(2, 2048, 3).to(device)
     data_batch["object_name"] = ["black keyboard", "white mouse"]
     data_batch["object_pc_position"] = torch.randn(2, 512, 3).to(device)
-
+    data_batch['gt_pose_4d'] = torch.randn(2, 80,4).to(device)
+    data_batch['gt_pose_4d_min_bound'] = torch.randn(2, 4).to(device)
+    data_batch['gt_pose_4d_max_bound'] = torch.randn(2, 4).to(device)
+    gt = torch.randn(2, 4).to(device)
+    dataset_cls = PoseDataset_overfit(split="train", root_dir="dataset/scene_RGBD_mask_v2_kinect_cfg")
+    train_loader = DataLoader(dataset_cls, batch_size=2)
+    len(dataset_cls)
+    print("dataset length: ", len(dataset_cls))
 
     aux_info = diffuser.get_aux_info(data_batch)
+    diffuser(data_batch)
+    optimizer = torch.optim.Adam(diffuser.parameters(), lr=1e-3)
+
+
     
-    for _ in range(1):
-        out_info = diffuser.condition_sample(data_batch, aux_info, num_samp=1)
+    for _ in range(1000):
+        for i, batch in enumerate(train_loader):
+            for key in batch.keys():
+                if key != "object_name":
+                    batch[key] = batch[key].to(device).float()
+            data_batch = batch
+            aux_info = diffuser.get_aux_info(data_batch)
+            out_info = diffuser(data_batch)
+            loss = diffuser.compute_losses(data_batch=data_batch)
+            optimizer.zero_grad()
+            loss['diffusion_loss'].backward()
+            optimizer.step()
+            
+            print("pred: ", out_info["predictions"][0])
+            print("  gt: ", data_batch["gt_pose_4d"][0][0])
+            print(f"step:{_}, loss: {loss['diffusion_loss'].item()}")
+    torch.save(diffuser.state_dict(), "outputs/diffusion/diffuser_weights.pth")
+    torch.save(optimizer.state_dict(), "outputs/diffusion/optimizer_weights.pth")
