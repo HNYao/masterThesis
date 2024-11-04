@@ -13,6 +13,7 @@ from GeoL_net.models.GeoL import FeaturePerceiver
 from GeoL_diffuser.models.temporal import TemporalMapUnet
 from clip.model import build_model, load_clip, tokenize
 import GeoL_diffuser.models.tensor_utils as TensorUtils
+from GeoL_diffuser.models.utils.guidance_loss import DiffuserGuidance
 
 
 def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32, device="cuda"):
@@ -306,6 +307,12 @@ class Diffusion(nn.Module):
         # for guided sampling
         self.current_guidance = None
     
+    def set_guidance(self, guidance):
+        '''
+        Instantiates test-time guidance functions using the list of configs (dicts) passed in.
+        '''
+        self.current_guidance = guidance
+    
     #------------------------------------------ aux_info ------------------------------------------#
     def get_aux_info(self, data_batch):
         affordance = data_batch["affordance"] #[batch_size, num_points, affordance_dim=1]
@@ -494,21 +501,97 @@ class Diffusion(nn.Module):
         return model_mean, posterior_variance, posterior_log_variance, (x_recon, x, t) # log makes it stable
 
     @torch.no_grad()
-    def p_sample(self, x, t, data_batch, aux_info, num_samp=1, *args, **kwargs):
+    def p_sample(
+        self, 
+        x, 
+        t, 
+        data_batch, 
+        aux_info, 
+        num_samp=1, 
+        apply_guidance=True,
+        guide_clean=True,
+        eval_final_guide_loss=False, # NOTE: guide_clean is usually true
+        *args, **kwargs):
         """
         denosie, single step
         """
         b, *_, device = *x.shape, x.device
+        with_func = torch.no_grad
+
+        if self.current_guidance is not None and apply_guidance and guide_clean:
+            x = x.detach()
+            x.requires_grad_()
+            with_func = torch.enable_grad
 
         # get the mean and variance
-        model_mean, _, model_log_variance, q_posterior_in = self.p_mean_variance(x=x, t=t, aux_info=aux_info)
+        with with_func():
+            model_mean, _, model_log_variance, q_posterior_in = self.p_mean_variance(x=x, t=t, aux_info=aux_info)
 
         # random noise
         noise = torch.randn_like(x)
-        
+        sigma = (0.5 * model_log_variance).exp()
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
-        x_out = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise #
-        return x_out
+
+        # compute guidance
+        guide_losses = None
+        guide_grad = torch.zeros_like(model_mean)
+
+        # 1
+        if self.current_guidance is not None and apply_guidance:
+            assert (not self.predict_epsilon) # NOTE: guidance not implemented for epsilon prediction
+            if guide_clean:
+               model_clean_pred = q_posterior_in[0]
+               x_guidance = model_clean_pred
+               return_grad_of = x
+            else:
+                x_guidance = model_mean.clone().detach()
+                return_grad_of = x_guidance
+                x_guidance.requires_grad_()
+
+            # TODO: implement our owen guidance loss
+            guide_grad, guide_losses = self.guidance(
+                x_guidance, 
+                t, 
+                data_batch, 
+                aux_info, 
+                num_samp=num_samp, 
+                return_grad_of=return_grad_of,
+            )
+
+            guide_grad = guide_grad * nonzero_mask 
+        
+        noise = nonzero_mask * noise * sigma
+
+        # 2
+        if self.current_guidance is not None and guide_clean:
+            assert(
+                not self.predict_epsilon
+            )
+            guided_clean = (
+                q_posterior_in[0] - guide_grad
+            )
+            guided_x_t = q_posterior_in[1]
+            model_mean, _, _ = self.q_posterior(guided_clean, guided_x_t, q_posterior_in[2])
+            x_out = model_mean + noise
+        else:
+            x_out = model_mean - guide_grad + noise
+        
+
+        # 3
+        if self.current_guidance is not None and eval_final_guide_loss:
+            assert(
+                not self.predict_epsilon
+            ), "Guidance not implemented for epsilon prediction"
+            _, guide_losses = self.guidance(
+                x_out.clone().detach().requires_grad_(),
+                t, 
+                data_batch, 
+                aux_info, 
+                num_samp=num_samp,
+            )
+
+        #x_out = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise #
+        return x_out, guide_losses
 
 
     @torch.no_grad()
@@ -518,6 +601,9 @@ class Diffusion(nn.Module):
             data_batch,
             aux_info,
             num_samp,
+            return_guidance_losses=False,
+            apply_guidance=True,
+            guide_clean=False,
             *args, 
             **kwargs):
         """
@@ -530,9 +616,22 @@ class Diffusion(nn.Module):
         x = TensorUtils.join_dimensions(x, begin_axis=0, end_axis=2) # [batch_size * num_samp, horizon, state_dim]
         aux_info = TensorUtils.repeat_by_expand_at(aux_info, repeats=num_samp, dim=0)
 
+        if self.current_guidance is not None and not apply_guidance:
+            print("WARNING: not using guidance during sampling, only evaluating guidance loss at very end...")
+            
+
         for i in reversed(range(0, self.T)): # reverse, denoise from the last step
             t = torch.full((batch_size * num_samp,), i, device=device, dtype=torch.long) # timestep
-            x = self.p_sample(x, t, data_batch, aux_info, num_samp=num_samp) # denoise
+            x = self.p_sample( # TODO: x, guide_losses = self.p_sample
+                x, 
+                t, 
+                data_batch, 
+                aux_info, 
+                num_samp=num_samp,
+                apply_guidance=apply_guidance,
+                guide_clean=guide_clean,
+                eval_final_guide_loss=(i==0),
+            ) # denoise
         
         x = TensorUtils.reshape_dimensions(x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp))
 
@@ -543,7 +642,7 @@ class Diffusion(nn.Module):
     @torch.no_grad()
     def condition_sample(self, data_batch, aux_info, num_samp=1):
         """
-        TODO
+        sample
         """
         batch_size = data_batch["affordance"].shape[0]
         
@@ -612,7 +711,13 @@ class Diffusion(nn.Module):
         )
         return losses
 
-    def forward(self, data_batch, num_samp=1, *args, **kwargs):
+    def forward(
+            self, 
+            data_batch, 
+            num_samp=1, 
+            return_guidance_losses=False, 
+            apply_guidance=True, 
+            guide_clean=False, *args, **kwargs):
         aux_info = self.get_aux_info(data_batch)
         cond_samp_out = self.condition_sample(
             data_batch,
@@ -627,6 +732,8 @@ class Diffusion(nn.Module):
         pose_4d = self.descale_pose(pose_4d_scaled, gt_pose_4d_min_bound, gt_pose_4d_max_bound)
 
         outputs = {"predictions": pose_4d}
+        if "guide_losses" in cond_samp_out:
+            outputs["guide_losses"] = cond_samp_out["guide_losses"]
         
         return outputs
 
@@ -664,7 +771,7 @@ if __name__ == "__main__":
 
     aux_info = diffuser.get_aux_info(data_batch)
     diffuser(data_batch)
-    optimizer = torch.optim.Adam(diffuser.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(diffuser.parameters(), lr=1e-2)
 
 
     

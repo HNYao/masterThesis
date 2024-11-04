@@ -11,13 +11,21 @@ import torch
 from math import ceil
 from skimage import measure
 
-def compute_null_text_embeddings(vlm, batch_size=1, device="cuda"):
-    action_tokens_null = tokenize("")
-    action_tokens_null = action_tokens_null.repeat(batch_size, 1)
-    action_tokens_null = action_tokens_null.to(device)
-    action_feature_null = vlm.encode_text(action_tokens_null).float()
-    return action_feature_null
+class EMA:
+    """
+    empirical moving average
+    """
 
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+
+    def update_model_average(self, ma_model, current_model):
+        with torch.no_grad():
+            ema_state_dict = ma_model.state_dict()
+            for key, value in current_model.state_dict().items():
+                ema_value = ema_state_dict[key]
+                ema_value.copy_(self.beta * ema_value + (1.0 - self.beta) * value)
 
 def fourier_positional_encoding(input, L):  # [B,...,C]
     shape = input.shape
@@ -122,7 +130,7 @@ Losses = {
 
 class EMA:
     """
-    empirical moving average
+    exponential moving average
     """
 
     def __init__(self, beta):
