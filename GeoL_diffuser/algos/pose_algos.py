@@ -3,27 +3,28 @@ import copy
 import torch
 import torch.nn as nn   
 import torch.nn.functional as F
-import pytorch_lightning as pl
 import open3d as o3d
 import cv2
 import clip
-from models.diffusion import Diffusion
+from GeoL_diffuser.models.diffusion import Diffusion
 import GeoL_diffuser.models.tensor_utils as TensorUtils
-from torch.optim import optim
-from models.helpers import EMA
+import torch.optim as optim
+from GeoL_diffuser.models.helpers import EMA
+from GeoL_net.core.registry import registry
+from GeoL_diffuser.dataset.dataset import *
 
-
-class PoseDiffusionModel(pl.LightningModule):
-    def __init__(self, algo_config, train_config):
+@registry.register_diffusion_model(name="GeoL_diffuser")
+class PoseDiffusionModel(nn.Module):
+    def __init__(self, algo_config):
         super().__init__()
         self.algo_config = algo_config
-        self.train_config = train_config
+        #self.train_config = train_config
         self.nets = nn.ModuleDict()
 
         # TODO: conditioning parsing
 
         # Initialize diffuser
-        policy_kwargs = self.algo_config.model
+        policy_kwargs = self.algo_config.model_config
         self.nets['policy'] = Diffusion(**policy_kwargs)
 
         # set up EMA
@@ -91,9 +92,6 @@ class PoseDiffusionModel(pl.LightningModule):
             losses[lk] = l * self.algo_config.training.loss_weights[lk]
             total_loss += losses[lk]
 
-        for lk, l in losses.items():
-            self.log("train/losses_" + lk, l)
-
         return {
             "loss": total_loss,
             "all_losses": losses,
@@ -101,20 +99,12 @@ class PoseDiffusionModel(pl.LightningModule):
 
     def validation_step(self, data_batch, *args, **kwargs):
         curr_policy = self.nets['policy']
-        curr_policy.compute_losses(data_batch)
+        #curr_policy.compute_losses(data_batch)
         losses = TensorUtils.detach(curr_policy.compute_losses(data_batch))
-        out = curr_policy(
-            data_batch,
-            num_samp=1,  # self.algo_config.training.num_eval_samples,
-            return_diffusion=False,
-            return_guidance_losses=False,  # FIXME: this is a hack to avoid guidance
-            apply_guidance=False,  # FIXME: this is a hack to avoid guidance
-        )
-        
-        pred_poses = out["pred_poses"]
 
-        gt_poses = data_batch["gt_poses"]
-
-        return_dict = {"losses:", losses}
+        return_dict = {"losses:": losses}
 
         return return_dict
+
+
+

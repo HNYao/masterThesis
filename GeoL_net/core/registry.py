@@ -100,6 +100,20 @@ class Registry(metaclass=Singleton):
         )
 
     @classmethod
+    def register_diffusion_model(
+        cls, to_register=None, *, name: Optional[str] = None
+    ):
+        r"""Register a diffusion model to registry with key :p:`name`
+
+        :param name: Key with which the affordance model will be registered.
+            If :py:`None` will use the name of the class
+        """
+
+        return cls._register_impl(
+            "diffusion_model", to_register, name, assert_type=Module
+        )
+
+    @classmethod
     def register_loss_fn(cls, to_register=None, *, name: Optional[str] = None):
         r"""Register a loss function to registry with key :p:`name`
 
@@ -148,6 +162,10 @@ class Registry(metaclass=Singleton):
     @classmethod
     def get_affordance_model(cls, name: str) -> Type[Module]:
         return cls._get_impl("affordance_model", name)
+    
+    @classmethod
+    def get_diffusion_model(cls, name: str):
+        return cls._get_impl("diffusion_model", name)
 
     @classmethod
     def get_loss_fn(cls, name: str) -> Type[Module]:
