@@ -2,19 +2,19 @@ import blenderproc as bproc
 from blenderproc.python.writer.MyWriterUtility import write_my, write_my_zhoy
 from blenderproc.python.writer.CocoWriterUtility import write_coco_annotations
 import bpy
-import open3d as o3d
+import psutil
+
 import numpy as np
 import glob
 import json
 import os
 import math
 
-import argparse
+
 import time
-from tqdm import tqdm
+
 import random
 import math
-
 
 
 
@@ -93,10 +93,19 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
         data = json.load(f)
 
     mode = 'train'
+    # previous config
+    #cfg = dict(
+    #    H=480, 
+    #    W=640, 
+    #    K=[591.0125, 0, 322.525, 0, 590.16775, 244.11084, 0, 0, 1], 
+    #    cc_textures_path='resources'
+    #)
+
+    # NOTE: kinect config, the real kinect is 720, 1280 
     cfg = dict(
-        H=480, 
+        H=360, 
         W=640, 
-        K=[591.0125, 0, 322.525, 0, 590.16775, 244.11084, 0, 0, 1], 
+        K=[607.09912/2, 0, 636.85083/2, 0, 607.05212/2, 367.35952/2, 0, 0, 1], 
         cc_textures_path='resources'
     )
     K = np.array(cfg['K']).reshape(3, 3)
@@ -179,7 +188,6 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     light_plane.replace_materials(light_plane_material)
 
     # sample CC Texture and assign to room planes
-    
     if cfg['cc_textures_path'] is not None:
         cc_textures = bproc.loader.load_ccmaterials(cfg['cc_textures_path'])
         for plane in room:
@@ -292,8 +300,6 @@ def objs_keep_in_scene(json_file, number_of_objects):
     scene_id = json_file.split("/")[-1].split(".")[0]
     new_json_file = os.path.join("dataset/scene_RGBD_mask_sequence",scene_id, "text_guidance.json")
 
-        
-
     obj_keep_list = []
     
     # 打开JSON文件
@@ -385,21 +391,81 @@ def objs_keep_in_scene(json_file, number_of_objects):
     
     return obj_keep_list, filtered_data, anchor_obj, removed_obj_list
 
+def get_cpu_temperature():
+    """从 sensors 命令获取当前 CPU 温度"""
+    try:
+        result = os.popen("sensors").read()
+        lines = result.splitlines()
+        for line in lines:
+            if "Package id 0" in line:  # 找到 CPU 包温度
+                temp_str = line.split(":")[1].split("(")[0]
+                return float(temp_str.strip().replace("°C", ""))
+    except Exception as e:
+        print(f"Fail to get cup temp: {e}")
+        return None
+
+
+# 定义温度阈值
+NORMAL_TEMP = 59.0  # 正常工作温度
+HIGH_TEMP = 63.0    # 高温警戒
+CRIT_TEMP = 100.0   # 临界温度
+
+# 定义休眠时间的范围
+MIN_SLEEP = 0       # 最小休眠时间
+MAX_SLEEP = 3       # 最大休眠时间（过热时）
+
+def dynamic_sleep():
+    """根据 CPU 温度动态调整休眠时间"""
+
+    temp = get_cpu_temperature()
+    if temp is not None:
+        print(f"Current CPU Temp: {temp}°C")
+
+        if temp < NORMAL_TEMP:
+            sleep_time = MIN_SLEEP
+        elif NORMAL_TEMP <= temp < HIGH_TEMP:
+            sleep_time = (temp - NORMAL_TEMP) / (HIGH_TEMP - NORMAL_TEMP) * MAX_SLEEP
+        else:
+            sleep_time = MAX_SLEEP
+
+        print(f"Sleep time : {sleep_time:.2f} s")
+        time.sleep(sleep_time)
+    else:
+        print("fail to get CPU temp, sleep 1s")
+        time.sleep(1)
+
 
 if __name__ == "__main__":
     
     bproc.init()
-    json_folder_path = "dataset/scene_gen/scene_mesh_json"
+
+    json_folder_path = "dataset/scene_gen/scene_mesh_json_kinect"
     json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
     data_size = 0
     for json_file_path in json_files:
+        # clean up the scene
+        bproc.clean_up()
+
+      
         # config
         json_file = json_file_path # "dataset/scene_gen/scene_mesh_json/id531_1.json"
-        parent_dir = "dataset/scene_RGBD_mask_v2"
+        parent_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg"
         scene_id = json_file.split("/")[-1].split(".")[0]
         
         # find the corresponding text guidance file
-        text_guidance_file = os.path.join("dataset/scene_RGBD_mask_v2",scene_id, "text_guidance.json")
+        text_guidance_file = os.path.join("dataset/scene_RGBD_mask_v2_kinect_cfg",scene_id, "text_guidance.json")
+
+        # find the scene id file, eg. id531_1
+        scene_id_file = os.path.join("dataset/scene_RGBD_mask_v2_kinect_cfg",scene_id)
+
+        # check if the scene id file contains other directories
+        if os.path.exists(scene_id_file):
+            if len(os.listdir(scene_id_file)) > 1: # check if the directory contains other directories
+                print(f"{scene_id} is already made, so skip")
+                data_size += 1
+                print(f"Data size: {data_size}")
+                continue
+
         
         # find the anchor object and removed object in the text guidance file
         with open(text_guidance_file, 'r') as f:
@@ -424,5 +490,18 @@ if __name__ == "__main__":
             removed_obj_path_list=removed_obj_path_list,
             anchor_obj_path_list=anchor_obj_path_list
         )
-        
-        bproc.clean_up()
+        data_size += 1
+
+        bpy.ops.wm.memory_statistics()
+
+        # 检查 CPU usage and temp
+        result = os.popen("sensors").read()
+        print("Sensor temp:")
+        print(result)
+
+        cpu_usage = psutil.cpu_percent()
+        print(f"CPU Usage: {cpu_usage}%")
+        print(f"Data size: {data_size}")
+        dynamic_sleep()
+
+        bproc.clean_up(True)

@@ -8,6 +8,7 @@ from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
 import open3d as o3d
 import random
 import shutil
+from GeoL_net.dataset_gen.RGBD2MaskPC_direction import remove_ground
 def RGBD_mask2direction_mult(id_obj_file_dir, out_put_dir):
     """
     Generate the dataset for the direction estimation task from scene_RGBD
@@ -161,10 +162,10 @@ def pcd_mask_preprocessing_direction_red_label(points_scene, output_dir = None):
         points_scene.colors = o3d.utility.Vector3dVector(heatmap_colors)
         #o3d.visualization.draw_geometries([points_no_obj_scene])
         # add the point cloud to the list
-        #pcd_without_ground = remove_ground(points_no_obj_scene)
+        pcd_without_ground = remove_ground(points_scene)
         #if not os.path.exists(output_dir):
         #    os.makedirs(output_dir)
-        o3d.io.write_point_cloud(f"{output_dir}/mask_{direction}.ply", points_scene)
+        o3d.io.write_point_cloud(f"{output_dir}/mask_{direction}.ply", pcd_without_ground)
         print(f"{output_dir}/mask_{direction}.ply is done")
 
 
@@ -184,7 +185,7 @@ if __name__ == "__main__":
                 for dir in dirs:
                     id_obj_dir = os.path.join(id_obj_file_dir, dir)
                     #id_obj_dir_list.append(id_obj_dir)
-                    output_dir = id_obj_dir.replace("scene_RGBD_mask", "scene_RGBD_mask_direction_mult")
+                    output_dir = id_obj_dir.replace("scene_RGBD_mask", "test/scene_RGBD_mask_direction_mult")
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
                     RGBD_mask2direction_mult(id_obj_dir, output_dir)

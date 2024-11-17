@@ -3,7 +3,7 @@ generate a json file, including:
     (obj_mesh_file_path): position, scale, bbox
     TODO: aabb bbox存在问题，例如pencil,判断出长宽高
     TODO:旋转显示器
-    TODO: 将所有场景normalize到一个x方向上[-1,1]的区间
+    TODO: 将所有场景normalize到一个x方向上[-1,1]的区间 NOTE: MOIDIFIED [-1.5, 1.5]
 """
 import time
 from tqdm import tqdm
@@ -17,7 +17,7 @@ from GeoL_net.dataset_gen.solver_scene_generate import *
 from utils import get_obj_from_scene, bbox_pos_scale_all_obj, rotate_mesh_around_center, get_obj_from_scene_inslabel, move_trimeshobj_to_position, get_unique_filename
 
 
-def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="dataset/scene_gen/mesh", directory_json_save="dataset/scene_gen/scene_mesh_json"):
+def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="dataset/scene_gen/mesh", directory_json_save="dataset/scene_gen/scene_mesh_json_kinect"):
     """
     Using open3d and trimesh
     OBJ with out texture
@@ -63,12 +63,12 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         (global_max_bound[1] - global_min_bound[1]) ,  # y length
         (global_max_bound[2] - global_min_bound[2])    # z length
         ]
-    global_resize = 1.2 / global_size[0] # 以 x为准 （如果有误，改成以y为准） 需要对物体的size和pos进行调整
+    global_resize = 1.5* 1.2 / global_size[0] # 以 x为准 （如果有误，改成以y为准） 需要对物体的size和pos进行调整
     # update ylength
     y_len  = global_size[1] * global_resize #x 归一后 y的length
     
-    if y_len > 0.8: # if y is too long, resize to 0.8
-        global_resize = 0.8 / global_size[1]
+    if y_len > 1.5* 0.8: # if y is too long, resize to 0.8 * 1.5
+        global_resize =1.5* 0.8 / global_size[1]
 
 
     # 2. read mesh obj in sequence
@@ -136,7 +136,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         extent1 = item_bbox_size
         extent2 = aabb_max_bound - aabb_min_bound
         scale_factors = extent1 / extent2
-        if keyword in []:
+        if keyword not in ["cup", "pen", "pencil", "book"]:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.mean()
@@ -146,11 +146,16 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             scale_matrix[0, 0] = scale_factors.min() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.min()
             scale_matrix[2, 2] = scale_factors.min()
-        elif keyword in ["pen, pencil"]:
+        elif keyword in ["pen", "pencil"]:
             scale_matrix = np.eye(4)
-            scale_matrix[0, 0] = scale_factors[2] # the z length is the standard
-            scale_matrix[1, 1] = scale_factors[2]
-            scale_matrix[2, 2] = scale_factors[2]
+            scale_matrix[0, 0] = scale_factors[2] / 3 # the z length is the standard
+            scale_matrix[1, 1] = scale_factors[2] / 3
+            scale_matrix[2, 2] = scale_factors[2] / 3 
+        elif keyword in ["book"]:
+            scale_matrix = np.eye(4)
+            scale_matrix[0, 0] = scale_factors[0] 
+            scale_matrix[1, 1] = scale_factors[1] 
+            scale_matrix[2, 2] = scale_factors[2] 
  
         scale_matrix_list.append(scale_matrix)
         keyword_list.append(keyword) # keyword list
@@ -243,8 +248,8 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     #top_center_desk_mesh = np.array(center_desk_mesh)
     #top_center_desk_mesh[2] += dimensions_desk_mesh[2] / 2.0
     
-    scaling_factors_x = 1.4 / dimensions_desk_mesh[0] # desk x轴1.1
-    scaling_factors_y = max(y_len-0.4, 1) / dimensions_desk_mesh[1] # 最少y是1
+    scaling_factors_x = 1.5* 1.4 / dimensions_desk_mesh[0] # desk x轴1.4 * 1.5
+    scaling_factors_y = 1.5 * max(y_len-0.4 , 1) / dimensions_desk_mesh[1] # 最少y是1 * 1.5
 
     scale_matrix = np.eye(4)
     scale_matrix[0, 0] = scaling_factors_x
