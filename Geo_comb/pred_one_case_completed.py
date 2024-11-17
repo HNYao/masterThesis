@@ -28,8 +28,12 @@ from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
 
+INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+#intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+#intr = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]])
+#intr = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
 
-def generate_heatmap_target_point(batch, model_pred):
+def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     """
     Generate heatmap for the model prediction and groud truth mask
 
@@ -49,9 +53,10 @@ def generate_heatmap_target_point(batch, model_pred):
     phrase: list
         list of phrase
     """
-    intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-    #intrinsics = np.array([[619.0125 ,   0.     , 326  ], [  0.     , 619, 239], [  0.     ,   0.     ,   1.     ]])
-    #intrinsics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]])
+    if not intrinsics:
+        intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+        #intrinsics = np.array([[619.0125 ,   0.     , 326  ], [  0.     , 619, 239], [  0.     ,   0.     ,   1.     ]])
+        #intrinsics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]])
     img_pred_list = []
     img_gt_list = []
     img_rgb_list = batch["image"].cpu() # the image of the scene [b,c, h, w]
@@ -136,75 +141,108 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None):
     #intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
     #intrinsics = np.array([[619.0125 ,   0.     , 326  ], [  0.     , 619, 239], [  0.     ,   0.     ,   1.     ]])
     #intrinsics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]])
-    img_pred_list = []
-    img_gt_list = []
-    img_rgb_list = batch["image"].cpu() # the image of the scene [b,c, h, w]
-
-    
     feat = model_pred.sigmoid()
     min_feat = feat.min(dim=1, keepdim=True)[0]
     max_feat = feat.max(dim=1, keepdim=True)[0]
     normalized_pred_feat = (feat - min_feat) / (max_feat - min_feat + 1e-6)
-
     turbo_colormap = cm.get_cmap('turbo', 256) # get the color map for the prediction and ground truth
 
     # normalize the prediction and ground truth
-   
     normalized_pred_feat_np = normalized_pred_feat.cpu().detach().numpy()
 
     # get the color map for the prediction and ground truth [b, num_points, 3]
-    
-    
     color_pred_maps = turbo_colormap(normalized_pred_feat_np)[:, :, :, :3] # [b, num_points, 3] ignore alpha
     color_pred_maps = torch.from_numpy(color_pred_maps).squeeze(2).cpu()
     
     pcs = []
     color_pred_list = []
+    color_img_list = []
     for i in range(batch['fps_points_scene'].shape[0]):
         depth = batch['depth'][i].cpu().numpy()
+        image_color = batch['image'][i].permute(1,2,0).cpu().numpy()
         fps_points_scene = batch['fps_points_scene'][i].cpu().numpy()
-        #fps_colors = batch['fps_colors_scene'][i].cpu().numpy()
-        points_scene, _ = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 1500), NOCS_convention=False)
+        points_scene, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2500), NOCS_convention=False)
+        image_color = image_color[idx[0], idx[1], :]
         pcs.append(points_scene)
 
         distance_pred= cdist(points_scene, fps_points_scene)
+
+        # find the nearest 5 points in the scene points
         nearest_pred_idx = np.argmin(distance_pred, axis=1)
+        nearest_10_idx = np.argsort(distance_pred, axis=1)[:, :10]
+
+        #nearest_pred_idx = np.argmin(distance_pred, axis=1)
         color_pred_map = color_pred_maps[i]
-        color_pred_scene = color_pred_map[nearest_pred_idx]
+        #color_pred_scene = color_pred_map[nearest_pred_idx]
+        color_pred_scene = color_pred_map[nearest_10_idx].mean(axis=1)
+        pred_value_thershold = 0.3 # for visualization
+        pred_value = normalized_pred_feat_np[0, nearest_10_idx, :].mean(axis=1)
+
         color_pred_list.append(color_pred_scene)
-        
+        color_img_list.append(image_color/255)
 
     for i, pc in enumerate(pcs):
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pc)
-        pcd.colors = o3d.utility.Vector3dVector(color_pred_list[i].cpu().numpy())
+        pcd.colors = o3d.utility.Vector3dVector(color_pred_list[i].cpu().numpy()*0.3 + color_img_list[i]*0.7)
+        o3d.io.write_point_cloud(f"test.ply", pcd)
         o3d.visualization.draw_geometries([pcd])
 
 
 def is_red(color, tolerance=0.1):
     return (color[0] > 1-tolerance and color[1] < tolerance and color[2] < tolerance)
 
+
+def visualize_xy_pred_points(points, batch, intrinsics=None):
+    """
+    visualize the predicted xy points on the scene points
+
+    Parameters:
+    points: torch.tensor [num_preds=8, 3]
+        the predicted xy points
+    batch
+
+    Returns:
+    None
+    """
+    depth = batch["depth"][0].cpu().numpy()
+    image = batch["image"][0].permute(1,2,0).cpu().numpy()
+
+    if intrinsics is None:
+        intrinsics = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]])
+
+    points_scene, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2000), NOCS_convention=False)
+    image_color = image[idx[0], idx[1], :]/255
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points_scene)
+
+    colors = np.zeros((points_scene.shape[0], 3))
+
+    distance_thershold = 5
+    points = points.cpu().numpy()
+    distances = np.sqrt(((points_scene[:, :2][:, None, :] - points[0][0][:, :2])**2).sum(axis=2))
+    is_near_pose = np.any(distances < distance_thershold, axis=1)
+    colors[is_near_pose] = [1, 0, 0]
+
+    pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
+    o3d.visualization.draw_geometries([pcd])
+
+
 class pred_one_case_dataset(Dataset):
     def __init__(self, scene_pcd, rgb_image_file_path, target_name, direction_text, depth_img_path):
         self.rgb_image_file_path = rgb_image_file_path
         self.target_name = target_name
         self.direction_text = direction_text
-
-
         self.scene_pcd = scene_pcd
         self.scene_pcd_points = np.asarray(self.scene_pcd.points)
-        #self.scene_pcd_points = (np.linalg.inv(cam_rotation_matrix) @ self.scene_pcd_points.T).T
         self.scene_pcd_tensor = torch.tensor(self.scene_pcd_points, dtype=torch.float32).unsqueeze(0)
-
-
 
         # 从旋转后的points中提取出red的点，计算绿色点的位置的均值
         self.scene_pcd_colors = np.asarray(self.scene_pcd.colors)
         green_mask = np.apply_along_axis(is_red, 1, self.scene_pcd_colors)
         green_points = self.scene_pcd_points[green_mask]
         self.green_pcd_center = np.mean(green_points, axis=0)
-
-
         self.scene_pcd_tensor = self.scene_pcd_tensor.to("cuda")
 
         fps_indices_scene = pointnet2_utils.furthest_point_sample(self.scene_pcd_tensor.contiguous(), 2048)
@@ -214,8 +252,6 @@ class pred_one_case_dataset(Dataset):
         self.fps_colors_scene_from_original = self.scene_pcd_colors[fps_indices_scene_np]
 
         rgb_image = Image.open(rgb_image_file_path).convert("RGB")
-        #if rgb_image.height != 480 or rgb_image.width != 640:
-        #    rgb_image = rgb_image.resize((640, 480))
         rgb_image = np.asarray(rgb_image).astype(float)
         rgb_image = np.transpose(rgb_image, (2, 0, 1))
 
@@ -284,12 +320,12 @@ if __name__ == "__main__":
     #depth_image_file_path = "dataset/test/scene_RGBD_mask_direction_mult/id117_2/cup_0001_red/000000.png"
 
     # kinect data
-    rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
-    depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
+    #rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
+    #depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "dataset/realsense/color/000054.png"
-    depth_image_file_path = "dataset/realsense/depth/000054.png"
+    rgb_image_file_path = "dataset/realsense/color/000098.png"
+    depth_image_file_path = "dataset/realsense/depth/000098.png"
 
     use_chatgpt = True
     if use_chatgpt:
@@ -302,27 +338,21 @@ if __name__ == "__main__":
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg")
     color_no_obj = np.array(annotated_frame) / 255
-
-
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32)
 
-    #intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-    intr = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]])
-
-    #intr = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
+    intr = INTRINSICS
     points_no_obj_scene, scene_no_obj_idx = backproject(
         depth,
         intr,
-        np.logical_and(depth > 0, depth < 6500),
+        np.logical_and(depth > 0, depth < 2500),
         NOCS_convention=False,
     )
     colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
-    
     pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)
 
-    scaling_factors =  np.array([2,2,5])
     # Create a scaling matrix
+    scaling_factors =  np.array([2,2,5])
     scaling_matrix = np.eye(4)  # 4x4 identity matrix
     scaling_matrix[0, 0] = scaling_factors[0]  # Scale x
     scaling_matrix[1, 1] = scaling_factors[1]  # Scale y
@@ -330,7 +360,7 @@ if __name__ == "__main__":
 
     # load the model
     model_affordance_cls=  registry.get_affordance_model("GeoL_net_v9")
-    model_affordance = model_affordance_cls(input_shape=(3,720,1280),target_input_shape=(3,128,128)).to("cuda")
+    model_affordance = model_affordance_cls(input_shape=(3,720,1280),target_input_shape=(3,128,128), intrinsics=INTRINSICS).to("cuda")
 
     with open("config/baseline/diffusion.yaml", 'r') as file:
         yaml_data = yaml.safe_load(file)
@@ -356,8 +386,12 @@ if __name__ == "__main__":
             batch[key] = val.float().to("cuda")
         with torch.no_grad():
             affordance_pred = model_affordance(batch=batch)["affordance"].squeeze(1)
+            affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
+            # normalize the affordance prediction
+
+            
             # add the affordance prediction to the batch
-            affordance_thershold = 0.1
+            affordance_thershold = 0.2
             fps_points_scene_from_original = batch["fps_points_scene"][0]
             
             fps_points_scene_affordance = fps_points_scene_from_original[affordance_pred[0][:, 0] > affordance_thershold]
@@ -366,6 +400,8 @@ if __name__ == "__main__":
             max_bound_affordance = np.append(np.max(fps_points_scene_affordance, axis=0), 180)
             # sample 512 points from fps_points_scene_affordance
             fps_points_scene_affordance = fps_points_scene_affordance[np.random.choice(fps_points_scene_affordance.shape[0], 512, replace=True)] # [512, 3]
+            
+            # update dataset
             batch["affordance"] = affordance_pred
             batch["object_name"] = [target_name]
             batch["object_pc_position"] = torch.rand(1, 512, 3).to("cuda")
@@ -374,12 +410,14 @@ if __name__ == "__main__":
             batch["gt_pose_xyR_max_bound"] = torch.tensor(np.delete(max_bound_affordance, 2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["gt_pose_4d_min_bound"] = torch.tensor(min_bound_affordance, dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["gt_pose_4d_max_bound"] = torch.tensor(max_bound_affordance, dtype=torch.float32).unsqueeze(0).to("cuda")
-            generate_heatmap_pc(batch, affordance_pred, intrinsics=intr)
-            pose_pred = model_diffuser(batch)
-                
             
-
-
+            generate_heatmap_pc(batch, affordance_pred, intrinsics=INTRINSICS)
+            
+            # pred pose
+            pose_pred = model_diffuser(batch) # [b, 3] x y R
+            print('prose_pred:', pose_pred)
+            visualize_xy_pred_points(pose_pred['pose_xyR_pred'], batch, intrinsics=INTRINSICS)
+                
             break
 
 
