@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from pointnet2_ops import pointnet2_utils
 from pointnet2_ops.pointnet2_modules import PointnetFPModule, PointnetSAModule
-from thirdpart.Pointnet2_PyTorch.pointnet2.models.pointnet2_ssg_cls import PointNet2ClassificationSSG
+from pointnet2.models.pointnet2_ssg_cls import PointNet2ClassificationSSG
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
