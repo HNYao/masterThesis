@@ -47,7 +47,7 @@ def determine_direction(p1, p2):
 
 
 
-def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, depth_removed_obj = None, mask_hd5f_removed_obj = None):
+def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, depth_removed_obj = None, mask_hd5f_removed_obj = None, intr=None):
     """ transfer deph and mask hd5f to point cloud(mask)
     """
 
@@ -83,10 +83,11 @@ def RGBD2MaskPC(depth_path, mask_hd5f_path, output_dir, depth_removed_obj = None
     color_no_obj = np.array(color_no_obj_image) / 255.0
 
 
-    # camera intrinsc matrix kinect    
-    intr = np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
-                [  0.     , 607.05212/2, 367.35952/2],
-                [  0.     ,   0.     ,   1.     ]])
+    # camera intrinsc matrix kinect
+    if intr is None:   
+        intr = np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
+                    [  0.     , 607.05212/2, 367.35952/2],
+                    [  0.     ,   0.     ,   1.     ]])
 
     # backprojection
     points_scene, scene_idx = backproject(
@@ -315,15 +316,16 @@ def remove_ground(point_cloud):
     pcd_filtered.colors = o3d.utility.Vector3dVector(filtered_colors)
     return pcd_filtered
 
-def RGB2RefMaskPC(depth_path, ref_image_path, out_dir):
+def RGB2RefMaskPC(depth_path, ref_image_path, out_dir, intr=None):
 
     depth_image = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
     depth = np.array(depth_image)
 
     # camera intrinsc matrix
-    intr = np.array([[591.0125 ,   0.     , 322.525  ],
-                     [  0.     , 590.16775, 244.11084],
-                     [  0.     ,   0.     ,   1.     ]])
+    if intr is None:
+        intr = np.array([[591.0125 ,   0.     , 322.525  ],
+                        [  0.     , 590.16775, 244.11084],
+                        [  0.     ,   0.     ,   1.     ]])
 
     points_scene, scene_idx = backproject(
             depth,
@@ -356,6 +358,9 @@ if __name__ == "__main__":
     # dataset/scene_RGBD_mask/scene_name/remove_obj/ply
 
     # config
+    intr = np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
+                [  0.     , 607.05212/2, 367.35952/2],
+                [  0.     ,   0.     ,   1.     ]])
     
     folder_path = "dataset/scene_RGBD_mask_v2_kinect_cfg"
     amount_scene = 0
@@ -377,16 +382,18 @@ if __name__ == "__main__":
                     depth_removed_obj = base + "/no_obj/test_pbr/000000/depth_noise/000000.png"
                     mask_hdf5_removed_obj = base + "/no_obj/0.hdf5"
                     start_time = time.time()
-                    ply_path = os.path.join(base, "mask_red.ply")
+                    ply_path = os.path.join(base, "mask_Left.ply")
                     if os.path.exists(ply_path):
-                        print(f"{output_dir}/mask_red.ply already exists")
+                        print(f"{output_dir}/mask_Left.ply already exists")
                         continue
                     else:
                         RGBD2MaskPC(depth_path=depth_path,  # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png'
                                     mask_hd5f_path=mask_hdf5_path,
                                     output_dir=output_dir,
                                     depth_removed_obj= depth_removed_obj, # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png'
-                                    mask_hd5f_removed_obj=mask_hdf5_removed_obj)
+                                    mask_hd5f_removed_obj=mask_hdf5_removed_obj,
+                                    intr = intr
+                                    )
                     end_time = time.time()
                     print(f"{output_dir} is done, comsuming {end_time - start_time} s")
                     

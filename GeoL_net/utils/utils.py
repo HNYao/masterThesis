@@ -306,3 +306,9 @@ def get_clicked_point(img_path):
     cv2.destroyAllWindows()
 
     return last_point
+
+
+def shift_image(img, shift_x, shift_y):
+    h, w = img.shape[:2]
+    M = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
+    return cv2.warpAffine(img, M, (w, h))

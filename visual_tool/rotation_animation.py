@@ -38,12 +38,12 @@ def visualize_point_cloud(point_cloud, window_name):
 
     vis.destroy_window()
 
-pc_1 = o3d.io.read_point_cloud("outputs/point_cloud_heatmap_4cls_whole.ply")
-pc_2 = o3d.io.read_point_cloud("outputs/point_cloud_4cls.ply")
+pc_1 = o3d.io.read_point_cloud("test.ply")
+#pc_2 = o3d.io.read_point_cloud("outputs/point_cloud_4cls.ply")
 pc_1 = rotate_point_cloud_around_x(pc_1)
-pc_2 = rotate_point_cloud_around_x(pc_2)
+#pc_2 = rotate_point_cloud_around_x(pc_2)
 thread_1 = threading.Thread(target=visualize_point_cloud, args=(pc_1, "point cloud classification"))
-thread_2 = threading.Thread(target=visualize_point_cloud, args=(pc_2, "point cloud heatmap"))
+#thread_2 = threading.Thread(target=visualize_point_cloud, args=(pc_2, "point cloud heatmap"))
 
 thread_1.start()
-thread_2.start()
+#thread_2.start()

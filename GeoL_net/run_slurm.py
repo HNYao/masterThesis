@@ -37,7 +37,7 @@ def main(opt_cmd):
         fh.writelines(f"#SBATCH --error={error_file.as_posix()}\n")
         fh.writelines("#SBATCH --nodes=1\n")
         fh.writelines("#SBATCH --mem=12G\n")
-        fh.writelines("#SBATCH --gres=gpu:2,VRAM:16G\n")
+        fh.writelines("#SBATCH --gres=gpu:1,VRAM:20G\n")
         fh.writelines("#SBATCH --cpus-per-task=4\n")
         fh.writelines("#SBATCH --mail-type=ALL\n")
         fh.writelines("#SBATCH --time=72:00:00\n")

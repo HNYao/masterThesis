@@ -16,7 +16,7 @@ except RuntimeError:
 
 @hydra.main(
     config_path=os.path.join(os.getcwd(), "config/baseline/"),
-    config_name="GeoL_net"
+    config_name="GeoL_net_v9"
 )
 def main(cfg: DictConfig):
     print("trainer name:", cfg.training.trainer)

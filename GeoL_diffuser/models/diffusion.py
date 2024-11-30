@@ -132,7 +132,7 @@ class Diffusion(nn.Module):
         pc_position_xy_affordance_feat = self.pc_position_xy_affordance_encoder(pc_position_xy_affordance).repeat(1,4,1) # [batch_size, num_points_affordance=512, hidden_dim]
         
         cond_feat = torch.cat([pc_position_affordance_feat, pc_position_xy_affordance_feat, object_name_feat, object_pc_position_feat], dim=2)
-        non_cond_feat = torch.cat([pc_position_affordance_feat, pc_position_xy_affordance_feat, torch.zeros_like(object_name_feat), torch.zeros_like(object_pc_position_feat)], dim=2)
+        non_cond_feat = torch.cat([pc_position_affordance_feat, pc_position_xy_affordance_feat, torch.zeros_like(object_name_feat), torch.zeros_like(object_pc_position_feat)], dim=2) # text null
         cond_feat = self.reuducenet(cond_feat) # [batch_size, hidden_dim]
         non_cond_feat = self.reuducenet(non_cond_feat) # [batch_size, hidden_dim]
         # TODO: combine the feats

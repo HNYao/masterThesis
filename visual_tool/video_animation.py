@@ -80,17 +80,17 @@ def create_rotation_video(point_cloud, axis, video_name, duration=10, fps=30):
     vis.destroy_window()
 
 # 读取两个不同的点云文件
-point_cloud_1 = o3d.io.read_point_cloud("outputs/point_cloud_heatmap_4cls_whole.ply")  # 替换为你的第一个点云文件路径
-point_cloud_2 = o3d.io.read_point_cloud("outputs/point_cloud_4cls.ply")  # 替换为你的第二个点云文件路径
+point_cloud_1 = o3d.io.read_point_cloud("test_front.ply")  # 替换为你的第一个点云文件路径
+#point_cloud_2 = o3d.io.read_point_cloud("outputs/point_cloud_4cls.ply")  # 替换为你的第二个点云文件路径
 
 # 创建两个线程，分别生成两个视频
-thread_1 = threading.Thread(target=create_rotation_video, args=(point_cloud_1, 'x', 'outputs/video/heatmap.mp4', 10, 30))
-thread_2 = threading.Thread(target=create_rotation_video, args=(point_cloud_2, 'x', 'outputs/video/classification.mp4', 10, 30))
+thread_1 = threading.Thread(target=create_rotation_video, args=(point_cloud_1, 'x', 'outputs/video/test_front.mp4', 10, 30))
+#thread_2 = threading.Thread(target=create_rotation_video, args=(point_cloud_2, 'x', 'outputs/video/classification.mp4', 10, 30))
 
 # 启动两个线程
 thread_1.start()
-thread_2.start()
+#thread_2.start()
 
 # 等待两个线程结束
 thread_1.join()
-thread_2.join()
+#thread_2.join()

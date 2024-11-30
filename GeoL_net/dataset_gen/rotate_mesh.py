@@ -20,6 +20,6 @@ def rotate_mesh_obj(file_path, axis='x', angle_degrees=90):
 
 
     mesh.export(file_path)
-file_list = ["dataset/obj/mesh/clock/clock_0001_normal/mesh.obj", "dataset/obj/mesh/clock/clock_0002_wooden/mesh.obj"]
+file_list = ["dataset/obj/mesh/monitor/monitor_0010_normal/mesh.obj", "dataset/obj/mesh/monitor/monitor_0011_white/mesh.obj", "dataset/obj/mesh/monitor/monitor_0012_blue/mesh.obj", "dataset/obj/mesh/monitor/monitor_0012_white/mesh.obj","dataset/obj/mesh/monitor/monitor_0013_blue/mesh.obj","dataset/obj/mesh/monitor/monitor_0014_black/mesh.obj"]
 for file_path in file_list:
-    rotate_mesh_obj(file_path, axis='x', angle_degrees=90)
+    rotate_mesh_obj(file_path, axis='z', angle_degrees=-180)

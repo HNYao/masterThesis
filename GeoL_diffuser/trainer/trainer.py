@@ -329,7 +329,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch  = self.train_one_epoch(epoch)
-            if epoch % 30 == 0:
+            if epoch % 1 == 0:
                 self.save_state(epoch + 1)
 
             if epoch%1==0:
@@ -388,6 +388,7 @@ class PoseDiffuserTrainer(BaseTrainer):
         min_indices = torch.argmin(distances, dim=-1)
         
         nearest_points = scene_pc_position[torch.arange(batch_size)[:, None], min_indices]
+
         return nearest_points
     
     def visualize_prediction_pose(self, pose_4d_pred, batch):
@@ -400,6 +401,18 @@ class PoseDiffuserTrainer(BaseTrainer):
                 [  0.     , 607.05212/2, 367.35952/2],
                 [  0.     ,   0.     ,   1.     ]])
         
+        # transform
+        points = pose_4d_pred[:, :, :3]
+        R = batch['T_plane'][:, :3, :3]
+        t= batch['T_plane'][:, :3, 3]
+        R_inv = R.transpose(1, 2)    
+        transformed_points = torch.bmm(points, R_inv) - t.unsqueeze(1)
+        pose_4d_pred[:, :, :3] = transformed_points
+
+        gt_points = batch["gt_pose_4d"][:,:, :3]
+        gt_transformed_points = torch.bmm(gt_points, R_inv) - t.unsqueeze(1)
+        batch["gt_pose_4d"][:,:, :3] = gt_transformed_points
+        
         pcs = []
         img_pred_list = []
         img_gt_list = []
@@ -409,7 +422,7 @@ class PoseDiffuserTrainer(BaseTrainer):
 
         projector = ProjectColorOntoImage()
 
-        distance_threshold = 50
+        distance_threshold = 10
         for i in range(batch['depth'].shape[0]):
             depth = batch['depth'][i].cpu().numpy()
             points_scene, _ = backproject(depth, intrinsics, np.logical_and(depth > 0, depth > 0), NOCS_convention=False)

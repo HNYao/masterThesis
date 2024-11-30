@@ -136,7 +136,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
         extent1 = item_bbox_size
         extent2 = aabb_max_bound - aabb_min_bound
         scale_factors = extent1 / extent2
-        if keyword not in ["cup", "pen", "pencil", "book"]:
+        if keyword not in ["cup", "pen", "pencil", "book", "notebook"]:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors.mean() # keep the orignal shape
             scale_matrix[1, 1] = scale_factors.mean()
@@ -151,7 +151,7 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
             scale_matrix[0, 0] = scale_factors[2] / 3 # the z length is the standard
             scale_matrix[1, 1] = scale_factors[2] / 3
             scale_matrix[2, 2] = scale_factors[2] / 3 
-        elif keyword in ["book"]:
+        elif keyword in ["book", "notebook"]:
             scale_matrix = np.eye(4)
             scale_matrix[0, 0] = scale_factors[0] 
             scale_matrix[1, 1] = scale_factors[1] 

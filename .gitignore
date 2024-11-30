@@ -4,3 +4,8 @@ wandb
 config
 thirdpart
 GroundingDINO
+exps
+resources
+logs
+pointnet2
+thirdpart

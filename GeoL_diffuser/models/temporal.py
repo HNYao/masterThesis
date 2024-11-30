@@ -171,7 +171,7 @@ class TemporalMapUnet(nn.Module):
         self.use_preceiver = use_preceiver
 
         if self.use_preceiver:
-            print(f"[ models/temporal ] Using Preceiver")
+            print(f"[ models/temporal ] Using Perceiver")
             self.preceiver = FeaturePerceiver(
                 transition_dim=transition_dim,
                 condition_dim=cond_dim - time_dim,

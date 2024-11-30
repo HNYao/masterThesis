@@ -44,6 +44,5 @@ class BinaryCELoss(nn.Module):
 
     def forward(self, inputs, targets):
         # inputs as logits
-        targets = targets.permute(0,2,1) 
         loss = F.binary_cross_entropy_with_logits(inputs, targets)
         return loss

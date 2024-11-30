@@ -96,14 +96,28 @@ class BaseTrainer:
 
     def log_img_batch(self, step, img_batch, phrase="None", file_name="None"):
         wandb.log({"batch_images": [wandb.Image(img) for img in img_batch]})
+    
+    def log_table(self, step, predictions, batch):
+        table = wandb.Table(columns=["Pred","GT", "min", "max"])
+        for i, pred in enumerate(predictions):
+            table.add_data(predictions[i], batch["gt_pose_xyR"][i], batch["gt_pose_xyR_min_bound"][i], batch["gt_pose_xyR_max_bound"][i])
+        wandb.log({"Prediction training dataset": table})
 
     def log_img_table(self, step, img_batch, gt_batch, phrase="None", file_name="None"):
-        wandb_Images = [wandb.Image(img, caption=f"{phrase[i]}-step:{step}") for i, img in enumerate(img_batch)]
-        wandb_Images_gt = [wandb.Image(img, caption=f"{gt_batch[i]}-step:{step}") for i, img in enumerate(gt_batch)]
-        table = wandb.Table(columns=["Pred","GT", "phrase", "file_name"])
-        for i, img in enumerate(wandb_Images):
-            table.add_data(img,wandb_Images_gt[i],phrase[i], file_name[i])
-        wandb.log({"Image Grid with Captions": table})
+        if phrase != "None":
+            wandb_Images = [wandb.Image(img, caption=f"{phrase[i]}-step:{step}") for i, img in enumerate(img_batch)]
+            wandb_Images_gt = [wandb.Image(img, caption=f"{gt_batch[i]}-step:{step}") for i, img in enumerate(gt_batch)]
+            table = wandb.Table(columns=["Pred","GT", "phrase", "file_name"])
+            for i, img in enumerate(wandb_Images):
+                table.add_data(img,wandb_Images_gt[i],phrase[i], file_name[i])
+            wandb.log({"Image Grid with Captions": table})
+        else:
+            wandb_Images = [wandb.Image(img, caption=f"step:{step}") for img in img_batch]
+            wandb_Images_gt = [wandb.Image(img, caption=f"step:{step}") for img in gt_batch]
+            table = wandb.Table(columns=["Pred","GT"])
+            for i, img in enumerate(wandb_Images):
+                table.add_data(img,wandb_Images_gt[i])
+            wandb.log({"Image Grid with Captions": table})
 
     @abstractmethod
     def init_dataset(self) -> None:

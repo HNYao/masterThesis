@@ -132,7 +132,7 @@ def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     return img_pred_list, img_gt_list, batch['file_path'], batch['phrase']
 
 
-def generate_heatmap_pc(batch, model_pred, intrinsics=None):
+def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
     if intrinsics is None:
         intrinsics =  np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
                 [  0.     , 607.05212/2, 367.35952/2],
@@ -165,18 +165,26 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None):
         image_color = image_color[idx[0], idx[1], :]
         pcs.append(points_scene)
 
-        distance_pred= cdist(points_scene, fps_points_scene)
+        if interpolate:
+            distance_pred= cdist(points_scene, fps_points_scene)
 
-        # find the nearest 5 points in the scene points
-        nearest_pred_idx = np.argmin(distance_pred, axis=1)
-        nearest_10_idx = np.argsort(distance_pred, axis=1)[:, :10]
+            # find the nearest 5 points in the scene points
+            nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            nearest_10_idx = np.argsort(distance_pred, axis=1)[:, :10]
 
-        #nearest_pred_idx = np.argmin(distance_pred, axis=1)
-        color_pred_map = color_pred_maps[i]
-        #color_pred_scene = color_pred_map[nearest_pred_idx]
-        color_pred_scene = color_pred_map[nearest_10_idx].mean(axis=1)
-        pred_value_thershold = 0.3 # for visualization
-        pred_value = normalized_pred_feat_np[0, nearest_10_idx, :].mean(axis=1)
+            #nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            color_pred_map = color_pred_maps[i]
+            #color_pred_scene = color_pred_map[nearest_pred_idx]
+            color_pred_scene = color_pred_map[nearest_10_idx].mean(axis=1)
+            pred_value_thershold = 0.3 # for visualization
+            pred_value = normalized_pred_feat_np[0, nearest_10_idx, :].mean(axis=1)
+        
+        else:
+            distance_pred= cdist(points_scene, fps_points_scene)
+            nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            color_pred_map = color_pred_maps[i]
+            color_pred_scene = color_pred_map[nearest_pred_idx]
+            pred_value_thershold = 0.3
 
         color_pred_list.append(color_pred_scene)
         color_img_list.append(image_color/255)
@@ -185,7 +193,7 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None):
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pc)
         pcd.colors = o3d.utility.Vector3dVector(color_pred_list[i].cpu().numpy()*0.3 + color_img_list[i]*0.7)
-        o3d.io.write_point_cloud(f"test.ply", pcd)
+        #o3d.io.write_point_cloud(f"test_front.ply", pcd)
         o3d.visualization.draw_geometries([pcd])
 
 
@@ -372,7 +380,10 @@ if __name__ == "__main__":
 
     # load the checkpoint
     state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9/ckpt_211.pth", map_location="cpu")
+    #state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
+    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_36K/ckpt_2.pth", map_location="cpu")
+    model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
     # create the dataset
     dataset = pred_one_case_dataset(pcd_no_obj_scene, rgb_image_file_path, target_name, direction_text, depth_image_file_path)
@@ -411,7 +422,7 @@ if __name__ == "__main__":
             batch["gt_pose_4d_min_bound"] = torch.tensor(min_bound_affordance, dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["gt_pose_4d_max_bound"] = torch.tensor(max_bound_affordance, dtype=torch.float32).unsqueeze(0).to("cuda")
             
-            generate_heatmap_pc(batch, affordance_pred, intrinsics=INTRINSICS)
+            generate_heatmap_pc(batch, affordance_pred, intrinsics=INTRINSICS, interpolate=False)
             
             # pred pose
             pose_pred = model_diffuser(batch) # [b, 3] x y R
@@ -421,4 +432,5 @@ if __name__ == "__main__":
             break
 
 
-    # visualize or save the result
+
+
