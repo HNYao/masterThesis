@@ -1,4 +1,5 @@
-dataset
+/dataset
+/data_for_test
 outputs
 wandb
 config

@@ -246,7 +246,6 @@ class pred_one_case_dataset(Dataset):
         self.scene_pcd_points = np.asarray(self.scene_pcd.points)
         self.scene_pcd_tensor = torch.tensor(self.scene_pcd_points, dtype=torch.float32).unsqueeze(0)
 
-        # 从旋转后的points中提取出red的点，计算绿色点的位置的均值
         self.scene_pcd_colors = np.asarray(self.scene_pcd.colors)
         green_mask = np.apply_along_axis(is_red, 1, self.scene_pcd_colors)
         green_points = self.scene_pcd_points[green_mask]
