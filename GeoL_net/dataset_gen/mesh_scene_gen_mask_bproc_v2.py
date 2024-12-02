@@ -439,7 +439,7 @@ if __name__ == "__main__":
     
     bproc.init()
 
-    json_folder_path = "dataset/scene_gen/scene_mesh_json_kinect"
+    json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
     json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
     data_size = 0
     for json_file_path in json_files:
@@ -449,14 +449,14 @@ if __name__ == "__main__":
       
         # config
         json_file = json_file_path # "dataset/scene_gen/scene_mesh_json/id531_1.json"
-        parent_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg"
+        parent_dir = "dataset/scene_RGBD_mask_data_aug"
         scene_id = json_file.split("/")[-1].split(".")[0]
         
         # find the corresponding text guidance file
-        text_guidance_file = os.path.join("dataset/scene_RGBD_mask_v2_kinect_cfg",scene_id, "text_guidance.json")
+        text_guidance_file = os.path.join("dataset/scene_RGBD_mask_data_aug",scene_id, "text_guidance.json")
 
         # find the scene id file, eg. id531_1
-        scene_id_file = os.path.join("dataset/scene_RGBD_mask_v2_kinect_cfg",scene_id)
+        scene_id_file = os.path.join("dataset/scene_RGBD_mask_data_aug",scene_id)
 
         # check if the scene id file contains other directories
         if os.path.exists(scene_id_file):
