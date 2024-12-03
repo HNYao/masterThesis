@@ -9,6 +9,7 @@ exps
 resources
 logs
 pointnet2
-thirdpart
-/Geo_comb/pred_one_case_completed.py
-*.pyc
+thirdpart/*
+checkpoints/
+**/__pycache__
+
