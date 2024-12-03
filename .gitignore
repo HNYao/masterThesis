@@ -9,5 +9,6 @@ exps
 resources
 logs
 pointnet2
-thirdpart
-__pycache__
+thirdpart/*
+checkpoints/
+**/__pycache__
