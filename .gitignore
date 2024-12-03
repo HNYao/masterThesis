@@ -14,3 +14,4 @@ checkpoints/*
 *.pyc
 GeoL_diffuser/models/__pycache__/
 GeoL_diffuser/__pycache__/
+thirdpart/
