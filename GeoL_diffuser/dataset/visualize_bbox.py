@@ -1,6 +1,7 @@
 import open3d as o3d
 import numpy as np
 
+
 def create_bounding_box(min_bound, max_bound):
     points = [
         [min_bound[0], min_bound[1], min_bound[2]],
@@ -39,15 +40,17 @@ def create_bounding_box(min_bound, max_bound):
 
     return line_set
 
+
 if __name__ == "__main__":
 
-    pcd = o3d.io.read_point_cloud("dataset/scene_RGBD_mask_v2_kinect_cfg/id9/bottle_0001_plastic/mask_Behind.ply")
+    pcd = o3d.io.read_point_cloud(
+        "dataset/scene_RGBD_mask_v2_kinect_cfg/id9/bottle_0001_plastic/mask_Behind.ply"
+    )
     points = np.asarray(pcd.points)
     colors = np.asarray(pcd.colors)
 
-    green_mask = colors[:,1]>0.3
+    green_mask = colors[:, 1] > 0.3
     filtered_points = points[green_mask]
-
 
     min_bound = filtered_points.min(axis=0)
     max_bound = filtered_points.max(axis=0)

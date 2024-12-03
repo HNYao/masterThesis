@@ -380,7 +380,7 @@ if __name__ == "__main__":
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
 
     # load the checkpoint
-    state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9/ckpt_211.pth", map_location="cpu")
+    state_affordance_dict = torch.load("checkpoints/GeoL_checkpoints/ckpt_211.pth", map_location="cpu")
     #state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_10K_drop=0.1/ckpt_1.pth", map_location="cpu")
@@ -437,7 +437,3 @@ if __name__ == "__main__":
             visualize_xy_pred_points(pose_pred['pose_xyR_pred'], batch, intrinsics=INTRINSICS)
                 
             break
-
-
-
-
