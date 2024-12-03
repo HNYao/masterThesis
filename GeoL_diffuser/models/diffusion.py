@@ -82,12 +82,12 @@ class Diffusion(nn.Module):
         self.register_buffer("alphas_cumprod", alphas_cumprod)
         self.register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
 
-        # 前向过程
+        # forward process
         self.register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
         self.register_buffer("sqrt_one_minus_alphas_cumprod", torch.sqrt(1.0 - alphas_cumprod))
         self.register_buffer('log_one_minus_alphas_cumprod', torch.log(1. - alphas_cumprod))
 
-        # 反向过程
+        # backward process
         posterior_variance = (betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod))
         self.register_buffer("posterior_variance", posterior_variance)
         self.register_buffer("posterior_log_variance_clipped",torch.log(posterior_variance.clamp(min=1e-20)))
@@ -101,7 +101,6 @@ class Diffusion(nn.Module):
         self.sqrt_recip_one_minus_alphas_cumprod = 1.0 / torch.sqrt(1. - alphas_cumprod)
 
         ## get loss coefficients and initialize objective
-        # TODO: complete the loss function
         self.loss_fn = Losses[loss_type]()
 
         # for guided sampling
@@ -115,6 +114,8 @@ class Diffusion(nn.Module):
     
     #------------------------------------------ aux_info ------------------------------------------#
     def get_aux_info(self, data_batch):
+        cond_fill_value = -1
+
         affordance = data_batch["affordance"]#[batch_size, num_points, affordance_dim=1]
         pc_position = data_batch["pc_position"] #[batch_size, num_points, pc_position_dim=3]
         pc_position_affordance = torch.cat([pc_position, affordance], dim=2) #[batch_size, num_points, pc_position_dim+affordance_dim=4]
@@ -127,12 +128,27 @@ class Diffusion(nn.Module):
         #pc_position_feat = self.pc_position_encoder(pc_position) # [batch_size, num_points, hidden_dim]
         #affordance_feat = self.affordance_encoder(affordance) # [batch_size, num_points, hidden_dim]
         pc_position_affordance_feat = self.pc_position_affordance_encoder(pc_position_affordance).permute(0,2,1) # [batch_size, num_points_affordance=2048, hidden_dim]
-        object_name_feat = self.object_name_encoder(object_name) # [batch_size, 1024] -> [batch_size, num_points, 256]
-        object_pc_position_feat = self.obj_position_encoder(object_pc_position).permute(0,2,1).repeat(1,4,1) # [batch_size, obj_points, hidden_dim] -> [batch_size, num_points, 256]
-        pc_position_xy_affordance_feat = self.pc_position_xy_affordance_encoder(pc_position_xy_affordance).repeat(1,4,1) # [batch_size, num_points_affordance=512, hidden_dim]
+        pc_position_affordance_non_cond_feat = self.pc_position_affordance_encoder(torch.ones_like(pc_position_affordance)*cond_fill_value).permute(0,2,1) # [batch_size, num_points_affordance=2048, hidden_dim]
         
-        cond_feat = torch.cat([pc_position_affordance_feat, pc_position_xy_affordance_feat, object_name_feat, object_pc_position_feat], dim=2)
-        non_cond_feat = torch.cat([pc_position_affordance_feat, pc_position_xy_affordance_feat, torch.zeros_like(object_name_feat), torch.zeros_like(object_pc_position_feat)], dim=2) # text null
+        object_name_feat = self.object_name_encoder(object_name) # [batch_size, 1024] -> [batch_size, num_points, 256]
+        
+        object_pc_position_feat = self.obj_position_encoder(object_pc_position).permute(0,2,1).repeat(1,4,1) # [batch_size, obj_points, hidden_dim] -> [batch_size, num_points, 256]
+        object_pc_position_non_cond_feat = self.obj_position_encoder(torch.ones_like(object_pc_position)*cond_fill_value).permute(0,2,1).repeat(1,4,1) # [batch_size, obj_points, hidden_dim] -> [batch_size, num_points, 256]
+        
+        pc_position_xy_affordance_feat = self.pc_position_xy_affordance_encoder(pc_position_xy_affordance).repeat(1,4,1) # [batch_size, num_points_affordance=512, hidden_dim]
+        pc_position_xy_affordance_non_cond_feat = self.pc_position_xy_affordance_encoder(torch.ones_like(pc_position_xy_affordance)*cond_fill_value).repeat(1,4,1) # [batch_size, num_points_affordance=512, hidden_dim]
+
+        cond_feat = torch.cat([
+            pc_position_affordance_feat, 
+            pc_position_xy_affordance_feat, 
+            object_name_feat, 
+            object_pc_position_feat], dim=2)
+        non_cond_feat = torch.cat([
+            pc_position_affordance_non_cond_feat, 
+            pc_position_xy_affordance_non_cond_feat, 
+            object_name_feat, # object name not dropped
+            object_pc_position_non_cond_feat], dim=2)
+        
         cond_feat = self.reuducenet(cond_feat) # [batch_size, hidden_dim]
         non_cond_feat = self.reuducenet(non_cond_feat) # [batch_size, hidden_dim]
         # TODO: combine the feats
@@ -272,8 +288,8 @@ class Diffusion(nn.Module):
 
     def q_posterior(self, x_start, x, t):
         """
-        x_start: 预测得到的x_0
-        x: 当前步x
+        x_start: x_0 from prediction
+        x: current x
         """
         posterior_mean = (
             extract(self.posterior_mean_coef1, t, x.shape) * x_start
@@ -320,7 +336,7 @@ class Diffusion(nn.Module):
 
     def p_mean_variance(self, x, t, aux_info):
         model_prediction = self.model(x, aux_info["cond_feat"], t) # x.shape = [b, h, state_dim=4] t.shape = [b, ], aux_info["cond_feat"].shape = [b, condition_dim]
-        class_free_guid_w = 0 # NOTE: hard-coded for now
+        class_free_guid_w = -0.7 
         if class_free_guid_w != 0:
             x_non_cond = x.clone()
             model_non_cond_prediction = self.model(x_non_cond, aux_info["non_cond_feat"], t)

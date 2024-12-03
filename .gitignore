@@ -1,4 +1,4 @@
-dataset
+/dataset
 outputs
 wandb
 config
@@ -9,3 +9,8 @@ resources
 logs
 pointnet2
 thirdpart
+data_for_test/*
+checkpoints/*
+*.pyc
+GeoL_diffuser/models/__pycache__/
+GeoL_diffuser/__pycache__/

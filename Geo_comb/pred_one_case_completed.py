@@ -27,12 +27,14 @@ from GeoL_net.gpt.gpt import chatgpt_condition
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
+import trimesh
 
-INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+#INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+#INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 #intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-#intr = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]])
-#intr = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
-
+#INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
+#INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
+INTRINSICS = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
 def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     """
     Generate heatmap for the model prediction and groud truth mask
@@ -246,7 +248,6 @@ class pred_one_case_dataset(Dataset):
         self.scene_pcd_points = np.asarray(self.scene_pcd.points)
         self.scene_pcd_tensor = torch.tensor(self.scene_pcd_points, dtype=torch.float32).unsqueeze(0)
 
-        # 从旋转后的points中提取出red的点，计算绿色点的位置的均值
         self.scene_pcd_colors = np.asarray(self.scene_pcd.colors)
         green_mask = np.apply_along_axis(is_red, 1, self.scene_pcd_colors)
         green_points = self.scene_pcd_points[green_mask]
@@ -324,24 +325,24 @@ if __name__ == "__main__":
     #congiguration
     #scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    #rgb_image_file_path = "dataset/test/scene_RGBD_mask_direction_mult/id117_2/cup_0001_red/img.jpg"
-    #depth_image_file_path = "dataset/test/scene_RGBD_mask_direction_mult/id117_2/cup_0001_red/000000.png"
+    rgb_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png"
 
     # kinect data
     #rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
     #depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "dataset/realsense/color/000098.png"
-    depth_image_file_path = "dataset/realsense/depth/000098.png"
+    #rgb_image_file_path = "dataset/realsense/color/000098.png"
+    #depth_image_file_path = "dataset/realsense/depth/000098.png"
 
-    use_chatgpt = True
+    use_chatgpt = False
     if use_chatgpt:
         target_name, direction_text = chatgpt_condition(rgb_image_file_path, "object_placement")
         print("====> Predicting Affordance...")
     else:
-        target_name = "the Monitor"
-        direction_text = "Front"
+        target_name = "the blue book"
+        direction_text = "Right"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg")
@@ -379,10 +380,10 @@ if __name__ == "__main__":
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
 
     # load the checkpoint
-    state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9/ckpt_211.pth", map_location="cpu")
+    state_affordance_dict = torch.load("checkpoints/GeoL_checkpoints/ckpt_211.pth", map_location="cpu")
     #state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
-    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_36K/ckpt_2.pth", map_location="cpu")
+    state_diffusion_dict = torch.load("checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu")
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
     # create the dataset
@@ -402,7 +403,7 @@ if __name__ == "__main__":
 
             
             # add the affordance prediction to the batch
-            affordance_thershold = 0.2
+            affordance_thershold = 0.1
             fps_points_scene_from_original = batch["fps_points_scene"][0]
             
             fps_points_scene_affordance = fps_points_scene_from_original[affordance_pred[0][:, 0] > affordance_thershold]
@@ -414,8 +415,14 @@ if __name__ == "__main__":
             
             # update dataset
             batch["affordance"] = affordance_pred
-            batch["object_name"] = [target_name]
-            batch["object_pc_position"] = torch.rand(1, 512, 3).to("cuda")
+            batch["object_name"] = ["the green bottle"]
+            
+            obj_mesh = trimesh.load("data_for_test/obj/mesh/bottle/bottle_0003_green/mesh.obj")
+            obj_scale =  [0.4554532861750685,0.4554532861750685,0.4554532861750685]
+            obj_mesh.apply_scale(obj_scale)
+            obj_pc = obj_mesh.sample(512)
+
+            batch["object_pc_position"] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["pc_position_xy_affordance"] = torch.tensor(fps_points_scene_affordance[:, :2], dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["gt_pose_xyR_min_bound"] = torch.tensor(np.delete(min_bound_affordance, 2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
             batch["gt_pose_xyR_max_bound"] = torch.tensor(np.delete(max_bound_affordance, 2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -430,7 +437,3 @@ if __name__ == "__main__":
             visualize_xy_pred_points(pose_pred['pose_xyR_pred'], batch, intrinsics=INTRINSICS)
                 
             break
-
-
-
-
