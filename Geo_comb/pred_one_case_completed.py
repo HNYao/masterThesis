@@ -383,7 +383,7 @@ if __name__ == "__main__":
     state_affordance_dict = torch.load("checkpoints/GeoL_checkpoints/ckpt_211.pth", map_location="cpu")
     #state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
-    state_diffusion_dict = torch.load("checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu")
+    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_10K_drop=0.1/ckpt_1.pth", map_location="cpu")
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
     # create the dataset
@@ -417,7 +417,7 @@ if __name__ == "__main__":
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
             
-            obj_mesh = trimesh.load("data_for_test/obj/mesh/bottle/bottle_0003_green/mesh.obj")
+            obj_mesh = trimesh.load("dataset/obj/mesh/bottle/bottle_0003_green/mesh.obj")
             obj_scale =  [0.4554532861750685,0.4554532861750685,0.4554532861750685]
             obj_mesh.apply_scale(obj_scale)
             obj_pc = obj_mesh.sample(512)

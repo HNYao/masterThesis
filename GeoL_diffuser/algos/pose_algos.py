@@ -21,7 +21,7 @@ class PoseDiffusionModel(nn.Module):
         #self.train_config = train_config
         self.nets = nn.ModuleDict()
 
-        # TODO: conditioning parsing
+        # conditioning parsing: set in the trainer
 
         # Initialize diffuser
         policy_kwargs = self.algo_config.model_config
@@ -61,7 +61,12 @@ class PoseDiffusionModel(nn.Module):
         if self.use_ema:
             curr_policy = self.ema_policy
 
-        output = curr_policy(data_batch, num_samp, return_guidance_losses, apply_guidance, guide_clean)
+        output = curr_policy(
+            data_batch, num_samp, 
+            return_guidance_losses, 
+            apply_guidance, 
+            class_free_guide_w=0.0,
+            guide_clean=False)
         return output
 
     def reset_parameters(self):
@@ -80,10 +85,10 @@ class PoseDiffusionModel(nn.Module):
             lr=optim_params.learning_rate,
         )
 
-    def training_step_end(self, *args, **kwargs):
-        self.curr_train_step += 1
+    #def training_step_end(self, *args, **kwargs):
+    #    self.curr_train_step += 1
     
-    def training_step(self, data_batch, batch_idx):
+    def get_loss(self, data_batch, batch_idx):
         losses = self.nets['policy'].compute_losses(data_batch)
 
         # summarize losses
@@ -97,14 +102,14 @@ class PoseDiffusionModel(nn.Module):
             "all_losses": losses,
         }
 
-    def validation_step(self, data_batch, *args, **kwargs):
-        curr_policy = self.nets['policy']
-        #curr_policy.compute_losses(data_batch)
-        losses = TensorUtils.detach(curr_policy.compute_losses(data_batch))
-
-        return_dict = {"losses:": losses}
-
-        return return_dict
+    #def validation_step(self, data_batch, *args, **kwargs):
+    #    curr_policy = self.nets['policy']
+    #    #curr_policy.compute_losses(data_batch)
+    #    losses = TensorUtils.detach(curr_policy.compute_losses(data_batch))
+    #
+    #    return_dict = {"losses:": losses}
+    #
+    #    return return_dict
 
 
 

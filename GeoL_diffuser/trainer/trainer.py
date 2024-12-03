@@ -23,6 +23,8 @@ from GeoL_net.dataset_gen.RGBD2PC import backproject
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 from clip.model import tokenize
 
+
+
 @registry.register_trainer(name="GeoL_diffusion_trainer")
 class PoseDiffuserTrainer(BaseTrainer):
     def __init__(self, cfg, dataset_dir, checkpoint_dir, log_dir):
@@ -183,6 +185,19 @@ class PoseDiffuserTrainer(BaseTrainer):
 
             batch_size = batch["image"].shape[0]
             cond_fill_val = -1
+            
+            drop_mask_cond_position = torch.rand(len(batch["pc_position"])) < self.cfg.model.training.cond_drop_pc_position_p
+            drop_mask_cond_affordance = torch.rand(len(batch["affordance"])) < self.cfg.model.training.cond_drop_affordance_p
+            drop_mask_cond_obj_pc_position = torch.rand(len(batch["object_pc_position"])) < self.cfg.model.training.cond_drop_object_pc_position_p
+            drop_mask_cond_position_xy_affordance = torch.rand(len(batch["pc_position_xy_affordance"])) < self.cfg.model.training.cond_drop_pc_position_xy_affordance_p
+
+            batch["pc_position"][drop_mask_cond_position] = cond_fill_val
+            batch["affordance"][drop_mask_cond_affordance] = cond_fill_val
+            batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
+            batch["pc_position_xy_affordance"][drop_mask_cond_position_xy_affordance] = cond_fill_val
+
+            batch_size = batch["image"].shape[0]
+            cond_fill_val = -1
 
             drop_mask_cond_position = (
                 torch.rand(len(batch["pc_position"]))
@@ -326,8 +341,8 @@ class PoseDiffuserTrainer(BaseTrainer):
                 batch[key] = val.float().to(self.device)
 
             # Make predictions for this batch
-            # batch = self.apply_transforms(batch, split="train")
-
+            #batch = self.apply_transforms(batch, split="train")
+            
             eval_loss = self.model.get_loss(batch, i)["loss"]
             total_loss += eval_loss.item()
             running_loss += eval_loss.item()
