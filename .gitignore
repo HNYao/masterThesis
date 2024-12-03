@@ -9,4 +9,5 @@ exps
 resources
 logs
 pointnet2
-thirdpart
+thirdpart/*
+checkpoints/
