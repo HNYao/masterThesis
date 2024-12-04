@@ -260,9 +260,12 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
 
     distance_thershold = 5
     points = points.cpu().numpy()
+
+    points = points[0]
     distances = np.sqrt(
-        ((points_scene[:, :2][:, None, :] - points[0][0][:, :2]) ** 2).sum(axis=2)
+        ((points_scene[:, :2][:, None, :] - points[:, :2]) ** 2).sum(axis=2)
     )
+
     is_near_pose = np.any(distances < distance_thershold, axis=1)
     colors[is_near_pose] = [1, 0, 0]
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
@@ -273,7 +276,8 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
         pos_vis.compute_vertex_normals()
         pos_vis.scale(30, [0, 0, 0])
         pos_vis.translate(pos[:3])
-        pos_vis.paint_uniform_color([1, 0, 0])
+        vis_color = np.random.rand(3)
+        pos_vis.paint_uniform_color(vis_color)
 
         vis.append(pos_vis)
     o3d.visualization.draw(vis)
