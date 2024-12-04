@@ -38,6 +38,15 @@ import trimesh
 INTRINSICS = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
 
 
+def get_heatmap(values, cmap_name="turbo", invert=False):
+    if invert:
+        values = -values
+    values = (values - values.min()) / (values.max() - values.min())
+    colormaps = cm.get_cmap(cmap_name)
+    rgb = colormaps(values)[..., :3]  # don't need alpha channel
+    return rgb
+
+
 def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     """
     Generate heatmap for the model prediction and groud truth mask
@@ -226,7 +235,7 @@ def is_red(color, tolerance=0.1):
     return color[0] > 1 - tolerance and color[1] < tolerance and color[2] < tolerance
 
 
-def visualize_xy_pred_points(points, batch, intrinsics=None):
+def visualize_xy_pred_points(pred, batch, intrinsics=None):
     """
     visualize the predicted xy points on the scene points
 
@@ -240,6 +249,8 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
     """
     depth = batch["depth"][0].cpu().numpy()
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
+    points = pred["pose_xyR_pred"]  # [1, N, 3]
+    guide_cost = pred["guide_losses"]["goal_loss"]  # [1, N]
 
     if intrinsics is None:
         intrinsics = np.array(
@@ -261,32 +272,45 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
 
     distance_thershold = 5
     points = points.cpu().numpy()
+    guide_cost = guide_cost.cpu().numpy()
 
     points = points[0]
+    guide_cost = guide_cost[0]
+    # guide_cost_color = cm.get_cmap("turbo")(guide_cost[None])[0, :, :3]
+
     distances = np.sqrt(
         ((points_scene[:, :2][:, None, :] - points[:, :2]) ** 2).sum(axis=2)
     )
 
-    is_near_pose = np.any(distances < distance_thershold, axis=1)
-    colors[is_near_pose] = [1, 0, 0]
+    # is_near_pose = np.any(distances < distance_thershold, axis=1)
+    scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+    scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+    topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: points.shape[0]]
+    tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+
+    guide_cost = guide_cost[tokk_points_id_corr_anchor]
+    guide_cost_color = get_heatmap(guide_cost[None])[0]
+
+    colors[topk_points_id] = [1, 0, 0]
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
-    points_for_place = points  # [N, 3]
-    points_for_place_z = points_scene[is_near_pose][..., 2].mean()
-    points_for_place[:, 2] = points_for_place_z
+
+    # points_for_place_z = points_scene[is_near_pose][:, 2].mean()
+    # points_for_place = points
+    # points_for_place[:, 2] = points_for_place_z
+
+    points_for_place = points_scene[topk_points_id]
 
     points_for_place_goal = np.mean(points_for_place, axis=0)
     print("points_for_place_goal:", points_for_place_goal)
-    import pdb
 
-    pdb.set_trace()
     vis = [pcd]
     # print("points_for_place_goal:", points_for_place_goal)
-    for _, pos in enumerate(points_for_place):
+    for ii, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
         pos_vis.compute_vertex_normals()
         pos_vis.scale(30, [0, 0, 0])
         pos_vis.translate(pos[:3])
-        vis_color = np.random.rand(3)
+        vis_color = guide_cost_color[ii]
         pos_vis.paint_uniform_color(vis_color)
 
         vis.append(pos_vis)
@@ -535,10 +559,8 @@ if __name__ == "__main__":
             )
 
             # pred pose
-            pose_pred = model_diffuser(batch, num_samp=10, apply_guidance=True)
-            print("pose_pred:", pose_pred)
-            visualize_xy_pred_points(
-                pose_pred["pose_xyR_pred"], batch, intrinsics=INTRINSICS
-            )
+            pred = model_diffuser(batch, num_samp=10, apply_guidance=True)
+            print("pred:", pred)
+            visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 
             break

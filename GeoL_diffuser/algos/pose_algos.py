@@ -52,7 +52,7 @@ class PoseDiffusionModel(nn.Module):
         self,
         data_batch,
         num_samp=10,
-        return_guidance_losses=False,
+        return_guidance_losses=True,
         class_free_guide_w=-0.5,
         apply_guidance=False,
         guide_clean=True,
@@ -71,6 +71,11 @@ class PoseDiffusionModel(nn.Module):
         pose_xyR_pred = output["pose_xyR_pred"]
         B, N, H, _ = pose_xyR_pred.shape
         output["pose_xyR_pred"] = pose_xyR_pred.view(B, N * H, -1)
+
+        if "guide_losses" in output:
+            for k, v in output["guide_losses"].items():
+                v = TensorUtils.detach(v)
+                output["guide_losses"][k] = v.view(B, N * H)
 
         return output
 

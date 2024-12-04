@@ -83,21 +83,23 @@ class OneGoalGuidance(Guidance):
         #     goal_pose_xyR, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound
         # )  # [B, 1, 3]
         # x_goal = x_goal[:, None].expand(-1, num_samp, num_hypo, -1)  # [B, N, H, 3]
+        # Debug only ...
         x_goal = torch.Tensor([0.0317, -0.0118, -0.0099])[None, None, None].cuda()
         x_goal = x_goal.expand(bsize, num_samp, num_hypo, -1)
         goal_loss = F.mse_loss(
             x_goal[..., :2], x[..., :2], reduction="none"
         )  # [B, N, H, 3]
         goal_loss = goal_loss.mean(dim=-1)  # [B, N, H]
-        goal_loss = goal_loss.mean(dim=-1)  # [B, N]
         guide_losses["goal_loss"] = goal_loss
+
         # if t[0] == 0:
         #     import pdb
 
         #     pdb.set_trace()
 
         # print()
+        goal_loss = goal_loss.mean(dim=-1)  # [B, N]
         print("goal_loss: ", goal_loss[0, 0], x_goal[0, 0, 0, :2], x[0, 0, 0, :2])
-        goal_loss = goal_loss.mean() * 100
+        goal_loss = goal_loss.mean() * 2000
         loss_tot += goal_loss
         return loss_tot, guide_losses

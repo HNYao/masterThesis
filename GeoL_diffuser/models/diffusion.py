@@ -633,8 +633,9 @@ class Diffusion(nn.Module):
         x = TensorUtils.reshape_dimensions(
             x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp)
         )
-        out_dict = {"guide_losses": guide_losses}
         out_dict = {"pred_pose_xyR": x}
+        if return_guidance_losses:
+            out_dict.update({"guide_losses": guide_losses})
 
         return out_dict
 
@@ -764,7 +765,7 @@ class Diffusion(nn.Module):
         outputs = {"pose_xyR_pred": pose_xyR}
         if "guide_losses" in cond_samp_out:
             outputs["guide_losses"] = cond_samp_out["guide_losses"]
-
+        
         return outputs
 
 
