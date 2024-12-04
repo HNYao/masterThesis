@@ -265,9 +265,18 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
     )
     is_near_pose = np.any(distances < distance_thershold, axis=1)
     colors[is_near_pose] = [1, 0, 0]
-
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
-    o3d.visualization.draw_geometries([pcd])
+    vis = [pcd]
+    points_for_place = points_scene[is_near_pose]
+    for _, pos in enumerate(points_for_place):
+        pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+        pos_vis.compute_vertex_normals()
+        pos_vis.scale(30, [0, 0, 0])
+        pos_vis.translate(pos[:3])
+        pos_vis.paint_uniform_color([1, 0, 0])
+
+        vis.append(pos_vis)
+    o3d.visualization.draw(vis)
 
 
 class pred_one_case_dataset(Dataset):
@@ -427,14 +436,6 @@ if __name__ == "__main__":
     scaling_matrix[1, 1] = scaling_factors[1]  # Scale y
     scaling_matrix[2, 2] = scaling_factors[2]  # Scale z
 
-    # load the model
-    model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
-    model_affordance = model_affordance_cls(
-        input_shape=(3, 720, 1280),
-        target_input_shape=(3, 128, 128),
-        intrinsics=INTRINSICS,
-    ).to("cuda")
-
     with open("config/baseline/diffusion.yaml", "r") as file:
         yaml_data = yaml.safe_load(file)
 
@@ -442,13 +443,6 @@ if __name__ == "__main__":
 
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
-
-    # load the checkpoint
-    state_affordance_dict = torch.load(
-        "checkpoints/GeoL_checkpoints/ckpt_211.pth", map_location="cpu"
-    )
-    # state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
-    model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     state_diffusion_dict = torch.load(
         "checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu"
     )
@@ -464,52 +458,23 @@ if __name__ == "__main__":
     )
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
-    model_affordance.eval()
     for i, batch in enumerate(data_loader):
         for key, val in batch.items():
             if type(val) == list:
                 continue
             batch[key] = val.float().to("cuda")
+        afford_pred_dict = np.load("Geo_comb/afford_pred.npz", allow_pickle=True)
         with torch.no_grad():
-            affordance_pred = model_affordance(batch=batch)["affordance"].squeeze(1)
-            affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
-            # normalize the affordance prediction
-
-            # add the affordance prediction to the batch
-            affordance_thershold = 0.1
-            fps_points_scene_from_original = batch["fps_points_scene"][0]
-
-            fps_points_scene_affordance = fps_points_scene_from_original[
-                affordance_pred[0][:, 0] > affordance_thershold
+            affordance_pred = torch.tensor(afford_pred_dict["affordance_pred"]).to(
+                "cuda"
+            )
+            fps_points_scene_affordance = afford_pred_dict[
+                "fps_points_scene_affordance"
             ]
-            fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
-            min_bound_affordance = np.append(
-                np.min(fps_points_scene_affordance, axis=0), -180
-            )
-            max_bound_affordance = np.append(
-                np.max(fps_points_scene_affordance, axis=0), 180
-            )
-            # sample 512 points from fps_points_scene_affordance
-            fps_points_scene_affordance = fps_points_scene_affordance[
-                np.random.choice(
-                    fps_points_scene_affordance.shape[0], 512, replace=True
-                )
-            ]  # [512, 3]
+            min_bound_affordance = afford_pred_dict["min_bound_affordance"]
+            max_bound_affordance = afford_pred_dict["max_bound_affordance"]
 
             # update dataset
-
-            to_save = {
-                "fps_points_scene_affordance": fps_points_scene_affordance,
-                "affordance": affordance_pred.cpu().numpy(),
-                "min_bound_affordance": min_bound_affordance,
-                "max_bound_affordance": max_bound_affordance,
-                "affordance_pred": affordance_pred.cpu().numpy(),
-            }
-            import pdb
-
-            pdb.set_trace()
-            np.savez_compressed("Geo_comb/afford_pred.npz", **to_save)
-
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
 
@@ -551,10 +516,6 @@ if __name__ == "__main__":
                 torch.tensor(max_bound_affordance, dtype=torch.float32)
                 .unsqueeze(0)
                 .to("cuda")
-            )
-
-            generate_heatmap_pc(
-                batch, affordance_pred, intrinsics=INTRINSICS, interpolate=False
             )
 
             # pred pose
