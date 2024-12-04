@@ -25,6 +25,7 @@ from matplotlib import cm
 import torchvision.transforms as T
 from GeoL_net.gpt.gpt import chatgpt_condition
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
+from GeoL_diffuser.models.guidance import OneGoalGuidance
 import yaml
 from omegaconf import OmegaConf
 import trimesh
@@ -269,8 +270,17 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
     is_near_pose = np.any(distances < distance_thershold, axis=1)
     colors[is_near_pose] = [1, 0, 0]
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
+    points_for_place = points  # [N, 3]
+    points_for_place_z = points_scene[is_near_pose][..., 2].mean()
+    points_for_place[:, 2] = points_for_place_z
+
+    points_for_place_goal = np.mean(points_for_place, axis=0)
+    print("points_for_place_goal:", points_for_place_goal)
+    import pdb
+
+    pdb.set_trace()
     vis = [pcd]
-    points_for_place = points_scene[is_near_pose]
+    # print("points_for_place_goal:", points_for_place_goal)
     for _, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
         pos_vis.compute_vertex_normals()
@@ -451,6 +461,8 @@ if __name__ == "__main__":
         "checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
+    guidance = OneGoalGuidance()
+    model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
     dataset = pred_one_case_dataset(
@@ -523,8 +535,8 @@ if __name__ == "__main__":
             )
 
             # pred pose
-            pose_pred = model_diffuser(batch)  # [b, 3] x y R
-            print("prose_pred:", pose_pred)
+            pose_pred = model_diffuser(batch, num_samp=10, apply_guidance=True)
+            print("pose_pred:", pose_pred)
             visualize_xy_pred_points(
                 pose_pred["pose_xyR_pred"], batch, intrinsics=INTRINSICS
             )

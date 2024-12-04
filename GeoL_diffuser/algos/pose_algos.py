@@ -53,19 +53,18 @@ class PoseDiffusionModel(nn.Module):
         data_batch,
         num_samp=10,
         return_guidance_losses=False,
+        class_free_guide_w=-0.5,
         apply_guidance=False,
-        guide_clean=False,
+        guide_clean=True,
     ):
         curr_policy = self.nets["policy"]
-
         if self.use_ema:
             curr_policy = self.ema_policy
-
         output = curr_policy(
             data_batch,
             num_samp,
             return_guidance_losses,
-            class_free_guide_w=-0.5,
+            class_free_guide_w=class_free_guide_w,
             apply_guidance=apply_guidance,
             guide_clean=guide_clean,
         )

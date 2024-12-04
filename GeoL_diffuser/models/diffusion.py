@@ -327,27 +327,6 @@ class Diffusion(nn.Module):
         pose_xyR = pose_xyR * scale + min_bound_batch
         return pose_xyR
 
-    # ------------------------------------------ guidance utils ------------------------------------------#
-
-    def set_guidance(self, guidance_config_list, example_batch=None):
-        """
-        Instantiates test-time guidance functions using the list of configs (dicts) passed in.
-        """
-        if guidance_config_list is not None:
-            if len(guidance_config_list) > 0:
-                print("Instantiating test-time guidance with configs:")
-                print(guidance_config_list)
-                self.current_guidance = DiffuserGuidance(
-                    guidance_config_list, example_batch
-                )
-
-    def update_guidance(self, **kwargs):
-        if self.current_guidance is not None:
-            self.current_guidance.update(**kwargs)
-
-    def clear_guidance(self):
-        self.current_guidance = None
-
     # ------------------------------------------ TBD ------------------------------------------#
 
     def get_loss_weights(self, action_weight, discount):
@@ -372,20 +351,43 @@ class Diffusion(nn.Module):
 
         return loss_weights
 
-    def q_posterior(self, x_start, x, t):
-        """
-        x_start: x_0 from prediction
-        x: current x
-        """
+    def q_posterior(self, x_start, x_t, t):
         posterior_mean = (
-            extract(self.posterior_mean_coef1, t, x.shape) * x_start
-            + extract(self.posterior_mean_coef2, t, x.shape) * x
+            extract(self.posterior_mean_coef1, t, x_t.shape) * x_start
+            + extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
         )
-        posterior_variance = extract(self.posterior_variance, t, x.shape)
-        posterior_log_variance = extract(
-            self.posterior_log_variance_clipped, t, x.shape
+        posterior_variance = extract(self.posterior_variance, t, x_t.shape)
+        posterior_log_variance_clipped = extract(
+            self.posterior_log_variance_clipped, t, x_t.shape
         )
-        return posterior_mean, posterior_variance, posterior_log_variance
+        return posterior_mean, posterior_variance, posterior_log_variance_clipped
+
+    def guidance(self, x, t, data_batch, aux_info, num_samp=1, return_grad_of=None):
+        """
+        estimate the gradient of rule reward w.r.t. the input trajectory
+        Input:
+            x: [batch_size*num_samp, time_steps, feature_dim].  scaled input trajectory.
+            data_batch: additional info.
+            aux_info: additional info.
+            return_grad_of: which variable to take gradient of guidance loss wrt, if not given,
+                            takes wrt the input x.
+        """
+        assert (
+            self.current_guidance is not None
+        ), "Must instantiate guidance object before calling"
+        bsize = int(x.size(0) / num_samp)
+        horizon = x.size(1)
+        with torch.enable_grad():
+            # compute losses and gradient
+            x_loss = x.reshape((bsize, num_samp, horizon, -1))
+            tot_loss, per_losses = self.current_guidance.compute_guidance_loss(
+                x_loss, t, data_batch
+            )
+            # print(tot_loss)
+            tot_loss.backward()
+            guide_grad = x.grad if return_grad_of is None else return_grad_of.grad
+
+            return guide_grad, per_losses
 
     def predict_start_from_noise(self, x, t, pred_noise, force_noise=False):
         """
@@ -512,22 +514,20 @@ class Diffusion(nn.Module):
         # compute guidance
         guide_losses = None
         guide_grad = torch.zeros_like(model_mean)
-
-        # 1
         if self.current_guidance is not None and apply_guidance:
             assert (
                 not self.predict_epsilon
-            )  # NOTE: guidance not implemented for epsilon prediction
-            if guide_clean:
+            ), "Guidance not implemented for epsilon prediction"
+            if guide_clean:  # Return gradients of x_{t-1}
+                # We want to guide the predicted clean traj from model, not the noisy one
                 model_clean_pred = q_posterior_in[0]
                 x_guidance = model_clean_pred
                 return_grad_of = x
-            else:
+            else:  # Returerequires_grad gradients of x_0
                 x_guidance = model_mean.clone().detach()
                 return_grad_of = x_guidance
                 x_guidance.requires_grad_()
-
-            # TODO: implement our owen guidance loss
+            # TODO: Look into how gradient computation in guidance works, and implement our own guidance
             guide_grad, guide_losses = self.guidance(
                 x_guidance,
                 t,
@@ -537,24 +537,38 @@ class Diffusion(nn.Module):
                 return_grad_of=return_grad_of,
             )
 
-            guide_grad = guide_grad * nonzero_mask
+            # NOTE: empirally, scaling by the variance (sigma) seems to degrade results
+            guide_grad = nonzero_mask * guide_grad  # * sigma
 
-        noise = nonzero_mask * noise * sigma
+        noise = nonzero_mask * sigma * noise
 
         # 2
         if self.current_guidance is not None and guide_clean:
-            assert not self.predict_epsilon
-            guided_clean = q_posterior_in[0] - guide_grad
-            guided_x_t = q_posterior_in[1]
+            assert (
+                not self.predict_epsilon
+            ), "Guidance not implemented for epsilon prediction"
+            # perturb clean trajectory
+            guided_clean = (
+                q_posterior_in[0] - guide_grad
+            )  # x_0' = x_0 - grad (The use of guidance)
+            # use the same noisy input again
+            guided_x_t = q_posterior_in[1]  # x_{t}
+            # re-compute next step distribution with guided clean & noisy trajectories => q(x_{t-1}|x_{t}, x_0')
+            # And remember in the training process, we want to make the output of every diffusion step to be x_0
             model_mean, _, _ = self.q_posterior(
-                guided_clean, guided_x_t, q_posterior_in[2]
+                x_start=guided_clean, x_t=guided_x_t, t=q_posterior_in[2]
             )
+            # NOTE: variance is not dependent on x_start, so it won't change. Therefore, fine to use same noise.
             x_out = model_mean + noise
         else:
             x_out = model_mean - guide_grad + noise
 
         # 3
-        if self.current_guidance is not None and eval_final_guide_loss:
+        if (
+            self.current_guidance is not None
+            and eval_final_guide_loss
+            and apply_guidance
+        ):
             assert (
                 not self.predict_epsilon
             ), "Guidance not implemented for epsilon prediction"
@@ -645,6 +659,7 @@ class Diffusion(nn.Module):
             aux_info,
             num_samp=num_samp,
             class_free_guide_w=class_free_guide_w,
+            **kwargs,
         )
         action["pred_pose_xyR"] = action["pred_pose_xyR"].clamp(-1, 1)
         return action
@@ -724,7 +739,7 @@ class Diffusion(nn.Module):
         class_free_guide_w=-0.5,
         apply_guidance=True,
         guide_clean=False,
-    ):  
+    ):
         aux_info = self.get_aux_info(data_batch)
         cond_samp_out = self.condition_sample(
             data_batch,
@@ -736,7 +751,9 @@ class Diffusion(nn.Module):
             return_guidance_losses=return_guidance_losses,
         )
         pose_xyR_scaled = cond_samp_out["pred_pose_xyR"]
+        # import pdb
 
+        # pdb.set_trace()
         gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
         gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
 
