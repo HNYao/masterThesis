@@ -13,3 +13,12 @@ thirdpart/*
 checkpoints/
 GroundingDINO/
 src/groundingdino
+GeoL_diffuser/__pycache__
+GeoL_diffuser/algos/__pycache__/
+GeoL_diffuser/dataset/__pycache__/
+GeoL_diffuser/models/__pycache__/
+GeoL_diffuser/trainer/__pycache__/
+GeoL_net/models/__pycache__/
+GeoL_net/gpt/__pycache__/
+GeoL_diffuser/dataset/__pycache__/
+GeoL_diffuser/models/utils/__pycache__/
