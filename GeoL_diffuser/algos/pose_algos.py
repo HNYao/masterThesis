@@ -53,7 +53,7 @@ class PoseDiffusionModel(nn.Module):
         data_batch,
         num_samp=10,
         return_guidance_losses=True,
-        class_free_guide_w=-0.5,
+        class_free_guide_w=-1,
         apply_guidance=False,
         guide_clean=True,
     ):

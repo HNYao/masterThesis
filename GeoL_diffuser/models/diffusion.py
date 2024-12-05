@@ -765,7 +765,7 @@ class Diffusion(nn.Module):
         outputs = {"pose_xyR_pred": pose_xyR}
         if "guide_losses" in cond_samp_out:
             outputs["guide_losses"] = cond_samp_out["guide_losses"]
-        
+
         return outputs
 
 
