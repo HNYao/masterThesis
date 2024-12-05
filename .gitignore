@@ -11,7 +11,7 @@ logs
 pointnet2
 thirdpart/*
 checkpoints/
-**/__pycache__/
+**/__pycache__/ 
 GroundingDINO/
 src/groundingdino
 GeoL_diffuser/__pycache__
