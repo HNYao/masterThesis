@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 import torch
-import torch.nn as nn   
+import torch.nn as nn
 import torch.nn.functional as F
 import open3d as o3d
 import cv2
@@ -13,19 +13,20 @@ from GeoL_diffuser.models.helpers import EMA
 from GeoL_net.core.registry import registry
 from GeoL_diffuser.dataset.dataset import *
 
+
 @registry.register_diffusion_model(name="GeoL_diffuser")
 class PoseDiffusionModel(nn.Module):
     def __init__(self, algo_config):
         super().__init__()
         self.algo_config = algo_config
-        #self.train_config = train_config
+        # self.train_config = train_config
         self.nets = nn.ModuleDict()
 
         # conditioning parsing: set in the trainer
 
         # Initialize diffuser
         policy_kwargs = self.algo_config.model_config
-        self.nets['policy'] = Diffusion(**policy_kwargs)
+        self.nets["policy"] = Diffusion(**policy_kwargs)
 
         # set up EMA
         self.use_ema = self.algo_config.ema.use_ema
@@ -46,27 +47,36 @@ class PoseDiffusionModel(nn.Module):
             return {"valLoss": "val/ema_losses_diffusion_loss"}
         else:
             return {"valLoss": "val/losses_diffusion_loss"}
-    
+
     def forward(
-            self,
-            data_batch,
-            num_samp=1,
-            return_guidance_losses=False,
-            apply_guidance=False,
-            guide_clean=False,
-
+        self,
+        data_batch,
+        num_samp=10,
+        return_guidance_losses=True,
+        class_free_guide_w=-1,
+        apply_guidance=False,
+        guide_clean=True,
     ):
-        curr_policy = self.nets['policy']
-
+        curr_policy = self.nets["policy"]
         if self.use_ema:
             curr_policy = self.ema_policy
-
         output = curr_policy(
-            data_batch, num_samp, 
-            return_guidance_losses, 
-            apply_guidance, 
-            class_free_guide_w=0.0,
-            guide_clean=False)
+            data_batch,
+            num_samp,
+            return_guidance_losses,
+            class_free_guide_w=class_free_guide_w,
+            apply_guidance=apply_guidance,
+            guide_clean=guide_clean,
+        )
+        pose_xyR_pred = output["pose_xyR_pred"]
+        B, N, H, _ = pose_xyR_pred.shape
+        output["pose_xyR_pred"] = pose_xyR_pred.view(B, N * H, -1)
+
+        if "guide_losses" in output:
+            for k, v in output["guide_losses"].items():
+                v = TensorUtils.detach(v)
+                output["guide_losses"][k] = v.view(B, N * H)
+
         return output
 
     def reset_parameters(self):
@@ -81,15 +91,15 @@ class PoseDiffusionModel(nn.Module):
     def configure_optimizers(self):
         optim_params = self.algo_config.optimization
         return optim.Adam(
-            params=self.nets['policy'].parameters(),
+            params=self.nets["policy"].parameters(),
             lr=optim_params.learning_rate,
         )
 
-    #def training_step_end(self, *args, **kwargs):
+    # def training_step_end(self, *args, **kwargs):
     #    self.curr_train_step += 1
-    
+
     def get_loss(self, data_batch, batch_idx):
-        losses = self.nets['policy'].compute_losses(data_batch)
+        losses = self.nets["policy"].compute_losses(data_batch)
 
         # summarize losses
         total_loss = 0
@@ -102,7 +112,7 @@ class PoseDiffusionModel(nn.Module):
             "all_losses": losses,
         }
 
-    #def validation_step(self, data_batch, *args, **kwargs):
+    # def validation_step(self, data_batch, *args, **kwargs):
     #    curr_policy = self.nets['policy']
     #    #curr_policy.compute_losses(data_batch)
     #    losses = TensorUtils.detach(curr_policy.compute_losses(data_batch))
@@ -110,6 +120,3 @@ class PoseDiffusionModel(nn.Module):
     #    return_dict = {"losses:": losses}
     #
     #    return return_dict
-
-
-
