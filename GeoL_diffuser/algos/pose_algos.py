@@ -72,10 +72,12 @@ class PoseDiffusionModel(nn.Module):
         B, N, H, _ = pose_xyR_pred.shape
         output["pose_xyR_pred"] = pose_xyR_pred.view(B, N * H, -1)
 
-        if "guide_losses" in output:
-            for k, v in output["guide_losses"].items():
-                v = TensorUtils.detach(v)
-                output["guide_losses"][k] = v.view(B, N * H)
+        # TODO: check the guidance losses
+        # not using guidance in training
+        #if "guide_losses" in output:
+        #    for k, v in output["guide_losses"].items():
+        #        v = TensorUtils.detach(v)
+        #        output["guide_losses"][k] = v.view(B, N * H)
 
         return output
 

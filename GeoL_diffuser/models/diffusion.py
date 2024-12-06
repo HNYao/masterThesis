@@ -183,7 +183,7 @@ class Diffusion(nn.Module):
         object_name_feat = self.object_name_encoder(
             object_name
         )  # [batch_size, 1024] -> [batch_size, num_points, 256]
-        object_name_non_cond_feat = self.object_name_encoder([""])
+        object_name_non_cond_feat = self.object_name_encoder([""] * len(object_name))
 
         object_pc_position_feat = (
             self.obj_position_encoder(object_pc_position)
@@ -222,7 +222,7 @@ class Diffusion(nn.Module):
             [
                 pc_position_affordance_non_cond_feat,
                 pc_position_xy_affordance_non_cond_feat,
-                object_name_non_cond_feat,  # object name not dropped
+                object_name_non_cond_feat, 
                 object_pc_position_non_cond_feat,
             ],
             dim=2,

@@ -36,6 +36,7 @@ class PoseDiffuserTrainer(BaseTrainer):
         print("dataset name:", self.cfg.dataset.name)
         self.dataset = dataset_cls(
             split="train",
+            affordance_threshold=self.cfg.dataset.affordance_threshold,
             root_dir=self.dataset_dir,
         )
 
@@ -190,11 +191,19 @@ class PoseDiffuserTrainer(BaseTrainer):
             drop_mask_cond_affordance = torch.rand(len(batch["affordance"])) < self.cfg.model.training.cond_drop_affordance_p
             drop_mask_cond_obj_pc_position = torch.rand(len(batch["object_pc_position"])) < self.cfg.model.training.cond_drop_object_pc_position_p
             drop_mask_cond_position_xy_affordance = torch.rand(len(batch["pc_position_xy_affordance"])) < self.cfg.model.training.cond_drop_pc_position_xy_affordance_p
+            
+            
+            object_array = np.array(batch["object_name"])
+            drop_mask_cond_object_name = np.random.rand(len(object_array)) < self.cfg.model.training.cond_drop_object_name_p
+            object_array[drop_mask_cond_object_name] = " "
+
+
 
             batch["pc_position"][drop_mask_cond_position] = cond_fill_val
             batch["affordance"][drop_mask_cond_affordance] = cond_fill_val
             batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
             batch["pc_position_xy_affordance"][drop_mask_cond_position_xy_affordance] = cond_fill_val
+            batch["object_name"]= object_array.tolist()
 
             batch_size = batch["image"].shape[0]
             cond_fill_val = -1
