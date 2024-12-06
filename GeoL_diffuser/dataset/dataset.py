@@ -34,12 +34,14 @@ class PoseDataset(Dataset):
 
     def __init__(self,
                  split:str,
+                 affordance_threshold:float = 0.3,
                  root_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg") -> None:
         super().__init__()
 
         self.split = split
         self.root_dir = root_dir
         self.folder_path = self.root_dir
+        self.affordance_threshold = affordance_threshold
 
         self.files = []
         items = os.listdir(self.root_dir)
@@ -130,9 +132,9 @@ class PoseDataset(Dataset):
         max_bound = np.append(np.max(fps_points_scene_from_original, axis=0), 180)
 
         # sample points with affordance value higher than the threshold
-        affordance_thershold = 0.3
+        affordance_threshold = self.affordance_threshold
         
-        fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_thershold]
+        fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold]
 
         if fps_points_scene_affordance.shape[0] == 0:
             fps_points_scene_affordance = fps_points_scene_from_original # avoid 0 size array
@@ -188,17 +190,9 @@ class PoseDataset(Dataset):
         '''
 
         # add noise
-        noise_offset = 80
-        noise = torch.tensor([
-            [noise_offset, 0, 0, 0],
-            [-noise_offset, 0, 0, 0],
-            [0, noise_offset, 0, 0],
-            [0, -noise_offset, 0, 0],
-            [noise_offset, noise_offset, 0, 0],
-            [-noise_offset, -noise_offset, 0, 0],
-            [noise_offset, -noise_offset, 0, 0],
-            [-noise_offset, noise_offset, 0, 0]
-        ], dtype=torch.float32)
+        noise_scale = 100
+        noise = torch.randn(8,4, dtype=torch.float32) * noise_scale
+
         noise_4d = noise
         noise_4d[:, 2:] = 0
         noise_xyR = noise[:, :3]
