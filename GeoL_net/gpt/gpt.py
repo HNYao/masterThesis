@@ -335,12 +335,6 @@ def visualize_bbox_set(image_path, bbox_list, is_mask=False):
 
 
 
-
-
-  
-
-    
-
 if __name__ == "__main__":
     image_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id18/cup_0004_white/with_obj/test_pbr/000000/rgb/000000.jpg"
     object_name = "a pair of galsses"
