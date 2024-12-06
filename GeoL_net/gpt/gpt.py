@@ -1,11 +1,11 @@
 import os
-import sys
-import time
+import cv2
 from typing import Optional
 import openai
 import base64
 import requests
-
+import numpy as np
+import ast
 def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
@@ -170,9 +170,180 @@ def extract_response(response: str) -> str:
     direction = response[1].split(":")[1].strip()
     return anchor, direction
 
+def chatgpt_object_detection_bbox(image_path: str, object_name: str):
+    """
+    ChatGPT condition for object detection and bounding box
+
+    Params:
+    image_path: image path or image
+    object_name: object name to be detected
+
+    Return:
+    List of bounding box coordinates, [[min x, min y , max, x, max y], ...]
+    """
+
+    base64_image = encode_image(image_path)
+
+    api_key = os.getenv("CHATGPT_API_KEY")
+
+    headers = {
+        "content-type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system", 
+            "content": "You are an assistant that helps people detect object on the table.\
+                  You are given a image of the tabletop and an target object to be detected. \
+                  Please respond, in text, with bounding box coordinates of the object position.\
+                  The bounding box coordinates should be of the form [min x, min y, max x, max y] in descending  order of confidence\
+                  where x y are 0.00-1.00 correspond to fraction of the image along the width and height of the image with the top left of the image as the origin. \
+                  If there are no locations in the image where \
+                  a <object_type> could be placed, respond only with the empty list '[]'.\
+                  do not include any other text in your response."
+                    },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": f"Please find the bounding box of {object_name} in the following image"
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": f"data:image/jpeg;base64,{base64_image}"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 300
+      }
+
+    reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    print(reponse.json()['choices'][0]['message']['content'])
+    bbox_list = extract_bbox_list_from_response(reponse.json()['choices'][0]['message']['content'])
+    return bbox_list
+
+def extract_bbox_list_from_response(response: str):
+    """
+    Extract the bounding box coordinates from the chatgpt response
+
+    Params:
+    response: chatgpt response
+
+    Return:
+    List of bounding box coordinates, [[min x, min y , max, x, max y], ...]
+    """
+    try:
+        return ast.literal_eval(response)
+    except (ValueError, SyntaxError) as e:
+        print(f"Error parsing the input string: {e}")
+        return None
+    
+
+def chatgpt_object_placement_bbox(image_path: str, prompts: str):
+    """
+    ChatGPT condition for object detection and bounding box
+
+    Params:
+    image_path: image path or image
+    object_name: object name to be detected
+
+    Return:
+    List of bounding box coordinates, [[min x, min y , max, x, max y], ...]
+    """
+
+    base64_image = encode_image(image_path)
+
+    api_key = os.getenv("CHATGPT_API_KEY")
+
+    headers = {
+        "content-type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system", 
+            "content": "You are an assistant that helps people place object on the table.\
+                  Plese avoid collision and overlap with other objects.\
+                  You are given a image of the tabletop and an target object to be placed. \
+                  Please respond, in text, with bounding box coordinates of potential locations to place the object.\
+                  The bounding box coordinates should be of the form [min x, min y, max x, max y] in descending  order of confidence\
+                  where x y are 0.00-1.00 correspond to fraction of the image along the width and height of the image with the top left of the image as the origin. \
+                  If there are no locations in the image where \
+                  a <object_type> could be placed, respond only with the empty list '[]'.\
+                  do not include any other text in your response."
+                    },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": f"Please find the bounding box of puting {prompts} in the following image"
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": f"data:image/jpeg;base64,{base64_image}"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 300
+      }
+
+    reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    print(reponse.json()['choices'][0]['message']['content'])
+    bbox_list = extract_bbox_list_from_response(reponse.json()['choices'][0]['message']['content'])
+    return bbox_list
+
+
+def visualize_bbox_set(image_path, bbox_list, is_mask=False):
+    """
+    Visualize the bounding box on the image
+
+    Params:
+    image: image
+    bbox_list: list of bounding box coordinates, [[min x, min y , max, x, max y], ...]
+
+    Return:
+    Image with bounding box
+    """
+    image = cv2.imread(image_path)
+    height, width, _ = image.shape
+    assert len(bbox_list) > 0, "No object detected in the image"
+
+    for bbox in bbox_list:
+        [min_x, min_y, max_x, max_y] = bbox
+        min_x = int(min_x * width)
+        min_y = int(min_y * height)
+        max_x = int(max_x * width)
+        max_y = int(max_y * height)
+        cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 255, 0), 2)
+    
+    cv2.imshow("image", image)
+    cv2.waitKey()
+
+
+
+
+
+  
+
+    
+
 if __name__ == "__main__":
     image_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id18/cup_0004_white/with_obj/test_pbr/000000/rgb/000000.jpg"
-    mode = "object_placement"
-    #mode = "scene_understanding"
-    anchor, direction= chatgpt_condition(image_path, mode)
-    print(anchor, direction)
+    object_name = "a pair of galsses"
+    prompts = "cup in right front side of the eyeglasses"
+    bbox_list = chatgpt_object_placement_bbox(image_path, prompts)
+    visualize_bbox_set(image_path, bbox_list)
