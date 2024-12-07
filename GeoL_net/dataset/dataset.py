@@ -138,7 +138,7 @@ class GeoLPlacementDataset(Dataset):
         rgb_image = Image.open(os.path.join(file_path, "no_obj/test_pbr/000000/rgb/000000.jpg")).convert("RGB")
         rgb_image = np.array(rgb_image).astype(float)
         rgb_image = np.transpose(rgb_image, (2, 0, 1))  # Change to (C, H, W) format for PyTorch
-
+        
         # Load the text guidance and reference object from the JSON file
         parent_dir = os.path.dirname(file_path)
         json_path = os.path.join(parent_dir, "text_guidance.json")
@@ -335,7 +335,7 @@ class GeoLPlacementDataset_direction_mult(Dataset):
         scene_pcd = o3d.io.read_point_cloud(pc_path) # use red mask instead of mask.ply
 
         # scene pcd points and colors
-        scene_pcd_points_ori = np.asarray(scene_pcd.points)
+        scene_pcd_points_ori = np.asarray(scene_pcd.points) / 1000.0
         scene_pcd_points = (np.linalg.inv(cam_rotation_matrix) @ scene_pcd_points_ori.T).T  # reverse rotation to original position (can be aligned to image directly)
         scene_pcd_colors = np.asarray(scene_pcd.colors)
 
@@ -367,10 +367,15 @@ class GeoLPlacementDataset_direction_mult(Dataset):
         rgb_image = Image.open(rgb_img_path).convert("RGB")
         rgb_image = np.array(rgb_image).astype(float)
         rgb_image = np.transpose(rgb_image, (2, 0, 1))  # Change to (C, H, W) format for PyTorch
+        rgb_image = rgb_image / 255.0 # FIXME: Normalize the image to [0, 1]
+        assert rgb_image.max() <= 1.0 and rgb_image.min() >= 0.0
 
         # Load the depth image
         depth_img_path = os.path.join(pc_path.rsplit('/',1)[0], "no_obj/test_pbr/000000/depth/000000.png")
-        depth = np.array(cv2.imread(depth_img_path, cv2.IMREAD_UNCHANGED)).astype(float)
+        depth = np.array(cv2.imread(depth_img_path, cv2.IMREAD_UNCHANGED)).astype(np.float32)
+        depth = depth / 1000.0 # depth shall be in the unit of meters
+        depth[depth > 2] = 0 # remove the invalid depth values
+        assert depth.max() <= 2.0 and depth.min() >= 0.0
 
         # anchor name
         des = pc_path.split('/')[-2].split('_')[-1]

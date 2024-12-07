@@ -19,7 +19,7 @@ from GeoL_net.core.logger import logger
 from GeoL_net.core.registry import registry
 from GeoL_net.utils.ddp_utils import rank0_only
 from GeoL_net.models.modules import ProjectColorOntoImage
-from GeoL_net.dataset_gen.RGBD2PC import backproject
+from GeoL_net.dataset_gen.RGBD2PC import backproject, project_3d
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 from clip.model import tokenize
 
@@ -79,7 +79,7 @@ class PoseDiffuserTrainer(BaseTrainer):
     def init_model(self):
         # initialize model
         model_cls = PoseDiffusionModel
-        self.model = model_cls(self.cfg.model).to(self.device)  # TODO: check the input
+        self.model = model_cls(self.cfg.model).to(self.device) 
         self.pretrained_state = defaultdict(int)
 
         # load pretrained model
@@ -232,7 +232,7 @@ class PoseDiffuserTrainer(BaseTrainer):
                 drop_mask_cond_position_xy_affordance
             ] = cond_fill_val
 
-            outputs = self.model(data_batch=batch)["pose_xyR_pred"]
+            outputs = self.model(data_batch=batch)["pose_xyz_pred"]
 
             # compute the loss and its gradients
             loss = self.model.get_loss(batch, i)["loss"]
@@ -376,15 +376,15 @@ class PoseDiffuserTrainer(BaseTrainer):
                 pose_4d_pred = self.get_4dpose_pred(
                     model_pred, last_batch
                 )  # [batch_size, 8, 3]
-                img_pred_list, img_gt_list = self.visualize_prediction_pose(
+                img_pred_list, img_gt_list = self.visualize_prediction_with_bound(
                     pose_4d_pred, last_batch
                 )
                 self.log_img_table(epoch, img_pred_list, img_gt_list)
 
                 logger.info("Pose_4d_pred: {}".format(pose_4d_pred[0]))
                 logger.info("Ground truth: {}".format(last_batch["gt_pose_4d"][0][0]))
-                logger.info("Min: {}".format(last_batch["gt_pose_xyR_min_bound"][0]))
-                logger.info("Max: {}".format(last_batch["gt_pose_xyR_max_bound"][0]))
+                logger.info("Min: {}".format(last_batch["gt_pose_xyz_min_bound"][0]))
+                logger.info("Max: {}".format(last_batch["gt_pose_xyz_max_bound"][0]))
 
             logger.info(
                 "[Process: {}] Synchronize training processes".format(self.local_rank)
@@ -544,6 +544,135 @@ class PoseDiffuserTrainer(BaseTrainer):
             pil_image = Image.fromarray(np.uint8(image_np))
             img_gt_list.append(pil_image)
 
+        return img_pred_list, img_gt_list
+    
+    def visualize_prediction_with_bound(self, pred_xyz_pose, batch):
+        """
+        Visualize the prediction of the model
+
+        Args:
+            pred_xyz_pose: xyz pose prediction, [batch_size, 80, 3]
+            batch: data batch
+
+        Returns:
+            img_pred_list: list of images of the prediction
+            img_gt_list: list of images of the ground truth
+        """
+        img_gt_list = []
+        img_pred_list = []
+        batch_size = pred_xyz_pose.shape[0]
+
+        intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+        ############################################## Visualize the groundtruth ##############################################
+        for i in range(batch_size):
+            gt_pose_xyz = batch['gt_pose_xyz'].cpu().numpy()[i] 
+            gt_pose_xyz_min_bound = batch['gt_pose_xyz_min_bound'].cpu().numpy()[i, :3]
+            gt_pose_xyz_max_bound = batch['gt_pose_xyz_max_bound'].cpu().numpy()[i, :3]
+
+            image = batch['image'].cpu().numpy()[i] # [3, H, W]
+            image = (np.transpose(image, (1, 2, 0)) * 255).astype(np.uint8)
+            depth = batch['depth'].cpu().numpy()[i] # [H, W]
+            points_scene, _ = backproject(depth, intrinsics, depth>0) # [num_points, 3]
+
+            # Measure the pairwise distance between the points
+            distances = np.sqrt(
+                ((points_scene[:, :2][:, None, :] - gt_pose_xyz[:, :2]) ** 2).sum(axis=2)
+            )
+
+            # Find the topk scene points that are closest to the anchor points (gt_pose_xyR)
+            scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+            scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+            topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: gt_pose_xyz.shape[0]]
+            tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+            points_for_place = points_scene[topk_points_id]
+            points_for_place_bound = np.stack([gt_pose_xyz_min_bound, gt_pose_xyz_max_bound], axis=0)
+            # points_for_place = gt_pose_xyR.copy()
+            # points_for_place[:, 2] = 1.0
+
+            # Visualize the image
+            uv_for_place = project_3d(points_for_place, intrinsics)
+            uv_for_place_bound = project_3d(points_for_place_bound, intrinsics)
+
+
+            image_gt = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            for i in range(uv_for_place.shape[0]):
+                uv_color = np.random.randint(0, 255, 3).astype(np.uint8)
+                cv2.circle(image_gt, 
+                        (int(uv_for_place[i][0]), int(uv_for_place[i][1])), 
+                        5, 
+                        (int(uv_color[0]), int(uv_color[1]), int(uv_color[2])), -1)
+            cv2.circle(image_gt, 
+                        (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                        8, 
+                        (255, 0, 0), -1)
+            cv2.circle(image_gt, 
+                        (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])), 
+                        8, 
+                        (0, 0, 255), -1)
+            cv2.rectangle(image_gt, 
+                        (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                        (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])),
+                        (0, 255, 0), 2)
+
+            img_gt_list.append(image_gt)
+        ############################################## Visualize the prediction ##############################################
+        for i in range(batch_size):
+            pred_pose_xyz = pred_xyz_pose.cpu().numpy()[i] 
+            gt_pose_xyz_min_bound = batch['gt_pose_xyz_min_bound'].cpu().numpy()[i, :3]
+            gt_pose_xyz_max_bound = batch['gt_pose_xyz_max_bound'].cpu().numpy()[i, :3]
+
+            image = batch['image'].cpu().numpy()[i] # [3, H, W]
+            image = (np.transpose(image, (1, 2, 0)) * 255).astype(np.uint8)
+            depth = batch['depth'].cpu().numpy()[i] # [H, W]
+            points_scene, _ = backproject(depth, intrinsics, depth>0) # [num_points, 3]
+
+            # Measure the pairwise distance between the points
+            distances = np.sqrt(
+                ((points_scene[:, :2][:, None, :] - pred_pose_xyz[:, :2]) ** 2).sum(axis=2)
+            )
+
+            # Find the topk scene points that are closest to the anchor points (gt_pose_xyR)
+            scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+            scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+            topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: pred_pose_xyz.shape[0]]
+            tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+            points_for_place = points_scene[topk_points_id]
+            points_for_place_bound = np.stack([gt_pose_xyz_min_bound, gt_pose_xyz_max_bound], axis=0)
+            # points_for_place = gt_pose_xyR.copy()
+            # points_for_place[:, 2] = 1.0
+
+            # Visualize the image
+            uv_for_place = project_3d(points_for_place, intrinsics)
+            uv_for_place_bound = project_3d(points_for_place_bound, intrinsics)
+
+
+            image_pred = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            for i in range(uv_for_place.shape[0]):
+                uv_color = np.random.randint(0, 255, 3).astype(np.uint8)
+                cv2.circle(image_pred, 
+                        (int(uv_for_place[i][0]), int(uv_for_place[i][1])), 
+                        5, 
+                        (int(uv_color[0]), int(uv_color[1]), int(uv_color[2])), -1)
+            cv2.circle(image_pred, 
+                        (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                        8, 
+                        (255, 0, 0), -1)
+            cv2.circle(image_pred, 
+                        (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])), 
+                        8, 
+                        (0, 0, 255), -1)
+            cv2.rectangle(image_pred, 
+                        (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                        (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])),
+                        (0, 255, 0), 2)
+
+            img_gt_list.append(image_pred)
         return img_pred_list, img_gt_list
 
 

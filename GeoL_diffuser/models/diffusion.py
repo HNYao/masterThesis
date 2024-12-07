@@ -25,7 +25,7 @@ class Diffusion(nn.Module):
         clip_denoised=True,
         predict_epsilon=False,
         supervise_epsilons=False,
-        horizon=8,
+        horizon=80,
         **kwargs,
     ):
         super(Diffusion, self).__init__()
@@ -238,10 +238,10 @@ class Diffusion(nn.Module):
                 "gt_pose_4d_min_bound"
             ],  # [batch_size, 4]
             "gt_pose_4d_max_bound": data_batch["gt_pose_4d_max_bound"],
-            "gt_pose_xyR_min_bound": data_batch[
-                "gt_pose_xyR_min_bound"
-            ],  # [batch_size, 3] x, y, Rotation
-            "gt_pose_xyR_max_bound": data_batch["gt_pose_xyR_max_bound"],
+            "gt_pose_xyz_min_bound": data_batch[
+                "gt_pose_xyz_min_bound"
+            ],  # [batch_size, 3] x, y, z
+            "gt_pose_xyz_max_bound": data_batch["gt_pose_xyz_max_bound"],
         }
 
         return aux_info
@@ -289,6 +289,27 @@ class Diffusion(nn.Module):
 
         return pose_xyR
 
+    def scale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+        """
+        scale the pose_xyz to [-1, 1]
+        pose_xyR: B * H * 3
+        """
+        if len(pose_xyz.shape) == 3:
+            min_bound_batch = xyz_min_bound.unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1)
+        elif len(pose_xyz.shape) == 4:
+            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_xyz")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyz = (pose_xyz - min_bound_batch) / (scale + 1e-6)
+        pose_xyz = 2 * pose_xyz - 1
+        pose_xyz = pose_xyz.clamp(-1, 1)
+
+        return pose_xyz
+
     def descale_pose(self, pose_4d, min_bound, max_bound):
         """
         descale the pose_4d to the original range
@@ -326,6 +347,25 @@ class Diffusion(nn.Module):
         pose_xyR = (pose_xyR + 1) / 2
         pose_xyR = pose_xyR * scale + min_bound_batch
         return pose_xyR
+    
+    def descale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+        """
+        descale the pose_xyz to the original range
+        pose_xyz: B * N * H * 3
+        """
+        if len(pose_xyz.shape) == 3:
+            min_bound_batch = xyz_min_bound.unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1)
+        elif len(pose_xyz.shape) == 4:
+            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_xyz")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyz = (pose_xyz + 1) / 2
+        pose_xyz = pose_xyz * scale + min_bound_batch
+        return pose_xyz
 
     # ------------------------------------------ TBD ------------------------------------------#
 
@@ -633,7 +673,7 @@ class Diffusion(nn.Module):
         x = TensorUtils.reshape_dimensions(
             x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp)
         )
-        out_dict = {"pred_pose_xyR": x}
+        out_dict = {"pred_pose_xyz": x}
         if return_guidance_losses:
             out_dict.update({"guide_losses": guide_losses})
 
@@ -662,7 +702,7 @@ class Diffusion(nn.Module):
             class_free_guide_w=class_free_guide_w,
             **kwargs,
         )
-        action["pred_pose_xyR"] = action["pred_pose_xyR"].clamp(-1, 1)
+        action["pred_pose_xyx"] = action["pred_pose_xyz"].clamp(-1, 1)
         return action
 
     # ------------------- Training ----------------
@@ -723,11 +763,11 @@ class Diffusion(nn.Module):
     def compute_losses(self, data_batch):
         aux_info = self.get_aux_info(data_batch)
 
-        pose_xyR = data_batch["gt_pose_xyR"]
-        gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
-        gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
+        pose_xyz = data_batch["gt_pose_xyz"]
+        gt_pose_xyz_min_bound = data_batch["gt_pose_xyz_min_bound"]
+        gt_pose_xyz_max_bound = data_batch["gt_pose_xyz_max_bound"]
 
-        x = self.scale_xyR_pose(pose_xyR, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound)
+        x = self.scale_xyz_pose(pose_xyz, gt_pose_xyz_min_bound, gt_pose_xyz_max_bound)
         diffusion_loss = self.loss(x, aux_info=aux_info)
         losses = OrderedDict(diffusion_loss=diffusion_loss)
         return losses
@@ -751,18 +791,18 @@ class Diffusion(nn.Module):
             guide_clean=guide_clean,
             return_guidance_losses=return_guidance_losses,
         )
-        pose_xyR_scaled = cond_samp_out["pred_pose_xyR"]
+        pose_xyz_scaled = cond_samp_out["pred_pose_xyz"]
         # import pdb
 
         # pdb.set_trace()
-        gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
-        gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
+        gt_pose_xyz_min_bound = data_batch["gt_pose_xyz_min_bound"]
+        gt_pose_xyz_max_bound = data_batch["gt_pose_xyz_max_bound"]
 
-        pose_xyR = self.descale_xyR_pose(
-            pose_xyR_scaled, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound
+        pose_xyz = self.descale_xyz_pose(
+            pose_xyz_scaled, gt_pose_xyz_min_bound, gt_pose_xyz_max_bound
         )
 
-        outputs = {"pose_xyR_pred": pose_xyR}
+        outputs = {"pose_xyz_pred": pose_xyz}
         if "guide_losses" in cond_samp_out:
             outputs["guide_losses"] = cond_samp_out["guide_losses"]
 

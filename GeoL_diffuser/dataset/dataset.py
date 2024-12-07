@@ -17,6 +17,16 @@ import trimesh
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 from GeoL_diffuser.dataset.visualize_bbox import create_bounding_box
 from GeoL_diffuser.models.utils.fit_plane import *
+from GeoL_net.dataset_gen.RGBD2PC import backproject
+
+def visualize_sphere_o3d(center, color=[1, 0, 0], size=0.03):
+    # center
+    center_o3d = o3d.geometry.TriangleMesh.create_sphere()
+    center_o3d.compute_vertex_normals()
+    center_o3d.scale(size, [0, 0, 0])
+    center_o3d.translate(center)
+    center_o3d.paint_uniform_color(color)
+    return center_o3d
 
 warnings.filterwarnings("ignore")
 
@@ -35,6 +45,7 @@ class PoseDataset(Dataset):
     def __init__(self,
                  split:str,
                  affordance_threshold:float = 0.3,
+                 gt_pose_samples:int = 8,
                  root_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg") -> None:
         super().__init__()
 
@@ -44,6 +55,7 @@ class PoseDataset(Dataset):
         self.affordance_threshold = affordance_threshold
 
         self.files = []
+        self.gt_pose_samples = gt_pose_samples
         items = os.listdir(self.root_dir)
         for item in items:
             sub_folder_path = os.path.join(self.folder_path, item) # e.g. 'dataset/scene_RGBD_mask_v2/id164_1'
@@ -90,19 +102,35 @@ class PoseDataset(Dataset):
         scene_pcd = o3d.io.read_point_cloud(pc_path) # use red mask instead of mask.ply
 
         # scene pcd points and colors
-        scene_pcd_points_ori = np.asarray(scene_pcd.points)
+        scene_pcd_points_ori = np.asarray(scene_pcd.points) / 1000 # convert to meters
         scene_pcd_points = (np.linalg.inv(cam_rotation_matrix) @ scene_pcd_points_ori.T).T  # reverse rotation to original position, whose normal is not aligned with z-axis (can be aligned to image directly)
         scene_pcd_colors = np.asarray(scene_pcd.colors)
 
+        # get color and depth
+        rgb_img_path = os.path.join(pc_path.rsplit('/',1)[0], "no_obj/test_pbr/000000/rgb/000000.jpg")
+        rgb_image = Image.open(rgb_img_path).convert("RGB")
+        rgb_image = np.array(rgb_image).astype(float)
+        rgb_image = np.transpose(rgb_image, (2, 0, 1)) 
+        rgb_image = rgb_image / 255.0 # FIXME: Normalize the image to [0, 1]
+        assert rgb_image.max() <= 1.0 and rgb_image.min() >= 0.0
+
+        depth_path = pc_path.rsplit("/", 1)[0] + "/no_obj/test_pbr/000000/depth/000000.png"
+        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+        depth = depth.astype(np.float32)
+        depth = depth / 1000.0 # depth shall be in the unit of meters
+        depth[depth > 2] = 0 # remove the invalid depth values
+        assert depth.max() <= 2.0 and depth.min() >= 0.0
+        scene_points_perfect, scene_points_id = backproject(depth, intrinsics, depth > 0)
+        
         # make the plane noraml align with z-axis
             # get the T_plane and plane_model
         T_plane, plane_model = get_tf_for_scene_rotation(scene_pcd_points)
-        scene_pcd_points = np.dot(scene_pcd_points, T_plane[:3, :3]) + T_plane[:3, 3] # norm z-axis
+        # scene_pcd_points = np.dot(scene_pcd_points, T_plane[:3, :3]) + T_plane[:3, 3] # norm z-axis
+        
         # visualize
-        #scene_pcd.points = o3d.utility.Vector3dVector(scene_pcd_points)
+        # scene_pcd.points = o3d.utility.Vector3dVector(scene_pcd_points)
         #coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1000.0, origin=[0, 0, 0])
         #o3d.visualization.draw_geometries([scene_pcd, coordinate_frame])
-
 
         # Convert points and colors to tensors
         scene_pcd_tensor = torch.tensor(scene_pcd_points, dtype=torch.float32).unsqueeze(0)
@@ -118,29 +146,33 @@ class PoseDataset(Dataset):
         fps_points_scene_from_original = scene_pcd_points[fps_indices_scene_np]
         fps_colors_scene_from_original = scene_pcd_colors[fps_indices_scene_np]
 
-
-        # Get the label color 
+        # Get the label (grenn channel color) 
         fps_mask_mapped = fps_colors_scene_from_original[:,1].reshape(-1, 1) # get label from green mask directly
         
-        # find the point position with the highest green value
+        # find the point position with the highest affordance (G channel value)
         max_green_index = np.argmax(fps_colors_scene_from_original[:,1])
         max_green_point = torch.tensor(fps_points_scene_from_original[max_green_index], dtype=torch.float32)
 
-
-        # gt_pose_4d_min_bound find the min bound of the pc
+        # gt_pose_4d_min_bound find the min bound of the whole pc
         min_bound = np.append(np.min(fps_points_scene_from_original, axis=0), -180)
         max_bound = np.append(np.max(fps_points_scene_from_original, axis=0), 180)
 
         # sample points with affordance value higher than the threshold
         affordance_threshold = self.affordance_threshold
-        
-        fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold]
+        fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold] # [F, 3]
+        fps_points_scene_affordance_perfect = fps_points_scene_affordance
+        # fps_points_to_perfect_scene_dist = np.linalg.norm(fps_points_scene_affordance[:, None] - scene_points_perfect[None], axis=-1) # [F, N]
+        # fps_points_to_perfect_scene_dist = np.min(fps_points_to_perfect_scene_dist, axis=1) # [F,]
+        # fps_points_scene_affordance_perfect = fps_points_scene_affordance[fps_points_to_perfect_scene_dist < 0.1] # [F, 3]
+        if fps_points_scene_affordance_perfect.shape[0] == 0:
+            fps_points_scene_affordance_perfect = fps_points_scene_from_original # avoid 0 size array
 
-        if fps_points_scene_affordance.shape[0] == 0:
-            fps_points_scene_affordance = fps_points_scene_from_original # avoid 0 size array
+        bound_affordance_z_mid = np.median(fps_points_scene_affordance_perfect[:, 2])
+        min_bound_affordance = np.append(np.min(fps_points_scene_affordance_perfect, axis=0), -180)
+        max_bound_affordance = np.append(np.max(fps_points_scene_affordance_perfect, axis=0), 180)
+        min_bound_affordance[2] = bound_affordance_z_mid * 0.9
+        max_bound_affordance[2] = bound_affordance_z_mid * 0.9
 
-        min_bound_affordance = np.append(np.min(fps_points_scene_affordance, axis=0), -180)
-        max_bound_affordance = np.append(np.max(fps_points_scene_affordance, axis=0), 180)
         # sample 512 points from fps_points_scene_affordance
         fps_points_scene_affordance = fps_points_scene_affordance[np.random.choice(fps_points_scene_affordance.shape[0], 512, replace=True)] # [512, 3]
 
@@ -163,15 +195,24 @@ class PoseDataset(Dataset):
         obj_mesh.apply_scale(obj_scale)
         obj_pc = obj_mesh.sample(512)
 
-        # get color and depth
-        rgb_img_path = os.path.join(pc_path.rsplit('/',1)[0], "no_obj/test_pbr/000000/rgb/000000.jpg")
-        rgb_image = Image.open(rgb_img_path).convert("RGB")
-        rgb_image = np.array(rgb_image).astype(float)
-        rgb_image = np.transpose(rgb_image, (2, 0, 1))
-        depth_path = pc_path.rsplit("/", 1)[0] + "/no_obj/test_pbr/000000/depth/000000.png"
+        # ################### DEBUG Acqurie the scene pcd ###################
+        # scene_colors = rgb_image[:, scene_points_id[0], scene_points_id[1]].T
+        # scene_pcd2 = o3d.geometry.PointCloud()
+        # scene_pcd2.points = o3d.utility.Vector3dVector(scene_points_perfect)
+        # scene_pcd2.colors = o3d.utility.Vector3dVector(scene_colors)
 
-        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-        depth = depth.astype(np.float32) 
+        # fps_pcd = o3d.geometry.PointCloud()
+        # fps_pcd.points = o3d.utility.Vector3dVector(fps_points_scene_affordance_perfect)
+        # fps_pcd.paint_uniform_color([1, 0, 0])
+
+        # min_bound_vis = min_bound_affordance[:3]
+        # max_bound_vis = max_bound_affordance[:3]
+        # min_bound_vis_o3d = visualize_sphere_o3d(min_bound_vis, color=[0, 1, 0])
+        # max_bound_vis_o3d = visualize_sphere_o3d(max_bound_vis, color=[0, 1, 0])
+        # vis = [min_bound_vis_o3d, max_bound_vis_o3d, fps_pcd, scene_pcd2]
+        # o3d.visualization.draw(vis)
+        # ################### DEBUG Acqurie the scene pcd ###################
+
 
         # tsdf grid
         '''
@@ -190,12 +231,13 @@ class PoseDataset(Dataset):
         '''
 
         # add noise
-        noise_scale = 100
-        noise = torch.randn(8,4, dtype=torch.float32) * noise_scale
+        noise_scale = 0.05
+        noise = torch.randn(self.gt_pose_samples,4, dtype=torch.float32) * noise_scale
 
         noise_4d = noise
         noise_4d[:, 2:] = 0
         noise_xyR = noise[:, :3]
+        noise_xyz = noise[:, :3]
         # Prepare the final sample
         sample = {
             
@@ -203,13 +245,16 @@ class PoseDataset(Dataset):
             "affordance": fps_mask_mapped,  # [num_points, 1]New mask based on turbo colormap
             "object_name": obj_name,
             "object_pc_position": obj_pc, # [num_obj_points, 3]
-            "gt_pose_4d": torch.cat((max_green_point, obj_rotation), dim=0).unsqueeze(0).repeat(8, 1) + noise_4d, 
+            "gt_pose_4d": torch.cat((max_green_point, obj_rotation), dim=0).unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_4d, 
             "gt_pose_4d_min_bound":min_bound, #[4,]
             "gt_pose_4d_max_bound":max_bound, #[4,]
             "pc_position_xy_affordance": fps_points_scene_affordance[:, :2], #[num_affordance, 2]
-            "gt_pose_xyR": torch.cat((max_green_point[:2], obj_rotation), dim=0).unsqueeze(0).repeat(8, 1) + noise_xyR, #[8, 3]
-            "gt_pose_xyR_min_bound":np.delete(min_bound_affordance, 2, axis=0), #[3,]
-            "gt_pose_xyR_max_bound":np.delete(max_bound_affordance, 2, axis=0), #[3,]
+            "gt_pose_xyR": torch.cat((max_green_point[:2], obj_rotation), dim=0).unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyR, #[pose_samples, 3]
+            "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
+            "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
+            "gt_pose_xyz": max_green_point.unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyz, #[pose_samples, 3]
+            "gt_pose_xyz_min_bound": min_bound_affordance, #[4,]
+            "gt_pose_xyz_max_bound": max_bound_affordance, #[4,]
             #"tsdf_grid": tsdf_grid, 
             "depth": depth,
             "image": rgb_image,
@@ -502,7 +547,6 @@ class PoseDataset_affordance_overfit(Dataset):
             "gt_pose_xyR_max_bound":np.delete(max_bound_affordance, 2, axis=0), #[3,]
             "tsdf_grid": tsdf_grid, 
         }
-
         return sample
 
 def visualize_bound(batch):
@@ -528,18 +572,88 @@ def visualize_bound(batch):
         o3d.visualization.draw_geometries([bounding_box, bounding_box_affordance, pcd])
 
 
-
-
-
-
-
 if __name__ == "__main__":
-    dataset_cls = PoseDataset(split="train", root_dir="dataset/scene_RGBD_mask_v2_kinect_cfg")
-    train_loader = DataLoader(dataset_cls, batch_size=2)
+
+    def project_3d(point, intr):
+        """
+        Project 3D points to 2D
+        Args:
+            point: [num_points, 3]
+            intr: [3, 3]
+        Returns:
+            uv: [num_points, 2]
+        """
+        point = point / point[..., 2:]
+        uv = point @ intr.T
+        uv = uv[..., :2]
+        return uv
+
+    dataset_cls = PoseDataset(split="train", root_dir="dataset/scene_RGBD_mask_v2_kinect_cfg", gt_pose_samples=80, affordance_threshold=0.001)
+    train_loader = DataLoader(dataset_cls, batch_size=1)
     len(dataset_cls)
     print("dataset length: ", len(dataset_cls))
+    intrinsics = np.array(
+            [
+                [607.09912 / 2, 0.0, 636.85083 / 2],
+                [0.0, 607.05212 / 2, 367.35952 / 2],
+                [0.0, 0.0, 1.0],
+            ]
+        )
     for i, batch in enumerate(train_loader):
-        batch = batch
+        # Read the data
+        gt_pose_xyR = batch['gt_pose_xyR'].cpu().numpy()[0] 
+        gt_pose_xyz_min_bound = batch['gt_pose_xyz_min_bound'].cpu().numpy()[0, :3]
+        gt_pose_xyz_max_bound = batch['gt_pose_xyz_max_bound'].cpu().numpy()[0, :3]
+        breakpoint()
 
+        image = batch['image'].cpu().numpy()[0] # [3, H, W]
+        image = (np.transpose(image, (1, 2, 0)) * 255).astype(np.uint8)
+        depth = batch['depth'].cpu().numpy()[0] # [H, W]
+        points_scene, _ = backproject(depth, intrinsics, depth>0) # [num_points, 3]
+
+        # Measure the pairwise distance between the points
+        distances = np.sqrt(
+            ((points_scene[:, :2][:, None, :] - gt_pose_xyR[:, :2]) ** 2).sum(axis=2)
+        )
+
+        # Find the topk scene points that are closest to the anchor points (gt_pose_xyR)
+        scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+        scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+        topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: gt_pose_xyR.shape[0]]
+        tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+        points_for_place = points_scene[topk_points_id]
+        points_for_place_bound = np.stack([gt_pose_xyz_min_bound, gt_pose_xyz_max_bound], axis=0)
+        # points_for_place = gt_pose_xyR.copy()
+        # points_for_place[:, 2] = 1.0
+
+        # Visualize the image
+        uv_for_place = project_3d(points_for_place, intrinsics) # [80, 2]
+        uv_for_place_bound = project_3d(points_for_place_bound, intrinsics)
+
+
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        for i in range(uv_for_place.shape[0]):
+            uv_color = np.random.randint(0, 255, 3).astype(np.uint8)
+            cv2.circle(image, 
+                    (int(uv_for_place[i][0]), int(uv_for_place[i][1])), 
+                    5, 
+                    (int(uv_color[0]), int(uv_color[1]), int(uv_color[2])), -1)
+        cv2.circle(image, 
+                    (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                    8, 
+                    (255, 0, 0), -1)
+        cv2.circle(image, 
+                    (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])), 
+                    8, 
+                    (0, 0, 255), -1)
+        cv2.rectangle(image, 
+                    (int(uv_for_place_bound[0, 0]), int(uv_for_place_bound[0, 1])), 
+                    (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])),
+                    (0, 255, 0), 2)
+
+        cv2.imshow("image", image)
+        cv2.waitKey(0)
+
+        # breakpoint()
 
 
