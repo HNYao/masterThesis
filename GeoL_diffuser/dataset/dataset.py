@@ -44,8 +44,8 @@ class PoseDataset(Dataset):
 
     def __init__(self,
                  split:str,
-                 affordance_threshold:float = 0.3,
-                 gt_pose_samples:int = 8,
+                 affordance_threshold:float = 0.001,
+                 gt_pose_samples:int = 80,
                  root_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg") -> None:
         super().__init__()
 
@@ -118,9 +118,9 @@ class PoseDataset(Dataset):
         depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
         depth = depth.astype(np.float32)
         depth = depth / 1000.0 # depth shall be in the unit of meters
-        depth[depth > 2] = 0 # remove the invalid depth values
-        assert depth.max() <= 2.0 and depth.min() >= 0.0
-        scene_points_perfect, scene_points_id = backproject(depth, intrinsics, depth > 0)
+        #depth[depth > 2] = 0 # remove the invalid depth values
+        #assert depth.max() <= 2.0 and depth.min() >= 0.0
+        #scene_points_perfect, scene_points_id = backproject(depth, intrinsics, depth > 0)
         
         # make the plane noraml align with z-axis
             # get the T_plane and plane_model
@@ -160,12 +160,13 @@ class PoseDataset(Dataset):
         # sample points with affordance value higher than the threshold
         affordance_threshold = self.affordance_threshold
         fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold] # [F, 3]
+        if fps_points_scene_affordance.shape[0] == 0:
+            fps_points_scene_affordance = fps_points_scene_from_original
         fps_points_scene_affordance_perfect = fps_points_scene_affordance
         # fps_points_to_perfect_scene_dist = np.linalg.norm(fps_points_scene_affordance[:, None] - scene_points_perfect[None], axis=-1) # [F, N]
         # fps_points_to_perfect_scene_dist = np.min(fps_points_to_perfect_scene_dist, axis=1) # [F,]
         # fps_points_scene_affordance_perfect = fps_points_scene_affordance[fps_points_to_perfect_scene_dist < 0.1] # [F, 3]
-        if fps_points_scene_affordance_perfect.shape[0] == 0:
-            fps_points_scene_affordance_perfect = fps_points_scene_from_original # avoid 0 size array
+
 
         bound_affordance_z_mid = np.median(fps_points_scene_affordance_perfect[:, 2])
         min_bound_affordance = np.append(np.min(fps_points_scene_affordance_perfect, axis=0), -180)
@@ -253,8 +254,8 @@ class PoseDataset(Dataset):
             "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyz": max_green_point.unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyz, #[pose_samples, 3]
-            "gt_pose_xyz_min_bound": min_bound_affordance, #[4,]
-            "gt_pose_xyz_max_bound": max_bound_affordance, #[4,]
+            "gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
+            "gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
             #"tsdf_grid": tsdf_grid, 
             "depth": depth,
             "image": rgb_image,

@@ -68,9 +68,9 @@ class PoseDiffusionModel(nn.Module):
             apply_guidance=apply_guidance,
             guide_clean=guide_clean,
         )
-        pose_xyR_pred = output["pose_xyR_pred"]
-        B, N, H, _ = pose_xyR_pred.shape
-        output["pose_xyR_pred"] = pose_xyR_pred.view(B, N * H, -1)
+        pose_xyz_pred = output["pose_xyz_pred"]
+        B, N, H, _ = pose_xyz_pred.shape
+        output["pose_xyz_pred"] = pose_xyz_pred.view(B, N * H, -1)
 
         # TODO: check the guidance losses
         # not using guidance in training

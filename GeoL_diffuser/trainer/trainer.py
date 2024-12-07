@@ -37,6 +37,7 @@ class PoseDiffuserTrainer(BaseTrainer):
         self.dataset = dataset_cls(
             split="train",
             affordance_threshold=self.cfg.dataset.affordance_threshold,
+            gt_pose_samples = self.cfg.dataset.gt_pose_samples,
             root_dir=self.dataset_dir,
         )
 
@@ -373,15 +374,15 @@ class PoseDiffuserTrainer(BaseTrainer):
                 self.save_state(epoch + 1)
 
             if epoch % 1 == 0:
-                pose_4d_pred = self.get_4dpose_pred(
+                pose_xyz_pred = self.get_xyz_pose_pred(
                     model_pred, last_batch
                 )  # [batch_size, 8, 3]
                 img_pred_list, img_gt_list = self.visualize_prediction_with_bound(
-                    pose_4d_pred, last_batch
+                    pose_xyz_pred, last_batch
                 )
                 self.log_img_table(epoch, img_pred_list, img_gt_list)
 
-                logger.info("Pose_4d_pred: {}".format(pose_4d_pred[0]))
+                logger.info("Pose_4d_pred: {}".format(pose_xyz_pred[0]))
                 logger.info("Ground truth: {}".format(last_batch["gt_pose_4d"][0][0]))
                 logger.info("Min: {}".format(last_batch["gt_pose_xyz_min_bound"][0]))
                 logger.info("Max: {}".format(last_batch["gt_pose_xyz_max_bound"][0]))
@@ -409,9 +410,9 @@ class PoseDiffuserTrainer(BaseTrainer):
                     },
                 )
 
-    def get_4dpose_pred(self, prediction, data_batch):
+    def get_xyz_pose_pred(self, prediction, data_batch):
         """
-        Get 4D pose prediction (xyzR) from the model xyR prediction
+        Get xyz pose prediction from the model xyz prediction
 
         Args:
             prediction: model prediction, (B,3)
@@ -672,7 +673,7 @@ class PoseDiffuserTrainer(BaseTrainer):
                         (int(uv_for_place_bound[1, 0]), int(uv_for_place_bound[1, 1])),
                         (0, 255, 0), 2)
 
-            img_gt_list.append(image_pred)
+            img_pred_list.append(image_pred)
         return img_pred_list, img_gt_list
 
 
