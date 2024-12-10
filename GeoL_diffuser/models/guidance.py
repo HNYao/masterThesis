@@ -60,6 +60,44 @@ class Guidance:
 
         return loss_tot, guide_losses
 
+class DiffuserGuidance:
+    def __init__(self, **kwargs):
+        self.goal_weight = kwargs.get("goal_weight", 0)
+        self.affordance_weight = kwargs.get("affordance_weight", 0)
+    
+        if self.goal_weight != 0:
+            self.goal_guidance = OneGoalGuidance()
+        if self.affordance_weight != 0:
+            self.affordance_guidance = AffordanceGuidance()
+    
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evaluates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        if self.goal_weight != 0:
+            goal_loss, goal_guide_losses = self.goal_guidance.compute_guidance_loss(x, t, data_batch)
+            guide_losses.update(goal_guide_losses)
+            loss_tot += goal_loss * self.goal_weight
+        
+        if self.affordance_weight != 0:
+            affordance_loss, affordance_guide_losses = self.affordance_guidance.compute_guidance_loss(x, t, data_batch)
+            guide_losses.update(affordance_guide_losses)
+            loss_tot += affordance_loss * self.affordance_weight
+        
+        loss_per_traj = 0 # NOTE: not trajectory actually, more like points sampling
+        for k, v in guide_losses.items():
+            loss_per_traj += v
+        guide_losses["loss_per_traj"] = loss_per_traj
+        return loss_tot, guide_losses
+
+
+        
+
 
 class OneGoalGuidance(Guidance):
     def __init__(self):
@@ -85,7 +123,8 @@ class OneGoalGuidance(Guidance):
         # x_goal = x_goal[:, None].expand(-1, num_samp, num_hypo, -1)  # [B, N, H, 3]
 
         # FIXME: hard-coded goal, need to think about proper way to pass goal and scale it
-        x_goal = torch.Tensor([0.0317, -0.0118, -0.0099])[None, None, None].cuda()
+        x_goal = torch.Tensor([0.6477, 0.2714, 1.040])[None, None, None].cuda()
+        #x_goal = torch.Tensor([100, 100, 100])[None, None, None].cuda()
         x_goal = x_goal.expand(bsize, num_samp, num_hypo, -1)
         goal_loss = F.mse_loss(
             x_goal[..., :2], x[..., :2], reduction="none"
@@ -103,4 +142,24 @@ class OneGoalGuidance(Guidance):
         print("goal_loss: ", goal_loss[0, 0], x_goal[0, 0, 0, :2], x[0, 0, 0, :2])
         goal_loss = goal_loss.mean() * 500
         loss_tot += goal_loss
+        return loss_tot, guide_losses
+
+class AffordanceGuidance(Guidance):
+    def __init__(self):
+        super(AffordanceGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size()
+        affordance = data_batch["affordance"]
+        posiiton = data_batch["position"]
+
         return loss_tot, guide_losses

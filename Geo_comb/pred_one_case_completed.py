@@ -32,10 +32,17 @@ import trimesh
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-# INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
+#INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
 # INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
 INTRINSICS = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
 
+def get_heatmap(values, cmap_name="turbo", invert=False):
+    if invert:
+        values = -values
+    values = (values - values.min()) / (values.max() - values.min())
+    colormaps = cm.get_cmap(cmap_name)
+    rgb = colormaps(values)[..., :3]  # don't need alpha channel
+    return rgb
 
 def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     """
@@ -98,7 +105,7 @@ def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
         points_scene, _ = backproject(
             depth,
             intrinsics,
-            np.logical_and(depth > 0, depth > 0),
+            np.logical_and(depth > 0, depth < 2),
             NOCS_convention=False,
         )
         pcs.append(points_scene)
@@ -181,7 +188,7 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
         points_scene, idx = backproject(
             depth,
             intrinsics,
-            np.logical_and(depth > 0, depth < 2500),
+            np.logical_and(depth > 0, depth < 2),
             NOCS_convention=False,
         )
         image_color = image_color[idx[0], idx[1], :]
@@ -225,7 +232,7 @@ def is_red(color, tolerance=0.1):
     return color[0] > 1 - tolerance and color[1] < tolerance and color[2] < tolerance
 
 
-def visualize_xy_pred_points(points, batch, intrinsics=None):
+def visualize_xy_pred_points(pred, batch, intrinsics=None):
     """
     visualize the predicted xy points on the scene points
 
@@ -239,6 +246,8 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
     """
     depth = batch["depth"][0].cpu().numpy()
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
+    points = pred["pose_xyz_pred"]  # [1, N, 3]
+    guide_cost = pred["guide_losses"]["goal_loss"]  # [1, N]
 
     if intrinsics is None:
         intrinsics = np.array(
@@ -258,16 +267,47 @@ def visualize_xy_pred_points(points, batch, intrinsics=None):
 
     colors = np.zeros((points_scene.shape[0], 3))
 
-    distance_thershold = 5
-    points = points.cpu().numpy()
-    distances = np.sqrt(
-        ((points_scene[:, :2][:, None, :] - points[0][0][:, :2]) ** 2).sum(axis=2)
-    )
-    is_near_pose = np.any(distances < distance_thershold, axis=1)
-    colors[is_near_pose] = [1, 0, 0]
 
+    points = points.cpu().numpy()
+    guide_cost = guide_cost.cpu().numpy()
+
+    points = points[0]
+    guide_cost = guide_cost[0]
+
+
+    distances = np.sqrt(
+        ((points_scene[:, :2][:, None, :] - points[:, :2]) ** 2).sum(axis=2)
+    )
+
+    scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+    scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+    topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: points.shape[0]]
+    tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+
+    guide_cost = guide_cost[tokk_points_id_corr_anchor]
+    guide_cost_color = get_heatmap(guide_cost[None])[0]
+
+    colors[topk_points_id] = [1, 0, 0]
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
-    o3d.visualization.draw_geometries([pcd])
+
+
+    points_for_place = points_scene[topk_points_id]
+
+    points_for_place_goal = np.mean(points_for_place, axis=0)
+    print("points_for_place_goal:", points_for_place_goal)
+
+    vis = [pcd]
+    # print("points_for_place_goal:", points_for_place_goal)
+    for ii, pos in enumerate(points_for_place):
+        pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+        pos_vis.compute_vertex_normals()
+        pos_vis.scale(30, [0, 0, 0])
+        pos_vis.translate(pos[:3])
+        vis_color = guide_cost_color[ii]
+        pos_vis.paint_uniform_color(vis_color)
+
+        vis.append(pos_vis)
+    o3d.visualization.draw(vis)
 
 
 class pred_one_case_dataset(Dataset):
@@ -305,13 +345,13 @@ class pred_one_case_dataset(Dataset):
         ]
 
         rgb_image = Image.open(rgb_image_file_path).convert("RGB")
-        rgb_image = np.asarray(rgb_image).astype(float)
+        rgb_image = np.asarray(rgb_image).astype(float) / 255.0
         rgb_image = np.transpose(rgb_image, (2, 0, 1))
 
         self.rgb_image = rgb_image
         self.depth = np.array(cv2.imread(depth_img_path, cv2.IMREAD_UNCHANGED)).astype(
             float
-        )
+        ) / 1000.0
 
     def __len__(self):
         return 2
@@ -381,16 +421,16 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png"
+    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/depth_noise/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    # rgb_image_file_path = "dataset/realsense/color/000098.png"
-    # depth_image_file_path = "dataset/realsense/depth/000098.png"
+    #rgb_image_file_path = "dataset/realsense/color/000098.png"
+    #depth_image_file_path = "dataset/realsense/depth/000098.png"
 
     use_chatgpt = False
     if use_chatgpt:
@@ -399,33 +439,27 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the blue book"
+        target_name = "the remote control"
         direction_text = "Right"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
         rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg"
     )
-    color_no_obj = np.array(annotated_frame) / 255
+    color_no_obj = np.array(annotated_frame)
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
-    depth = depth.astype(np.float32)
+    depth = depth.astype(np.float32) / 1000.0
 
     intr = INTRINSICS
     points_no_obj_scene, scene_no_obj_idx = backproject(
         depth,
         intr,
-        np.logical_and(depth > 0, depth < 2500),
+        np.logical_and(depth > 0, depth < 2),
         NOCS_convention=False,
     )
     colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
     pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)
-
-    # Create a scaling matrix
-    scaling_factors = np.array([2, 2, 5])
-    scaling_matrix = np.eye(4)  # 4x4 identity matrix
-    scaling_matrix[0, 0] = scaling_factors[0]  # Scale x
-    scaling_matrix[1, 1] = scaling_factors[1]  # Scale y
-    scaling_matrix[2, 2] = scaling_factors[2]  # Scale z
+    #o3d.visualization.draw_geometries([pcd_no_obj_scene])
 
     # load the model
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
@@ -445,12 +479,12 @@ if __name__ == "__main__":
 
     # load the checkpoint
     state_affordance_dict = torch.load(
-        "checkpoints/GeoL_checkpoints/ckpt_211.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_v9_10K_meter_retrain/ckpt_29.pth", map_location="cpu"
     )
     # state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     state_diffusion_dict = torch.load(
-        "checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_10K_af=0.001/ckpt_27.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
@@ -476,11 +510,11 @@ if __name__ == "__main__":
             # normalize the affordance prediction
 
             # add the affordance prediction to the batch
-            affordance_thershold = 0.1
+            affordance_thershold = 0.01
             fps_points_scene_from_original = batch["fps_points_scene"][0]
 
             fps_points_scene_affordance = fps_points_scene_from_original[
-                affordance_pred[0][:, 0] > affordance_thershold
+                affordance_pred_sigmoid[0][:, 0] > affordance_thershold
             ]
             fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
             min_bound_affordance = np.append(
@@ -499,22 +533,20 @@ if __name__ == "__main__":
             # update dataset
 
             to_save = {
-                "fps_points_scene_affordance": fps_points_scene_affordance,
-                "affordance": affordance_pred.cpu().numpy(),
+                "pc_position": fps_points_scene_from_original.cpu().numpy(),
+                "affordance": affordance_pred_sigmoid,
+                "pc_position_xy_affordance": fps_points_scene_affordance,
                 "min_bound_affordance": min_bound_affordance,
                 "max_bound_affordance": max_bound_affordance,
-                "affordance_pred": affordance_pred.cpu().numpy(),
+                "affordance_pred": affordance_pred_sigmoid,
             }
-            import pdb
-
-            pdb.set_trace()
             np.savez_compressed("Geo_comb/afford_pred.npz", **to_save)
 
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
 
             obj_mesh = trimesh.load(
-                "data_for_test/obj/mesh/bottle/bottle_0003_green/mesh.obj"
+                "dataset/obj/mesh/bottle/bottle_0003_green/mesh.obj"
             )
             obj_scale = [0.4554532861750685, 0.4554532861750685, 0.4554532861750685]
             obj_mesh.apply_scale(obj_scale)
@@ -528,16 +560,16 @@ if __name__ == "__main__":
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyR_min_bound"] = (
+            batch["gt_pose_xyz_min_bound"] = (
                 torch.tensor(
-                    np.delete(min_bound_affordance, 2, axis=0), dtype=torch.float32
+                    np.delete(min_bound_affordance, 3, axis=0), dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyR_max_bound"] = (
+            batch["gt_pose_xyz_max_bound"] = (
                 torch.tensor(
-                    np.delete(max_bound_affordance, 2, axis=0), dtype=torch.float32
+                    np.delete(max_bound_affordance, 3, axis=0), dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
@@ -558,10 +590,10 @@ if __name__ == "__main__":
             )
 
             # pred pose
-            pose_pred = model_diffuser(batch)  # [b, 3] x y R
+            pose_pred = model_diffuser(batch)  # [b, 3] x y z
             print("prose_pred:", pose_pred)
             visualize_xy_pred_points(
-                pose_pred["pose_xyR_pred"], batch, intrinsics=INTRINSICS
+                pose_pred, batch, intrinsics=INTRINSICS
             )
 
             break

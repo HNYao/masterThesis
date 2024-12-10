@@ -247,10 +247,11 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     Returns:
     None
     """
-    depth = batch["depth"][0].cpu().numpy()
+    depth = batch["depth"][0].cpu().numpy() / 1000.0
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
-    points = pred["pose_xyR_pred"]  # [1, N, 3]
+    points = pred["pose_xyz_pred"]  # [1, N, 3]
     guide_cost = pred["guide_losses"]["goal_loss"]  # [1, N]
+    #guide_cost = torch.zeros((1, 800))
 
     if intrinsics is None:
         intrinsics = np.array(
@@ -260,7 +261,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     points_scene, idx = backproject(
         depth,
         intrinsics,
-        np.logical_and(depth > 0, depth < 2000),
+        np.logical_and(depth > 0, depth < 2),
         NOCS_convention=False,
     )
     image_color = image[idx[0], idx[1], :] / 255
@@ -270,7 +271,6 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
 
     colors = np.zeros((points_scene.shape[0], 3))
 
-    distance_thershold = 5
     points = points.cpu().numpy()
     guide_cost = guide_cost.cpu().numpy()
 
@@ -289,7 +289,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
 
     guide_cost = guide_cost[tokk_points_id_corr_anchor]
-    guide_cost_color = get_heatmap(guide_cost[None])[0]
+    guide_cost_color = get_heatmap(guide_cost[None], invert=True)[0]
+    #guide_cost_color = np.random.rand(800, 3)
 
     colors[topk_points_id] = [1, 0, 0]
     pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
@@ -308,7 +309,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     for ii, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
         pos_vis.compute_vertex_normals()
-        pos_vis.scale(30, [0, 0, 0])
+        pos_vis.scale(0.01, [0, 0, 0])
         pos_vis.translate(pos[:3])
         vis_color = guide_cost_color[ii]
         pos_vis.paint_uniform_color(vis_color)
@@ -428,8 +429,8 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "data_for_test/scene_RGBD_mask_v2_kinect_cfg/id15/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png"
+    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/depth_noise/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -453,26 +454,19 @@ if __name__ == "__main__":
     annotated_frame = rgb_obj_dect(
         rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg"
     )
-    color_no_obj = np.array(annotated_frame) / 255
+    color_no_obj = np.array(annotated_frame)
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
-    depth = depth.astype(np.float32)
+    depth = depth.astype(np.float32) / 1000
 
     intr = INTRINSICS
     points_no_obj_scene, scene_no_obj_idx = backproject(
         depth,
         intr,
-        np.logical_and(depth > 0, depth < 2500),
+        np.logical_and(depth > 0, depth < 2),
         NOCS_convention=False,
     )
     colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
     pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)
-
-    # Create a scaling matrix
-    scaling_factors = np.array([2, 2, 5])
-    scaling_matrix = np.eye(4)  # 4x4 identity matrix
-    scaling_matrix[0, 0] = scaling_factors[0]  # Scale x
-    scaling_matrix[1, 1] = scaling_factors[1]  # Scale y
-    scaling_matrix[2, 2] = scaling_factors[2]  # Scale z
 
     with open("config/baseline/diffusion.yaml", "r") as file:
         yaml_data = yaml.safe_load(file)
@@ -482,7 +476,7 @@ if __name__ == "__main__":
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
     state_diffusion_dict = torch.load(
-        "checkpoints/Diffusion_checkpoints/ckpt_1.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_10K_af=0.001/ckpt_1.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     guidance = OneGoalGuidance()
@@ -505,21 +499,22 @@ if __name__ == "__main__":
             batch[key] = val.float().to("cuda")
         afford_pred_dict = np.load("Geo_comb/afford_pred.npz", allow_pickle=True)
         with torch.no_grad():
-            affordance_pred = torch.tensor(afford_pred_dict["affordance_pred"]).to(
+            affordance_pred = torch.tensor(afford_pred_dict["affordance"]).to(
                 "cuda"
             )
             fps_points_scene_affordance = afford_pred_dict[
-                "fps_points_scene_affordance"
+                "pc_position"
             ]
             min_bound_affordance = afford_pred_dict["min_bound_affordance"]
             max_bound_affordance = afford_pred_dict["max_bound_affordance"]
+            pc_position_xy_affordance = afford_pred_dict["pc_position_xy_affordance"]
 
             # update dataset
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
 
             obj_mesh = trimesh.load(
-                "data_for_test/obj/mesh/bottle/bottle_0003_green/mesh.obj"
+                "dataset/obj/mesh/bottle/bottle_0003_green/mesh.obj"
             )
             obj_scale = [0.4554532861750685, 0.4554532861750685, 0.4554532861750685]
             obj_mesh.apply_scale(obj_scale)
@@ -529,20 +524,20 @@ if __name__ == "__main__":
                 torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
             )
             batch["pc_position_xy_affordance"] = (
-                torch.tensor(fps_points_scene_affordance[:, :2], dtype=torch.float32)
+                torch.tensor(pc_position_xy_affordance[:, :2], dtype=torch.float32)
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyR_min_bound"] = (
+            batch["gt_pose_xyz_min_bound"] = (
                 torch.tensor(
-                    np.delete(min_bound_affordance, 2, axis=0), dtype=torch.float32
+                    np.delete(min_bound_affordance, 3, axis=0), dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyR_max_bound"] = (
+            batch["gt_pose_xyz_max_bound"] = (
                 torch.tensor(
-                    np.delete(max_bound_affordance, 2, axis=0), dtype=torch.float32
+                    np.delete(max_bound_affordance, 3, axis=0), dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")

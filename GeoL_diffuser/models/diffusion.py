@@ -144,7 +144,8 @@ class Diffusion(nn.Module):
         """
         Instantiates test-time guidance functions using the list of configs (dicts) passed in.
         """
-        self.current_guidance = guidance
+        self.current_guidance = guidance # no guidance
+
 
     # ------------------------------------------ aux_info ------------------------------------------#
     def get_aux_info(self, data_batch):
@@ -404,9 +405,9 @@ class Diffusion(nn.Module):
 
     def guidance(self, x, t, data_batch, aux_info, num_samp=1, return_grad_of=None):
         """
-        estimate the gradient of rule reward w.r.t. the input trajectory
+        estimate the gradient of rule reward w.r.t. the input 
         Input:
-            x: [batch_size*num_samp, time_steps, feature_dim].  scaled input trajectory.
+            x: [batch_size*num_samp, time_steps, feature_dim].  scaled input .
             data_batch: additional info.
             aux_info: additional info.
             return_grad_of: which variable to take gradient of guidance loss wrt, if not given,
@@ -423,7 +424,6 @@ class Diffusion(nn.Module):
             tot_loss, per_losses = self.current_guidance.compute_guidance_loss(
                 x_loss, t, data_batch
             )
-            # print(tot_loss)
             tot_loss.backward()
             guide_grad = x.grad if return_grad_of is None else return_grad_of.grad
 
@@ -487,7 +487,7 @@ class Diffusion(nn.Module):
                 model_non_cond_pred_noise = model_non_cond_prediction
                 class_free_guid_noise = (
                     1 + class_free_guide_w
-                ) * model_pred_noise - class_free_guide_w
+                ) * model_pred_noise - class_free_guide_w * model_non_cond_pred_noise
                 model_prediction = class_free_guid_noise
         else:
             if not self.predict_epsilon:
@@ -563,7 +563,7 @@ class Diffusion(nn.Module):
                 model_clean_pred = q_posterior_in[0]
                 x_guidance = model_clean_pred
                 return_grad_of = x
-            else:  # Returerequires_grad gradients of x_0
+            else:  # Return requires_grad gradients of x_0
                 x_guidance = model_mean.clone().detach()
                 return_grad_of = x_guidance
                 x_guidance.requires_grad_()
@@ -603,11 +603,10 @@ class Diffusion(nn.Module):
         else:
             x_out = model_mean - guide_grad + noise
 
-        # 3
+        # 3 evaluate guidance loss at the end. even if not applying guidance during sampling
         if (
             self.current_guidance is not None
             and eval_final_guide_loss
-            and apply_guidance
         ):
             assert (
                 not self.predict_epsilon
@@ -620,7 +619,6 @@ class Diffusion(nn.Module):
                 num_samp=num_samp,
             )
 
-        # x_out = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise #
         return x_out, guide_losses
 
     @torch.no_grad()
@@ -777,7 +775,7 @@ class Diffusion(nn.Module):
         data_batch,
         num_samp=1,
         return_guidance_losses=False,
-        class_free_guide_w=-0.5,
+        class_free_guide_w=100,
         apply_guidance=True,
         guide_clean=False,
     ):
