@@ -2505,15 +2505,235 @@ class GeoL_net_v8(nn.Module):
         # 2nd perceiver 处理 x and d_input
         x = self.feat_perceiver_2(x, d_input.unsqueeze(1))
 
+        x_feat = x
         x = self.fusion_point_moudule(x)
         # x = x.permute(0,2,1)
 
         output["affordance"] = x
+        output["affordance_feat"] = x_feat
         self.model_ouput = x
         self.model_pc = scene_pcs
 
         return output
 
+@registry.register_affordance_encoder(name="AffordanceEncoder")
+class AffordanceEncoder(nn.Module):
+    """
+    AffordanceEncoder used in the diffusion model to get the map features
+    Compared to v9, skip the transformer encoder layer in the end , output dim is 64
+    """
+
+    def __init__(self, input_shape, target_input_shape, intrinsics=None):
+        super().__init__()
+        self.geoafford_module = GeoAffordModule(feat_dim=16)  # 0.3kw
+        self.clipunet_module = CLIPUNet(
+            input_shape=input_shape,
+            target_input_shape=target_input_shape,
+            output_dim=64,
+        )  # 6kw parameters
+        self.concate = FeatureConcat()
+        self.device = "cuda"  # cpu for dataset
+        self.lang_fusion_type = "mult"  # hard code from CLIPlingunet
+        self._load_clip()
+        if intrinsics is None:
+            self.intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+        else:
+            self.intrinsics = intrinsics
+
+        # self.instrics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # for real world data
+        # self.fusion_point_moudule = FusionPointLayer(input_dim=256) #0.3kw
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(1024, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+
+        self.anchor_mlp = nn.Sequential(
+            nn.Linear(3, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+        self.cond_mlp = nn.Sequential(
+            nn.Linear(256 + 256, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+        self.fusion_point_moudule = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=8, dim_feedforward=512, batch_first=True
+            ),
+            nn.Linear(256, 64),
+            nn.TransformerEncoderLayer(
+                d_model=64, nhead=4, dim_feedforward=256, batch_first=True
+            ),
+            nn.Linear(64, 1),
+        )
+
+        self.feat_perceiver = FeaturePerceiver(
+            transition_dim=118, condition_dim=256, time_emb_dim=32
+        )
+
+        self.feat_perceiver_2 = FeaturePerceiver(
+            transition_dim=256, condition_dim=256, time_emb_dim=32
+        )
+
+    def _load_clip(self):
+        model, _ = load_clip("RN50", device=self.device)
+        self.clip_rn50 = build_model(model.state_dict()).to(self.device)  # 10kw frozen
+        del model
+        # Frozen clip
+        for param in self.clip_rn50.parameters():
+            param.requires_grad = False
+
+    def encode_text(self, x):
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+    def direction_encoder(self, x):
+        """
+        encode the direction text through embedding
+        """
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+        # self.directions = ["Left", "Right", "Front", "Behind", "Left Front", "Right Front", "Left Behind", "Right Behind"]
+        # self.vocab = {word: idx for idx, word in enumerate(self.directions)}
+
+    def update_text(self, direction_text_batch):
+        """
+        update the direction text
+        """
+        for i, text in enumerate(direction_text_batch):
+            if text == "Left":
+                direction_text_batch[i] = (
+                    "Left, After a long and exhausting day at work, I left the office feeling both relieved and tired, looking forward to finally going home, where I could rest and unwind peacefully\
+                    The left part of my car is damaged. I need to take it to the repair shop to get it fixed."
+                )
+            elif text == "Right":
+                direction_text_batch[i] = (
+                    "Right, The right side of the brain is responsible for creativity. do you like to draw or paint? If so, you are using the right side of your brain\
+                    Blue is the color of the sky on a clear day. The sky is blue because of the way the Earth's atmosphere scatters light from the sun."
+                )
+            elif text == "Front":
+                direction_text_batch[i] = (
+                    "Front is the best. The front of the house is where the garden is located. The garden is a beautiful place to relax and enjoy the outdoors.\
+                    TUM is a university in Munich, Germany. It is located in the front of the city, near the city center. "
+                )
+            elif text == "Behind":
+                direction_text_batch[i] = (
+                    "Behind hahaha The cat is hiding behind the couch. I can see its tail sticking out from behind the couch.\
+                    Zhejiang University is a university in Hangzhou, China. It is located behind the West Lake, a famous tourist attraction in the city."
+                )
+            elif text == "Left Front":
+                direction_text_batch[i] = (
+                    "Left Front yes it is. The Left Front is a political party in the United States. It was founded in 2004 by a group of former members of the Democratic Party."
+                )
+            elif text == "Right Front":
+                direction_text_batch[i] = (
+                    "Right Front well done. The Right Front china is a desktop publishing software application developed by Adobe Systems. It is used to create documents, such as newsletters, brochures, and flyers."
+                )
+            elif text == "Left Behind":
+                direction_text_batch[i] = (
+                    "Left Behind is a novel by Tim LaHaye and Jerry B. Jenkins that was first published in 1995. It is the first book in the Left Behind series, which has sold over 65 million copies worldwide."
+                )
+            elif text == "Right Behind":
+                direction_text_batch[i] = (
+                    "Right Behind is a song by the American rock band Nine Inch Nails. It was released as the third single from their second studio album, The Downward Spiral (1994)."
+                )
+        return direction_text_batch
+
+    def forward(self, **kwargs):
+        self.batch = kwargs["batch"]
+        batch = kwargs["batch"]
+        self.phrase = batch["phrase"]
+        self.file_name = batch["file_path"]
+        texts = batch["phrase"]
+        reference_obj_name = batch["reference_obj"]
+        direction_text = self.update_text(batch["direction_text"])
+        anchor_pos = batch["anchor_position"]  # 新增 anchor position
+        output = {}
+
+        # encode text(object name)
+        l_enc, l_emb, l_mask = self.encode_text(
+            reference_obj_name
+        )  # encode the direction text
+        l_input = l_emb if "word" in self.lang_fusion_type else l_enc
+        l_input = l_input.to(dtype=torch.float32)
+        batch["target_query"] = l_input
+
+        d_enc, d_emb, d_mask = self.direction_encoder(
+            direction_text
+        )  # encode the direction text
+        d_input = d_enc.to(dtype=torch.float32)
+        d_input = self.direction_mlp(d_input)
+
+        # point cloud
+        scene_pcs = batch["fps_points_scene"]
+        obj_pcs = batch["fps_points_scene"]
+
+        # pointnet_1: extract the geometric affordance feat.
+        obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
+        x_geo = self.geoafford_module(
+            scene_pcs, obj_pcs
+        )  # [B, C, Num_pts] [B, 48, Num_pts]
+
+        # CLIP: extract the rgb feat.
+        x_rgb = self.clipunet_module(batch=batch)  # [B, C_rgbfeat, H, W] [B, 64, H, W]
+
+        # merge 得到场景特征
+        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(
+            0, 2, 1
+        )  # [B, 64, 2048]
+        x_scene = torch.cat(
+            (scene_pcs.permute(0, 2, 1), obj_pcs.permute(0, 2, 1), x_align, x_geo),
+            dim=1,
+        )  # 场景特征 [B, 118, 2048]
+        # each position minues anchor position
+        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118]
+
+        # 处理anchor position 特征
+        # input: B*3
+        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256]
+
+        # 处理 direction text
+        x_anchor_and_text = torch.cat(
+            (x_anchor_position, d_input), dim=1
+        )  # [B,  (256 + 256) ]
+        x_anchor_and_text = x_anchor_and_text.unsqueeze(1)  # [B, 1, 256+256]
+        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256]
+
+        # perceive 处理x_scene and x_anchor_and_text
+        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256]
+
+        # 2nd perceiver 处理 x and d_input
+        x_feat = self.feat_perceiver_2(x, d_input.unsqueeze(1)) # [B, 2048, 256]
+
+        x = self.fusion_point_moudule(x_feat) # skipped in encoder
+        # x = x.permute(0,2,1)
+
+        output["affordance"] = x
+        output["affordance_feat"] = x_feat
+        self.model_ouput = x
+        self.model_pc = scene_pcs
+
+        return output
 
 if __name__ == "__main__":
     num_points = 2048

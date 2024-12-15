@@ -17,7 +17,7 @@ import trimesh
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 from GeoL_diffuser.dataset.visualize_bbox import create_bounding_box
 from GeoL_diffuser.models.utils.fit_plane import *
-from GeoL_net.dataset_gen.RGBD2PC import backproject
+from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
 
 def visualize_sphere_o3d(center, color=[1, 0, 0], size=0.03):
     # center
@@ -98,6 +98,14 @@ class PoseDataset(Dataset):
             [0, 0.6, 0.8]
         ])
 
+        intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+
         # get scene pcd 
         scene_pcd = o3d.io.read_point_cloud(pc_path) # use red mask instead of mask.ply
 
@@ -118,7 +126,16 @@ class PoseDataset(Dataset):
         depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
         depth = depth.astype(np.float32)
         depth = depth / 1000.0 # depth shall be in the unit of meters
-        #depth[depth > 2] = 0 # remove the invalid depth values
+        depth[depth > 2] = 0 # remove the invalid depth values
+        scene_depth_cloud, _ = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2))
+        scene_depth_cloud = visualize_points(scene_depth_cloud)
+        scene_depth_cloud_points = np.asarray(scene_depth_cloud.points)
+
+
+        ##########visualize 
+        #scene_pcd.points = o3d.utility.Vector3dVector(scene_pcd_points)
+        #o3d.visualization.draw_geometries([scene_depth_cloud, scene_pcd])
+        #scene_depth_cloud = np.asarray(scene_depth_cloud.points)
         #assert depth.max() <= 2.0 and depth.min() >= 0.0
         #scene_points_perfect, scene_points_id = backproject(depth, intrinsics, depth > 0)
         
@@ -157,6 +174,10 @@ class PoseDataset(Dataset):
         min_bound = np.append(np.min(fps_points_scene_from_original, axis=0), -180)
         max_bound = np.append(np.max(fps_points_scene_from_original, axis=0), 180)
 
+        min_xyz_bound = np.min(scene_depth_cloud_points, axis=0) 
+        max_xyz_bound = np.max(scene_depth_cloud_points, axis=0) 
+
+
         # sample points with affordance value higher than the threshold
         affordance_threshold = self.affordance_threshold
         fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold] # [F, 3]
@@ -173,6 +194,9 @@ class PoseDataset(Dataset):
         max_bound_affordance = np.append(np.max(fps_points_scene_affordance_perfect, axis=0), 180)
         min_bound_affordance[2] = bound_affordance_z_mid * 0.9
         max_bound_affordance[2] = bound_affordance_z_mid * 0.9
+        min_xyz_bound[2] = bound_affordance_z_mid * 0.9
+        max_xyz_bound[2] = bound_affordance_z_mid * 0.9
+
 
         # sample 512 points from fps_points_scene_affordance
         fps_points_scene_affordance = fps_points_scene_affordance[np.random.choice(fps_points_scene_affordance.shape[0], 512, replace=True)] # [512, 3]
@@ -197,21 +221,21 @@ class PoseDataset(Dataset):
         obj_pc = obj_mesh.sample(512)
 
         # ################### DEBUG Acqurie the scene pcd ###################
-        # scene_colors = rgb_image[:, scene_points_id[0], scene_points_id[1]].T
-        # scene_pcd2 = o3d.geometry.PointCloud()
-        # scene_pcd2.points = o3d.utility.Vector3dVector(scene_points_perfect)
+        #scene_colors = rgb_image[:, scene_points_id[0], scene_points_id[1]].T
+        #scene_pcd2 = o3d.geometry.PointCloud()
+        #scene_pcd2.points = o3d.utility.Vector3dVector(scene_points_perfect)
         # scene_pcd2.colors = o3d.utility.Vector3dVector(scene_colors)
 
-        # fps_pcd = o3d.geometry.PointCloud()
-        # fps_pcd.points = o3d.utility.Vector3dVector(fps_points_scene_affordance_perfect)
-        # fps_pcd.paint_uniform_color([1, 0, 0])
+        #fps_pcd = o3d.geometry.PointCloud()
+        #fps_pcd.points = o3d.utility.Vector3dVector(fps_points_scene_affordance_perfect)
+        #fps_pcd.paint_uniform_color([1, 0, 0])
 
-        # min_bound_vis = min_bound_affordance[:3]
-        # max_bound_vis = max_bound_affordance[:3]
-        # min_bound_vis_o3d = visualize_sphere_o3d(min_bound_vis, color=[0, 1, 0])
-        # max_bound_vis_o3d = visualize_sphere_o3d(max_bound_vis, color=[0, 1, 0])
-        # vis = [min_bound_vis_o3d, max_bound_vis_o3d, fps_pcd, scene_pcd2]
-        # o3d.visualization.draw(vis)
+        #min_bound_vis = min_xyz_bound[:3]
+        #max_bound_vis = max_xyz_bound[:3]
+        #min_bound_vis_o3d = visualize_sphere_o3d(min_bound_vis, color=[0, 1, 0])
+        #max_bound_vis_o3d = visualize_sphere_o3d(max_bound_vis, color=[0, 1, 0])
+        #vis = [min_bound_vis_o3d, max_bound_vis_o3d, fps_pcd]
+        #o3d.visualization.draw(vis)
         # ################### DEBUG Acqurie the scene pcd ###################
 
 
@@ -254,8 +278,10 @@ class PoseDataset(Dataset):
             "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyz": max_green_point.unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyz, #[pose_samples, 3]
-            "gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
-            "gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
+            #"gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
+            #"gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
+            "gt_pose_xyz_min_bound": min_xyz_bound, #[3,]
+            "gt_pose_xyz_max_bound": max_xyz_bound, #[3,]
             #"tsdf_grid": tsdf_grid, 
             "depth": depth,
             "image": rgb_image,
@@ -589,7 +615,7 @@ if __name__ == "__main__":
         uv = uv[..., :2]
         return uv
 
-    dataset_cls = PoseDataset(split="train", root_dir="dataset/scene_RGBD_mask_v2_kinect_cfg", gt_pose_samples=80, affordance_threshold=0.001)
+    dataset_cls = PoseDataset(split="train", root_dir="dataset/scene_RGBD_mask_v2_kinect_cfg", gt_pose_samples=80, affordance_threshold=-0.001)
     train_loader = DataLoader(dataset_cls, batch_size=1)
     len(dataset_cls)
     print("dataset length: ", len(dataset_cls))
@@ -605,7 +631,7 @@ if __name__ == "__main__":
         gt_pose_xyR = batch['gt_pose_xyR'].cpu().numpy()[0] 
         gt_pose_xyz_min_bound = batch['gt_pose_xyz_min_bound'].cpu().numpy()[0, :3]
         gt_pose_xyz_max_bound = batch['gt_pose_xyz_max_bound'].cpu().numpy()[0, :3]
-        breakpoint()
+
 
         image = batch['image'].cpu().numpy()[0] # [3, H, W]
         image = (np.transpose(image, (1, 2, 0)) * 255).astype(np.uint8)

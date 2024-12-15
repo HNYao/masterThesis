@@ -370,7 +370,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch = self.train_one_epoch(epoch)
-            if epoch % 1 == 0:
+            if epoch % 10 == 0:
                 self.save_state(epoch + 1)
 
             if epoch % 1 == 0:
@@ -381,6 +381,7 @@ class PoseDiffuserTrainer(BaseTrainer):
                     pose_xyz_pred, last_batch
                 )
                 self.log_img_table(epoch, img_pred_list, img_gt_list)
+                self.log_img(epoch, img_pred_list[0], "pred")
 
                 logger.info("Pose_4d_pred: {}".format(pose_xyz_pred[0]))
                 logger.info("Ground truth: {}".format(last_batch["gt_pose_4d"][0][0]))
@@ -398,6 +399,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Evaluate model
             self.model.eval()
             eval_loss = self.evaluate()
+    
 
             if rank0_only():
 

@@ -28,6 +28,7 @@ from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
 import trimesh
+from sklearn.manifold import TSNE
 
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
@@ -227,6 +228,79 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
         # o3d.io.write_point_cloud(f"test_front.ply", pcd)
         o3d.visualization.draw_geometries([pcd])
 
+
+def generate_heatmap_feature_pc(batch, model_pred, intrinsics=None, interpolate=False):
+    if intrinsics is None:
+        intrinsics = np.array(
+            [
+                [607.09912 / 2, 0.0, 636.85083 / 2],
+                [0.0, 607.05212 / 2, 367.35952 / 2],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+
+    # intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+    # intrinsics = np.array([[619.0125 ,   0.     , 326  ], [  0.     , 619, 239], [  0.     ,   0.     ,   1.     ]])
+    # intrinsics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]])
+
+    normalized_pred_feat = model_pred  # [b, num_points, 3]
+
+
+    # normalize the prediction and ground truth
+    normalized_pred_feat_np = normalized_pred_feat
+
+    # get the color map for the prediction and ground truth [b, num_points, 3]
+
+    color_pred_maps = torch.from_numpy(normalized_pred_feat_np)
+
+    pcs = []
+    color_pred_list = []
+    color_img_list = []
+    for i in range(batch["fps_points_scene"].shape[0]):
+        depth = batch["depth"][i].cpu().numpy()
+        image_color = batch["image"][i].permute(1, 2, 0).cpu().numpy()
+        fps_points_scene = batch["fps_points_scene"][i].cpu().numpy()
+        points_scene, idx = backproject(
+            depth,
+            intrinsics,
+            np.logical_and(depth > 0, depth < 2),
+            NOCS_convention=False,
+        )
+        image_color = image_color[idx[0], idx[1], :]
+        pcs.append(points_scene)
+
+        if interpolate:
+            distance_pred = cdist(points_scene, fps_points_scene)
+
+            # find the nearest 5 points in the scene points
+            nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            nearest_10_idx = np.argsort(distance_pred, axis=1)[:, :10]
+
+            # nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            color_pred_map = color_pred_maps[i]
+            # color_pred_scene = color_pred_map[nearest_pred_idx]
+            color_pred_scene = color_pred_map[nearest_10_idx].mean(axis=1)
+            pred_value_thershold = 0.3  # for visualization
+            pred_value = normalized_pred_feat_np[0, nearest_10_idx, :].mean(axis=1)
+
+        else:
+            distance_pred = cdist(points_scene, fps_points_scene)
+            nearest_pred_idx = np.argmin(distance_pred, axis=1)
+            color_pred_map = color_pred_maps[i]
+            color_pred_scene = color_pred_map[nearest_pred_idx]
+            pred_value_thershold = 0.3
+
+        color_pred_list.append(color_pred_scene)
+        color_img_list.append(image_color)
+
+    for i, pc in enumerate(pcs):
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pc)
+        pcd.colors = o3d.utility.Vector3dVector(
+            color_pred_list[i].cpu().numpy() * 1 + color_img_list[i] * 0
+        )
+        # o3d.io.write_point_cloud(f"test_front.ply", pcd)
+        o3d.visualization.draw_geometries([pcd])
 
 def is_red(color, tolerance=0.1):
     return color[0] > 1 - tolerance and color[1] < tolerance and color[2] < tolerance
@@ -439,8 +513,8 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the remote control"
-        direction_text = "Right"
+        target_name = "the bowl"
+        direction_text = "Front"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
@@ -463,11 +537,13 @@ if __name__ == "__main__":
 
     # load the model
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
+
     model_affordance = model_affordance_cls(
         input_shape=(3, 720, 1280),
         target_input_shape=(3, 128, 128),
         intrinsics=INTRINSICS,
     ).to("cuda")
+
 
     with open("config/baseline/diffusion.yaml", "r") as file:
         yaml_data = yaml.safe_load(file)
@@ -484,7 +560,7 @@ if __name__ == "__main__":
     # state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_10K_af=0.001/ckpt_27.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_10K_af=-1/ckpt_1.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
@@ -497,6 +573,34 @@ if __name__ == "__main__":
         depth_image_file_path,
     )
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+############################### visualize the affordance feature (dim=256) ###############################
+    model_affordance.eval()
+    for i, batch in enumerate(data_loader):
+        for key, val in batch.items():
+            if type(val) == list:
+                continue
+            batch[key] = val.float().to("cuda")
+        with torch.no_grad():
+            affordance_feature = model_affordance(batch=batch)["affordance_feat"]
+            features = affordance_feature.reshape(-1, 256)
+            tsne = TSNE(n_components=3, random_state=42, perplexity=30, n_iter=300)
+            features_rgb = tsne.fit_transform(features.cpu()) # [num_points, 3]
+            features_rgb = features_rgb.reshape(1, 2048, 3)
+            feautures_normailized = (features_rgb - features_rgb.min()) / (features_rgb.max() - features_rgb.min())
+
+
+            generate_heatmap_feature_pc(batch, feautures_normailized, intrinsics=INTRINSICS, interpolate=False)
+
+            break
+                
+
+
+
+
+
+
+############################## visualize the affordance heatmap ########################################
 
     model_affordance.eval()
     for i, batch in enumerate(data_loader):
