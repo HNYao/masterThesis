@@ -53,9 +53,9 @@ class PoseDiffusionModel(nn.Module):
         data_batch,
         num_samp=10,
         return_guidance_losses=True,
-        class_free_guide_w=-100,
-        apply_guidance=True,
-        guide_clean=True,
+        class_free_guide_w=0,
+        apply_guidance=False,
+        guide_clean=False,
     ):
         curr_policy = self.nets["policy"]
         if self.use_ema:
@@ -74,10 +74,10 @@ class PoseDiffusionModel(nn.Module):
 
         # TODO: check the guidance losses
         # not using guidance in training
-        if "guide_losses" in output:
-            for k, v in output["guide_losses"].items():
-                v = TensorUtils.detach(v)
-                output["guide_losses"][k] = v.view(B, N * H)
+        #if "guide_losses" in output:
+        #    for k, v in output["guide_losses"].items():
+        #        v = TensorUtils.detach(v)
+        #        output["guide_losses"][k] = v.view(B, N * H)
 
         return output
 
