@@ -158,8 +158,47 @@ class AffordanceGuidance(Guidance):
         guide_losses = dict()
         loss_tot = 0.0
 
-        bsize, num_samp, num_hypo, _ = x.size()
-        affordance = data_batch["affordance"]
-        posiiton = data_batch["position"]
+        bsize, num_samp, num_hypo, _ = x.size() 
+        affordance = data_batch["affordance"] # [B, 2048, 1]
+        #position = self.scale_xyz_pose(data_batch["pc_position"], data_batch["gt_pose_xyz_max_bound"], data_batch["gt_pose_xyz_min_bound"]) # [B, 2048, 3]
+        position = data_batch["pc_position"] # [B, 2048, 3]
+        # TODO: find the top k affordance values and the corresponding positions
+        affordance = affordance.squeeze(-1) # [B, 2048]
+        k = 10 # top k affordance values
+        topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
+        topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
+        avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3)
+        avg_topk_positions = avg_topk_positions[:, None, None].expand(-1, num_samp, num_hypo, -1)  # (B, N, H, 3)
+        affordance_loss = F.mse_loss(
+            avg_topk_positions[..., :2], x[..., :2], reduction="none"
+        ) # (B, N, H, 3)
+        affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
+        guide_losses["affordance_loss"] = affordance_loss
+        affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
+        affordance_loss = affordance_loss.mean() * 500 # (B,)
+        loss_tot += affordance_loss
 
         return loss_tot, guide_losses
+    
+
+    def scale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+        """
+        scale the pose_xyz to [-1, 1]
+        pose_xyR: B * H * 3
+        """
+        if len(pose_xyz.shape) == 3:
+            min_bound_batch = xyz_min_bound.unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1)
+        elif len(pose_xyz.shape) == 4:
+            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        elif len(pose_xyz.shape) == 2:
+            min_bound_batch = xyz_min_bound
+            max_bound_batch = xyz_max_bound
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyz = (pose_xyz - min_bound_batch) / (scale + 1e-6)
+        pose_xyz = 2 * pose_xyz - 1
+        pose_xyz = pose_xyz.clamp(-1, 1)
+
+        return pose_xyz

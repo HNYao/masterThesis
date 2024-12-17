@@ -80,7 +80,7 @@ class TemporalMapUnet(nn.Module):
         output_dim,
         dim=32,  # time_dimesion
         dim_mults=(1, 2, 4, 8),
-        use_preceiver=False,
+        use_perceiver=False,
     ):
         super().__init__()
 
@@ -168,9 +168,9 @@ class TemporalMapUnet(nn.Module):
             Conv1dBlock(final_up_dim, final_up_dim, kernel_size=5),
             nn.Conv1d(final_up_dim, output_dim, 1),
         )
-        self.use_preceiver = use_preceiver
+        self.use_perceiver = use_perceiver
 
-        if self.use_preceiver:
+        if self.use_perceiver:
             print(f"[ models/temporal ] Using Perceiver")
             self.preceiver = FeaturePerceiver(
                 transition_dim=transition_dim,
@@ -187,7 +187,7 @@ class TemporalMapUnet(nn.Module):
         """
         t = self.time_mlp(time)
 
-        if self.use_preceiver:
+        if self.use_perceiver:
             x = self.preceiver(x, cond[:, None], t[:, None])
             x = self.proj(x)
         x = einops.rearrange(x, "b h t -> b t h")

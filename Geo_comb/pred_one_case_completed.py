@@ -495,8 +495,8 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/depth_noise/000000.png"
+    rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth_noise/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -514,7 +514,7 @@ if __name__ == "__main__":
         print("====> Predicting Affordance...")
     else:
         target_name = "the bowl"
-        direction_text = "Front"
+        direction_text = "Left"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
@@ -559,10 +559,10 @@ if __name__ == "__main__":
     )
     # state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
-    state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_10K_af=-1/ckpt_1.pth", map_location="cpu"
-    )
-    model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
+    #state_diffusion_dict = torch.load(
+    #    "outputs/checkpoints/GeoL_diffuser_10K_af=-1_mlp/ckpt_11.pth", map_location="cpu"
+    #)
+    #model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
 
     # create the dataset
     dataset = pred_one_case_dataset(

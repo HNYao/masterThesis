@@ -25,7 +25,7 @@ from matplotlib import cm
 import torchvision.transforms as T
 from GeoL_net.gpt.gpt import chatgpt_condition
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
-from GeoL_diffuser.models.guidance import OneGoalGuidance
+from GeoL_diffuser.models.guidance import OneGoalGuidance, AffordanceGuidance
 import yaml
 from omegaconf import OmegaConf
 import trimesh
@@ -46,6 +46,12 @@ def get_heatmap(values, cmap_name="turbo", invert=False):
     rgb = colormaps(values)[..., :3]  # don't need alpha channel
     return rgb
 
+def create_sphere_at_points(center, radius=0.05, color=[1, 0, 0]):
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    sphere.compute_vertex_normals()
+    sphere.paint_uniform_color(color)
+    sphere.translate(center)
+    return sphere
 
 def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     """
@@ -250,7 +256,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     depth = batch["depth"][0].cpu().numpy() / 1000.0
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xyz_pred"]  # [1, N, 3]
-    guide_cost = pred["guide_losses"]["goal_loss"]  # [1, N]
+    guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
 
     if intrinsics is None:
@@ -289,7 +295,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
 
     guide_cost = guide_cost[tokk_points_id_corr_anchor]
-    guide_cost_color = get_heatmap(guide_cost[None], invert=True)[0]
+    guide_cost_color = get_heatmap(guide_cost[None], invert=False)[0]
     #guide_cost_color = np.random.rand(800, 3)
 
     colors[topk_points_id] = [1, 0, 0]
@@ -304,7 +310,22 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     points_for_place_goal = np.mean(points_for_place, axis=0)
     print("points_for_place_goal:", points_for_place_goal)
 
+    # get the topk affordance points avg position
+    affordance = batch["affordance"] # [B, 2048, 1]
+    position = batch["pc_position"] # [B, 2048, 3]
+    affordance = affordance.squeeze(-1) # [B, 2048]
+    k = 10
+    topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
+    topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
+    avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3)
+    avg_topk_positions = avg_topk_positions[0].cpu().numpy()
+    avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.05, color=[1, 0, 0])
+    
+
+
+
     vis = [pcd]
+    vis.append(avg_topk_mean_sphere)
     # print("points_for_place_goal:", points_for_place_goal)
     for ii, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
@@ -316,6 +337,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
 
         vis.append(pos_vis)
     o3d.visualization.draw(vis)
+    #o3d.io.write_point_cloud("outputs/model_output/test_diffusion/w=0.ply", pcd)
 
 
 class pred_one_case_dataset(Dataset):
@@ -429,8 +451,8 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/depth_noise/000000.png"
+    rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth_noise/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -451,9 +473,10 @@ if __name__ == "__main__":
         direction_text = "Right"
 
     # use GroundingDINO to detect the target object
-    annotated_frame = rgb_obj_dect(
-        rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg"
-    )
+    #annotated_frame = rgb_obj_dect(
+    #    rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg"
+    #)
+    annotated_frame = cv2.imread(rgb_image_file_path)
     color_no_obj = np.array(annotated_frame)
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32) / 1000
@@ -476,10 +499,10 @@ if __name__ == "__main__":
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
     state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_10K_af=0.001/ckpt_1.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_non_conds/ckpt_4.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    guidance = OneGoalGuidance()
+    guidance = AffordanceGuidance()
     model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
@@ -512,6 +535,22 @@ if __name__ == "__main__":
             # update dataset
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
+            rgb_image = Image.open(rgb_image_file_path).convert("RGB")
+            rgb_image = np.asarray(rgb_image).astype(float)
+            rgb_image = np.transpose(rgb_image, (2, 0, 1))
+            rgb_image = rgb_image / 255
+            assert rgb_image.max() <= 1.0 and rgb_image.min() >= 0.0
+
+            depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
+            depth = depth.astype(np.float32) / 1000
+            depth[depth > 2] = 0
+            scene_depth_cloud, _ = backproject(depth, INTRINSICS, np.logical_and(depth > 0, depth < 2))
+            scene_depth_cloud = visualize_points(scene_depth_cloud)
+            scene_depth_cloud_points = np.asarray(scene_depth_cloud.points)
+            max_xyz_bound = np.max(scene_depth_cloud_points, axis=0)
+            min_xyz_bound = np.min(scene_depth_cloud_points, axis=0)
+            min_xyz_bound[2] = 1.0
+            max_xyz_bound[2] = 1.0
 
             obj_mesh = trimesh.load(
                 "dataset/obj/mesh/bottle/bottle_0003_green/mesh.obj"
@@ -530,14 +569,14 @@ if __name__ == "__main__":
             )
             batch["gt_pose_xyz_min_bound"] = (
                 torch.tensor(
-                    np.delete(min_bound_affordance, 3, axis=0), dtype=torch.float32
+                    min_xyz_bound, dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
             )
             batch["gt_pose_xyz_max_bound"] = (
                 torch.tensor(
-                    np.delete(max_bound_affordance, 3, axis=0), dtype=torch.float32
+                    max_xyz_bound, dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
@@ -554,7 +593,7 @@ if __name__ == "__main__":
             )
 
             # pred pose
-            pred = model_diffuser(batch, num_samp=10, apply_guidance=True)
+            pred = model_diffuser(batch, num_samp=10, class_free_guide_w=-0.05, apply_guidance=False, guide_clean=True)
             print("pred:", pred)
             visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 

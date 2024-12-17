@@ -203,11 +203,9 @@ class ObjectNameEncoder_v2(nn.Module):
         self.out_dim = out_dim
         self._load_clip()
         self.mlp = nn.Sequential(
-            nn.Linear(1024, 2048).to(self.device),
+            nn.Linear(1024, 128).to(self.device),
             nn.Mish(),
-            nn.Linear(2048, 512).to(self.device),
-            nn.Mish(),
-            nn.Linear(512, out_dim).to(self.device),
+            nn.Linear(128, out_dim).to(self.device),
         )
     def _load_clip(self):
         model, _ = load_clip("RN50", device=self.device)
@@ -262,9 +260,9 @@ class ObjectPCEncoder_v2(nn.Module):
         self.linear_1 = nn.Linear(64, 1)
         self.mish = nn.Mish()
         self.mlp = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.Linear(512, 64),
             nn.Mish(),
-            nn.Linear(256, 64),
+            nn.Linear(64, 4),
         )
     def forward(self, x):
         x = self.encoder(x).permute(0, 2, 1)

@@ -87,10 +87,13 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     """
 
 
-    # Step 1: 加载场景数据
+    # Step 1: load scene mesh json file
     json_file_path = scene_mesh_json
     with open(json_file_path, 'r') as f:
         data = json.load(f)
+    
+    with open('GeoL_net/dataset_gen/obj_size.json', 'r') as f:
+        obj_size = json.load(f)
 
     mode = 'train'
     # previous config
@@ -110,7 +113,7 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     )
     K = np.array(cfg['K']).reshape(3, 3)
 
-    # Step 2: 定义相机内参
+    # Step 2: camera intrinsics
     bproc.camera.set_intrinsics_from_K_matrix(K, cfg['W'], cfg['H'])
 
     target_objects = []
@@ -118,11 +121,11 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     exist_obj_amount = 0
     obj_amount = len(data)
 
-    # Step 3: 一次性加载所有对象
+    # Step 3: load all objects at one time
     for obj_file_name, obj_pose in data.items():
         exist_obj_amount += 1
         if exist_obj_amount == obj_amount:
-            # 最后一个对象，假设为桌面对象
+            # the last object is the desk
             obj_mesh = bproc.loader.load_obj(obj_file_name)
             desk = obj_mesh[0]
             desk.blender_obj.rotation_euler = (0, 0, 0)
@@ -145,17 +148,24 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
             target_objects.append(desk)
             break
 
-        # 加载每个对象
+        # load each object
         obj_mesh = bproc.loader.load_obj(obj_file_name)
         z_rotation = math.radians(obj_pose[2])
+        obj_category = obj_file_name.split("/")[3]
+        target_size = obj_size[obj_category]
+        current_size = obj_mesh[0].blender_obj.dimensions
+        scale_factor = [target_size[0] / current_size[0], target_size[1] / current_size[1], target_size[2] / current_size[2]]
         obj_mesh[0].blender_obj.rotation_euler = (0, 0, z_rotation)
-        obj_mesh[0].blender_obj.scale = (obj_pose[1][0], obj_pose[1][1], obj_pose[1][2])
+        if obj_category in ["mug", "cup", "plant"]:
+            obj_mesh[0].blender_obj.scale = (scale_factor[2], scale_factor[2], scale_factor[2])
+        else:
+            obj_mesh[0].blender_obj.scale = (scale_factor[0], scale_factor[1], scale_factor[2])
         obj_mesh[0].set_name(obj_file_name)
         bbox = obj_mesh[0].get_bound_box()
         z_height = bbox[1][2] - bbox[0][2]
         obj_mesh[0].blender_obj.location = (obj_pose[0][0], obj_pose[0][1], 0 + z_height / 2)
 
-        # 设置材质
+        # set material
         mat = obj_mesh[0].get_materials()[0]
         mat.set_principled_shader_value("Roughness", np.random.uniform(0.8, 1.0))
         mat.set_principled_shader_value("Specular", np.random.uniform(0.8, 1.0))
@@ -166,13 +176,13 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
 
         target_objects.append(obj_mesh[0])
 
-        # 更新场景边界
+        # set the bounding box of the scene
         x_min = min(x_min, bbox[0][0])
         x_max = max(x_max, bbox[6][0])
         y_min = min(y_min, bbox[0][1])
         y_max = max(y_max, bbox[6][1])
 
-    # Step 4: 创建房间和光源
+    # Step 4: room planes
     room_coeff = 10
     room = [bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, 0, obj_pose[0][2] - z_height]),
             bproc.object.create_primitive('PLANE', scale=[room_coeff, room_coeff, 1], location=[0, -room_coeff, room_coeff + obj_pose[0][2] - z_height], rotation=[-1.570796, 0, 0]),
@@ -199,7 +209,7 @@ def bproc_gen_mask_with_and_without_obj(scene_mesh_json, RGBD_out_dir, removed_o
     for plane in room:
         plane.set_cp('category_id', 3) # category_id: 3 room plane
 
-    # Step 5: 设置相机视角
+    # Step 5: camera pose
     i = 0
     radius_min, radius_max = (1.2, 1.5)
     _radius = np.random.uniform(low=radius_min, high=radius_max) 
@@ -437,6 +447,7 @@ def dynamic_sleep():
 
 if __name__ == "__main__":
     
+    '''
     bproc.init()
 
     json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
@@ -505,3 +516,35 @@ if __name__ == "__main__":
         dynamic_sleep()
 
         bproc.clean_up(True)
+
+    
+
+   
+    '''
+    ######### test object size hard code
+    bproc.init()
+    json_file = "dataset/scene_gen/scene_mesh_json_aug/id114_id64_0_0.json"
+    parent_dir = "dataset/scene_gen/scene_RGBD_mask_data_aug_test"
+
+    anchor_obj_path_list = []
+    removed_obj_path_list = []
+    text_guidance_file = os.path.join("dataset/scene_RGBD_mask_data_aug", "id114_id64_0_0", "text_guidance.json")
+    with open(text_guidance_file, 'r') as f:
+        text_guidance_data = json.load(f)
+    for key in text_guidance_data:
+        anchor_obj_name = text_guidance_data[key][0] # e.g. the brown bottle
+        removed_obj_name  = key # e.g. the glass bottle
+        anchor_obj_path = text_guidance_data[key][5]
+        removed_obj_path = text_guidance_data[key][4]
+
+        anchor_obj_path_list.append(anchor_obj_path)
+        removed_obj_path_list.append(removed_obj_path)
+
+    bproc_gen_mask_with_and_without_obj(
+    scene_mesh_json=json_file,
+    RGBD_out_dir=parent_dir,
+    removed_obj_path_list=removed_obj_path_list,
+    anchor_obj_path_list=anchor_obj_path_list
+    )
+
+    bproc.clean_up(True)

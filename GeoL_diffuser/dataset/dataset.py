@@ -201,6 +201,9 @@ class PoseDataset(Dataset):
         # sample 512 points from fps_points_scene_affordance
         fps_points_scene_affordance = fps_points_scene_affordance[np.random.choice(fps_points_scene_affordance.shape[0], 512, replace=True)] # [512, 3]
 
+        # sample num_samples from scene for non_condition
+        gt_non_cond = fps_points_scene_from_original[np.random.choice(fps_points_scene_from_original.shape[0], self.gt_pose_samples, replace=True)] # [num_samples, 3]
+
         # get the object pc position (rotated, scaled, translated to the origin point)
         scene_id = pc_path.split('/')[2]
         obj_name = pc_path.split('/')[3]
@@ -278,6 +281,7 @@ class PoseDataset(Dataset):
             "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyz": max_green_point.unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyz, #[pose_samples, 3]
+            "gt_pose_xyz_for_non_cond": gt_non_cond, #[pos_samples, 3]
             #"gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
             #"gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
             "gt_pose_xyz_min_bound": min_xyz_bound, #[3,]

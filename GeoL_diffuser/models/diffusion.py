@@ -49,7 +49,7 @@ class Diffusion(nn.Module):
         else:
             self.model_state_dim = self.state_dim
 
-        self.model = TemporalMapUnet_v2(
+        self.model = TemporalMapUnet(
             horizon=self.horizon,
             transition_dim=self.model_state_dim, # 3 + 64
             cond_dim=3, # 64 + 64
@@ -60,21 +60,13 @@ class Diffusion(nn.Module):
         ).to(self.device)
 
         # feat extractor
-        # self.affordance_encoder = AffordanceEncoder(state_dim=1, hidden_dim=256, device=self.device)
-        # self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
-        self.pc_position_affordance_encoder = PCPositionAndAffordanceEncoder().to(
-            self.device
-        )  # encoder the pc_position and affordance together
-        #self.obj_position_encoder = ObjectPCEncoder().to(self.device)
+        #self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
         self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device).eval() # NOTE: test v2
-        # self.pc_position_affordance_encoder = PCPositionEncoder(state_dim=2, hidden_dim=256, device=self.device)
-        self.object_name_encoder = ObjectNameEncoder_v2(out_dim=64, device=self.device).eval()
         self.pc_position_xy_affordance_encoder = PCxyPositionEncoder(
             state_dim=2, hidden_dim=64
         )
-        self.reuducenet = ReduceNet(
-            state_dim=64 + 64 + 64 + 64, hidden_dim=2048, device=self.device
-        )
+        self.object_name_encoder = ObjectNameEncoder_v2(out_dim=4).to(self.device).eval() # NOTE: test v2
+
         self.map_feature_extractor = MapFeatureExtractor().to(self.device)
         self.test = nn.Linear(128, 1).to(self.device).eval()
 
@@ -154,7 +146,7 @@ class Diffusion(nn.Module):
         """
         Instantiates test-time guidance functions using the list of configs (dicts) passed in.
         """
-        self.current_guidance = None # no guidance
+        self.current_guidance = guidance # no guidance
 
 
     # ------------------------------------------ aux_info ------------------------------------------#
@@ -167,76 +159,37 @@ class Diffusion(nn.Module):
         pc_position = data_batch[
             "pc_position"
         ]  # [batch_size, num_points, pc_position_dim=3]
-        pc_position_affordance = torch.cat(
-            [pc_position, affordance], dim=2
-        )  # [batch_size, num_points, pc_position_dim+affordance_dim=4]
-        object_name = data_batch["object_name"]  # [batch_size, ]
-        object_pc_position = data_batch[
-            "object_pc_position"
-        ]  # [batch_size, obj_points=512, object_pc_position_dim=3]
-        pc_position_xy_affordance = data_batch[
-            "pc_position_xy_affordance"
-        ]  # [batch_size, num_points, pc_position_dim=2]
-        top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
+
+        #object_name = data_batch["object_name"]  # [batch_size, ]
+        #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
+
+        top_avg_position = self.top_avg_position(affordance, pc_position, topk=100)
         top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        # pc_position_feat = self.pc_position_encoder(pc_position) # [batch_size, num_points, hidden_dim]
-        # affordance_feat = self.affordance_encoder(affordance) # [batch_size, num_points, hidden_dim]
-        pc_position_affordance_feat = self.pc_position_affordance_encoder(
-            pc_position_affordance
-        ).permute(
-            0, 2, 1
-        )  # [batch_size, num_points_affordance=2048, hidden_dim]
-        pc_position_affordance_non_cond_feat = self.pc_position_affordance_encoder(
-            torch.ones_like(pc_position_affordance) * cond_fill_value
-        ).permute(
-            0, 2, 1
-        )  # [batch_size, num_points_affordance=2048, hidden_dim]
 
-        object_name_feat = self.object_name_encoder(
-            object_name
-        )  # [batch_size, 1024] -> [batch_size, num_points, 256]
-        object_name_non_cond_feat = self.object_name_encoder([""] * len(object_name))
+        affordance_non_cond = torch.ones_like(affordance) * cond_fill_value
+        top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=100)
+        top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
+       
+        #object_name_feat = self.object_name_encoder(object_name)  # [batch_size, 1024] -> [batch_size, num_points, 256]
+        #object_name_non_cond_feat = self.object_name_encoder([""] * len(object_name))
 
 
-        object_pc_position_feat = self.obj_position_encoder(object_pc_position) # [batch_size, hidden_dim = 64]
-        object_pc_position_non_cond_feat = self.obj_position_encoder(torch.ones_like(object_pc_position) * cond_fill_value)
-        #object_pc_position_feat = (
-        #    self.obj_position_encoder(object_pc_position)
-        #    .permute(0, 2, 1)
-        #    .repeat(1, 4, 1)
-        #)  # [batch_size, obj_points, hidden_dim] -> [batch_size, num_points, 256]
-        #object_pc_position_non_cond_feat = (
-        #    self.obj_position_encoder(
-        #        torch.ones_like(object_pc_position) * cond_fill_value
-        #    )
-        #    .permute(0, 2, 1)
-        #    .repeat(1, 4, 1)
-        #)  # [batch_size, obj_points, hidden_dim] -> [batch_size, num_points, 256]
-
-        pc_position_xy_affordance_feat = self.pc_position_xy_affordance_encoder(
-            pc_position_xy_affordance
-        ).repeat(
-            1, 4, 1
-        )  # [batch_size, num_points_affordance=512, hidden_dim]
-        pc_position_xy_affordance_non_cond_feat = (
-            self.pc_position_xy_affordance_encoder(
-                torch.ones_like(pc_position_xy_affordance) * cond_fill_value
-            ).repeat(1, 4, 1)
-        )  # [batch_size, num_points_affordance=512, hidden_dim]
+        #object_pc_position_feat = self.obj_position_encoder(object_pc_position) # [batch_size, hidden_dim = 4]
+        #object_pc_position_non_cond_feat = self.obj_position_encoder(torch.ones_like(object_pc_position) * cond_fill_value)
 
         cond_feat = torch.cat(
-            [
-                #pc_position_affordance_feat,
-                #pc_position_xy_affordance_feat,
-                top_avg_position, # NOTE: fix the condition to check map query
+            [   
+                #object_name_feat,  # [batch_size, 4]
+                #object_pc_position_feat,  # [batch_size, 4]
+                top_avg_position, 
             ],
             dim=1,
         )
         non_cond_feat = torch.cat(
-            [
-                #pc_position_affordance_non_cond_feat,
-                #pc_position_xy_affordance_non_cond_feat,
-                torch.zeros_like(top_avg_position), # NOTE: fix the condition to check map query
+            [   
+                #object_name_non_cond_feat,  # [batch_size, 4]
+                #object_pc_position_non_cond_feat,  # [batch_size, 4]
+                top_avg_position_non_cond, 
             ],
             dim=1,
         )
