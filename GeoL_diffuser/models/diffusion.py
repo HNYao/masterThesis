@@ -51,8 +51,8 @@ class Diffusion(nn.Module):
 
         self.model = TemporalMapUnet(
             horizon=self.horizon,
-            transition_dim=self.model_state_dim, # 3 + 64
-            cond_dim=3, # 64 + 64
+            transition_dim=self.model_state_dim, # 3 + 1
+            cond_dim=18, # 64 + 64
             output_dim=self.output_dim,
             dim=self.base_dim,  # time_dim
             dim_mults=(2, 4, 8),
@@ -61,14 +61,13 @@ class Diffusion(nn.Module):
 
         # feat extractor
         #self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
-        self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device).eval() # NOTE: test v2
-        self.pc_position_xy_affordance_encoder = PCxyPositionEncoder(
-            state_dim=2, hidden_dim=64
-        )
-        self.object_name_encoder = ObjectNameEncoder_v2(out_dim=4).to(self.device).eval() # NOTE: test v2
+        #self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device).eval() # NOTE: test v2
+        #self.pc_position_xy_affordance_encoder = PCxyPositionEncoder(state_dim=2, hidden_dim=64)
+        #self.object_name_encoder = ObjectNameEncoder_v2(out_dim=4).to(self.device).eval() # NOTE: test v2
+        #self.top_affordance_encoder_position_encoder = TopAffordancePositionEncoder().to(self.device).eval()
 
         self.map_feature_extractor = MapFeatureExtractor().to(self.device)
-        self.test = nn.Linear(128, 1).to(self.device).eval()
+        #self.test = nn.Linear(128, 1).to(self.device).eval()
 
         self.step = 0
 
@@ -163,33 +162,33 @@ class Diffusion(nn.Module):
         #object_name = data_batch["object_name"]  # [batch_size, ]
         #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
 
-        top_avg_position = self.top_avg_position(affordance, pc_position, topk=100)
+        top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
         top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        top_positions = self.top_position(affordance, pc_position, topk=5)
+        #top_positions = self.scale_xyz_pose(top_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        #top_positions = top_positions.view(-1, 5*3)
+        #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
 
-        affordance_non_cond = torch.ones_like(affordance) * cond_fill_value
-        top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=100)
+        affordance_non_cond = torch.randn_like(affordance)
+        top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
         top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
-       
-        #object_name_feat = self.object_name_encoder(object_name)  # [batch_size, 1024] -> [batch_size, num_points, 256]
-        #object_name_non_cond_feat = self.object_name_encoder([""] * len(object_name))
-
-
-        #object_pc_position_feat = self.obj_position_encoder(object_pc_position) # [batch_size, hidden_dim = 4]
-        #object_pc_position_non_cond_feat = self.obj_position_encoder(torch.ones_like(object_pc_position) * cond_fill_value)
+        top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=5)
+        #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        #top_positions_non_cond = top_positions_non_cond.view(-1, 5*3)
 
         cond_feat = torch.cat(
             [   
-                #object_name_feat,  # [batch_size, 4]
-                #object_pc_position_feat,  # [batch_size, 4]
-                top_avg_position, 
+
+                top_avg_position, # [barch_size, 3]
+                top_positions # [barch_size, 15]
             ],
             dim=1,
         )
         non_cond_feat = torch.cat(
             [   
-                #object_name_non_cond_feat,  # [batch_size, 4]
-                #object_pc_position_non_cond_feat,  # [batch_size, 4]
-                top_avg_position_non_cond, 
+
+                top_avg_position_non_cond, # [barch_size, 3]
+                top_positions_non_cond # [barch_size, 15]
             ],
             dim=1,
         )
@@ -224,50 +223,27 @@ class Diffusion(nn.Module):
         top_avg_position = top_positions.mean(dim=1)
 
         return top_avg_position
+    
+    def top_position(self, affordance, pc_position, topk=5):
+        """
+        get the topk positions and average them
+        
+        affordance: [batch_size, num_points, 1]
+        pc_position: [batch_size, num_points, 3]
+        
+        return: [batch_size, topk*3]
+        """
+        affordance = affordance.squeeze(-1)
+        top_indices = torch.topk(affordance, topk, dim=1).indices
+        batch_indices = torch.arange(affordance.size(0), device=pc_position.device).unsqueeze(1)
+        top_positions = pc_position[batch_indices, top_indices]
+        top_positions = top_positions.view(-1, topk * 3)
+
+        return top_positions
+
 
 
     # ------------------------------------------ scale and descale ------------------------------------------#
-    def scale_pose(self, pose_4d, min_bound, max_bound):
-        """
-        scale the pose_4d to [-1, 1]
-        pose_4d: B * H * 4
-        """
-        if len(pose_4d.shape) == 3:
-            min_bound_batch = min_bound.unsqueeze(1)
-            max_bound_batch = max_bound.unsqueeze(1)
-        elif len(pose_4d.shape) == 4:
-            min_bound_batch = min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = max_bound.unsqueeze(1).unsqueeze(1)
-        else:
-            raise ValueError("Invalid shape of the input pose_4d")
-
-        scale = max_bound_batch - min_bound_batch
-        pose_4d = (pose_4d - min_bound_batch) / (scale + 1e-6)
-        pose_4d = 2 * pose_4d - 1
-        pose_4d = pose_4d.clamp(-1, 1)
-
-        return pose_4d
-
-    def scale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
-        """
-        scale the pose_xyR to [-1, 1]
-        pose_xyR: B * H * 3
-        """
-        if len(pose_xyR.shape) == 3:
-            min_bound_batch = xyR_min_bound.unsqueeze(1)
-            max_bound_batch = xyR_max_bound.unsqueeze(1)
-        elif len(pose_xyR.shape) == 4:
-            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
-        else:
-            raise ValueError("Invalid shape of the input pose_xyR")
-
-        scale = max_bound_batch - min_bound_batch
-        pose_xyR = (pose_xyR - min_bound_batch) / (scale + 1e-6)
-        pose_xyR = 2 * pose_xyR - 1
-        pose_xyR = pose_xyR.clamp(-1, 1)
-
-        return pose_xyR
 
     def scale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
         """
@@ -291,44 +267,7 @@ class Diffusion(nn.Module):
 
         return pose_xyz
 
-    def descale_pose(self, pose_4d, min_bound, max_bound):
-        """
-        descale the pose_4d to the original range
-        pose_4d: B * N * H * 4
-        """
-        if len(pose_4d.shape) == 3:
-            min_bound_batch = min_bound.unsqueeze(1)
-            max_bound_batch = max_bound.unsqueeze(1)
-        elif len(pose_4d.shape) == 4:
-            min_bound_batch = min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = max_bound.unsqueeze(1).unsqueeze(1)
-        else:
-            raise ValueError("Invalid shape of the input pose_4d")
 
-        scale = max_bound_batch - min_bound_batch
-        pose_4d = (pose_4d + 1) / 2
-        pose_4d = pose_4d * scale + min_bound_batch
-        return pose_4d
-
-    def descale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
-        """
-        descale the pose_4d to the original range
-        pose_xyR: B * N * H * 3
-        """
-        if len(pose_xyR.shape) == 3:
-            min_bound_batch = xyR_min_bound.unsqueeze(1)
-            max_bound_batch = xyR_max_bound.unsqueeze(1)
-        elif len(pose_xyR.shape) == 4:
-            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
-        else:
-            raise ValueError("Invalid shape of the input pose_xyR")
-
-        scale = max_bound_batch - min_bound_batch
-        pose_xyR = (pose_xyR + 1) / 2
-        pose_xyR = pose_xyR * scale + min_bound_batch
-        return pose_xyR
-    
     def descale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
         """
         descale the pose_xyz to the original range

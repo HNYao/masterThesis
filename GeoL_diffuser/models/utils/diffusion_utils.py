@@ -262,7 +262,7 @@ class ObjectPCEncoder_v2(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(512, 64),
             nn.Mish(),
-            nn.Linear(64, 4),
+            nn.Linear(64, 8),
         )
     def forward(self, x):
         x = self.encoder(x).permute(0, 2, 1)
@@ -270,6 +270,28 @@ class ObjectPCEncoder_v2(nn.Module):
         x= self.linear_1(x).squeeze(-1)
         x = self.mlp(x)
         return x
+
+class TopAffordancePositionEncoder(nn.Module):
+    """
+    encode the top affordance and position
+    """
+    def __init__(self, device='cuda') -> None:
+        super().__init__()
+        self.device = device
+        self.encoder = nn.Sequential(
+            nn.Linear(3, 128),
+            nn.Mish(),
+            nn.Linear(128, 256),
+            nn.Mish(),
+            nn.Linear(256, 128),
+            nn.Mish(),
+            nn.Linear(128, 16),
+        )
+    def forward(self, x):
+        x = self.encoder(x)
+        return x
+    
+
 
 class PCxyPositionEncoder(nn.Module):
     def __init__(self, state_dim=2, hidden_dim=256, device="cuda"):

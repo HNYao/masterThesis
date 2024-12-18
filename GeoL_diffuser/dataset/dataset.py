@@ -142,12 +142,17 @@ class PoseDataset(Dataset):
         # make the plane noraml align with z-axis
             # get the T_plane and plane_model
         T_plane, plane_model = get_tf_for_scene_rotation(scene_pcd_points)
-        # scene_pcd_points = np.dot(scene_pcd_points, T_plane[:3, :3]) + T_plane[:3, 3] # norm z-axis
+        scene_pcd_points_z = np.dot(scene_pcd_points, T_plane[:3, :3]) + T_plane[:3, 3] # norm z-axis
         
         # visualize
-        # scene_pcd.points = o3d.utility.Vector3dVector(scene_pcd_points)
-        #coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1000.0, origin=[0, 0, 0])
-        #o3d.visualization.draw_geometries([scene_pcd, coordinate_frame])
+        scene_pcd_z = o3d.geometry.PointCloud()
+        scene_pcd_ori = o3d.geometry.PointCloud()
+        scene_pcd_z.points = o3d.utility.Vector3dVector(scene_pcd_points_z)
+        scene_pcd_z.colors = o3d.utility.Vector3dVector(scene_pcd_colors) # use the same color as the original point cloud
+        scene_pcd_ori.points = o3d.utility.Vector3dVector(scene_pcd_points)
+        scene_pcd_ori.colors = o3d.utility.Vector3dVector(scene_pcd_colors)
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
+        o3d.visualization.draw_geometries([scene_pcd_z, coordinate_frame, scene_pcd_ori])
 
         # Convert points and colors to tensors
         scene_pcd_tensor = torch.tensor(scene_pcd_points, dtype=torch.float32).unsqueeze(0)
@@ -259,7 +264,7 @@ class PoseDataset(Dataset):
         '''
 
         # add noise
-        noise_scale = 0.05
+        noise_scale = 0.10
         noise = torch.randn(self.gt_pose_samples,4, dtype=torch.float32) * noise_scale
 
         noise_4d = noise

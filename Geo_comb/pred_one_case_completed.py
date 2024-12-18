@@ -35,7 +35,7 @@ from sklearn.manifold import TSNE
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 #INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
 # INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
-INTRINSICS = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
+INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
 
 def get_heatmap(values, cmap_name="turbo", invert=False):
     if invert:
@@ -514,7 +514,7 @@ if __name__ == "__main__":
         print("====> Predicting Affordance...")
     else:
         target_name = "the bowl"
-        direction_text = "Left"
+        direction_text = "Right"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(

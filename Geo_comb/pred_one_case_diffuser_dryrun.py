@@ -35,7 +35,7 @@ import trimesh
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
 # INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
-INTRINSICS = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
+INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
 
 
 def get_heatmap(values, cmap_name="turbo", invert=False):
@@ -255,7 +255,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     """
     depth = batch["depth"][0].cpu().numpy() / 1000.0
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
-    points = pred["pose_xyz_pred"]  # [1, N, 3]
+    points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
     guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
 
@@ -275,18 +275,18 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_scene)
 
-    colors = np.zeros((points_scene.shape[0], 3))
+    #colors = np.zeros((points_scene.shape[0], 3))
 
     points = points.cpu().numpy()
     guide_cost = guide_cost.cpu().numpy()
 
-    points = points[0]
-    guide_cost = guide_cost[0]
+    points = points[0] # [N*H, 3]
+    guide_cost = guide_cost[0] # [N*H]
     # guide_cost_color = cm.get_cmap("turbo")(guide_cost[None])[0, :, :3]
 
     distances = np.sqrt(
         ((points_scene[:, :2][:, None, :] - points[:, :2]) ** 2).sum(axis=2)
-    )
+    ) # x, y distance   
 
     # is_near_pose = np.any(distances < distance_thershold, axis=1)
     scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
@@ -298,19 +298,15 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     guide_cost_color = get_heatmap(guide_cost[None], invert=False)[0]
     #guide_cost_color = np.random.rand(800, 3)
 
-    colors[topk_points_id] = [1, 0, 0]
-    pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
+    pcd.colors = o3d.utility.Vector3dVector(image_color)
 
-    # points_for_place_z = points_scene[is_near_pose][:, 2].mean()
-    # points_for_place = points
-    # points_for_place[:, 2] = points_for_place_z
 
     points_for_place = points_scene[topk_points_id]
 
     points_for_place_goal = np.mean(points_for_place, axis=0)
     print("points_for_place_goal:", points_for_place_goal)
 
-    # get the topk affordance points avg position
+    # get the topk affordance points avg position and visualize
     affordance = batch["affordance"] # [B, 2048, 1]
     position = batch["pc_position"] # [B, 2048, 3]
     affordance = affordance.squeeze(-1) # [B, 2048]
@@ -322,10 +318,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.05, color=[1, 0, 0])
     
 
+    vis = [pcd, avg_topk_mean_sphere]
 
-
-    vis = [pcd]
-    vis.append(avg_topk_mean_sphere)
     # print("points_for_place_goal:", points_for_place_goal)
     for ii, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
@@ -473,9 +467,6 @@ if __name__ == "__main__":
         direction_text = "Right"
 
     # use GroundingDINO to detect the target object
-    #annotated_frame = rgb_obj_dect(
-    #    rgb_image_file_path, target_name, "exps/pred_one/RGB_ref.jpg"
-    #)
     annotated_frame = cv2.imread(rgb_image_file_path)
     color_no_obj = np.array(annotated_frame)
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
@@ -498,8 +489,9 @@ if __name__ == "__main__":
 
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
+    #NOTE: wait the training to finish
     state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_non_conds/ckpt_4.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_rand_afford/ckpt_5.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     guidance = AffordanceGuidance()
@@ -593,7 +585,7 @@ if __name__ == "__main__":
             )
 
             # pred pose
-            pred = model_diffuser(batch, num_samp=10, class_free_guide_w=-0.05, apply_guidance=False, guide_clean=True)
+            pred = model_diffuser(batch, num_samp=10, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
             print("pred:", pred)
             visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 

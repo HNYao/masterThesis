@@ -27,21 +27,20 @@ def get_tf_for_scene_rotation(points, axis="z"):
 
 
     plane_dir = -plane_model[:3]
+    plane_dir = plane_dir / np.linalg.norm(plane_dir)
     T_plane = np.eye(4)
     if axis == "y":
         T_plane[:3, 1] = -plane_dir
+        T_plane[:3, 1] /= np.linalg.norm(T_plane[:3, 1])
         T_plane[:3, 2] = -np.cross([1, 0, 0], plane_dir)
+        T_plane[:3, 2] /= np.linalg.norm(T_plane[:3, 2])
         T_plane[:3, 0] = np.cross(T_plane[:3, 1], T_plane[:3, 2])
-    elif axis == "x":
-        T_plane[:3, 0] = -plane_dir  # Set the X-axis to align with the plane normal
-        T_plane[:3, 1] = -np.cross([1, 0, 0], plane_dir)  
-        T_plane[:3, 2] = np.cross(T_plane[:3, 0], T_plane[:3, 1])
     elif axis == "z":
-        T_plane[:3, 2] = -plane_dir  # Set the X-axis to align with the plane normal
-        T_plane[:3, 0] = -np.cross([1, 0, 0], plane_dir)  
+        T_plane[:3, 2] = -plane_dir 
+        T_plane[:3, 2] /= np.linalg.norm(T_plane[:3, 2]) 
+        T_plane[:3, 0] = -np.cross([0, 1, 0], plane_dir) 
+        T_plane[:3, 0] /= np.linalg.norm(T_plane[:3, 0])
         T_plane[:3, 1] = np.cross(T_plane[:3, 2], T_plane[:3, 0])
-
-
 
     return T_plane, plane_model
 
