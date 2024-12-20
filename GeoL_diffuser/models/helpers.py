@@ -195,6 +195,7 @@ class TSDFVolume:
         verbose: bool = False,
         num_margin: float = 5.0,
         enable_color=True,
+        unknown_free=True,
     ):
         """
         Constructor
@@ -203,6 +204,9 @@ class TSDFVolume:
         :param voxel_size: Voxel size in meters.
         :param use_gpu: Use GPU for voxel update.
         :param verbose: Print verbose message or not.
+        :param num_margin: Truncation margin.
+        :param enable_color: Enable color integration or
+        :param unknown_free: Enable free space truncation.
         """
 
         vol_bounds = np.asarray(vol_bounds)
@@ -273,7 +277,7 @@ class TSDFVolume:
 
         # Mesh paramters
         self._mesh = o3d.geometry.TriangleMesh()
-
+        self.unknown_free = unknown_free
     @staticmethod
     def vox2world(vol_origin: torch.Tensor, vox_coords: torch.Tensor, vox_size):
         """
@@ -346,10 +350,10 @@ class TSDFVolume:
 
         time_begin = time.time()
         img_h, img_w = depth_img.shape
-        depth_img = torch.tensor(depth_img, device=self._device).float()  # [H, W]
-        color_img = torch.tensor(color_img, device=self._device).float()  # [H, W, 3]
-        cam_pose = torch.tensor(cam_pose, device=self._device).float()
-        intrinsic = torch.tensor(intrinsic, device=self._device).float()
+        depth_img = torch.from_numpy(depth_img).float().to(self._device)
+        color_img = torch.from_numpy(color_img).float().to(self._device)  # [H, W, 3]
+        cam_pose = torch.from_numpy(cam_pose).float().to(self._device)
+        intrinsic = torch.from_numpy(intrinsic).float().to(self._device)
 
         # TODO:
         # Better way to select valid voxels.
@@ -394,15 +398,18 @@ class TSDFVolume:
 
         # Compute and Integrate TSDF
         sdf_value = depth_value - voxel_z  # Compute SDF
-        voxel_mask = torch.logical_and(
-            depth_value > 0, sdf_value >= -self._trunc_margin
-        )  # Truncate SDF
+        if self.unknown_free:
+            voxel_mask = torch.logical_and(
+                depth_value > 0, sdf_value >= -self._trunc_margin
+            )  # Truncate SDF
+        else:
+            voxel_mask = depth_value > 0  # Truncate SDF
+            
         tsdf_value = torch.minimum(
             torch.ones_like(sdf_value, device=self._device),
             sdf_value / self._trunc_margin,
         )
         tsdf_value = tsdf_value[voxel_mask]
-
         # Get coordinates of valid voxels with valid TSDF value
         valid_vox_x = self._vox_coords[voxel_mask, 0].long()
         valid_vox_y = self._vox_coords[voxel_mask, 1].long()
@@ -423,7 +430,6 @@ class TSDFVolume:
         else:
             color_value = None
             color_old = None
-
         tsdf_new, color_new, weight_new = self.update_tsdf(
             tsdf_old, tsdf_value, color_old, color_value, weight_old, weight
         )
