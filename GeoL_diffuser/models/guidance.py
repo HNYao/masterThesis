@@ -246,3 +246,78 @@ class AffordanceGuidance(Guidance):
         return sphere
 
 
+class ReceptacelGuidance(Guidance):
+    def __init__(self):
+        super(ReceptacelGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size() 
+
+        receptacle_height = data_batch["receptacle_height"] # TODO: get table height
+        receptacle_height = receptacle_height[:, None, None].expand(-1, num_samp, num_hypo, -1) # unscaled
+        receptacle_height = self.scale_xyz_pose(receptacle_height, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # scaled
+        receptacle_loss =  torch.abs(receptacle_height[..., 2] - x[..., 2]) # (B, N, H)
+
+        receptacle_loss[receptacle_loss > 0.05] =  1000 # set a large loss for points that are far from the receptacle  
+
+        guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
+        affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
+        
+        affordance_loss = affordance_loss.mean() * 500 # (B,)
+        loss_tot += affordance_loss
+
+        return loss_tot, guide_losses
+
+
+class NonCollisionGuidance(Guidance):
+    def __init__(self):
+        super(NonCollisionGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size() 
+        points_for_place = x.view(bsize, -1, 3) # (B, N*H, 3)
+
+        tsdf = data_batch["tsdf"]._tsdf_vol
+        tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
+        obj_pc = data_batch["obj_pc"] # [B, 512, 3]
+        
+        obj_pc = obj_pc.unsqueeze(2) # [B, 512, 1, 3]
+        points_for_place = points_for_place.unsqueeze(1) # [B, 1, N*H, 3]
+
+        translated_points = points_for_place + obj_pc # [B, 512, N*H, 3]
+        query_points = translated_points.view(bsize, -1, 3) # [B, 512*N*H, 3]
+        query_points = obj_pc[:, None, None] # [B, 1, 512*N*H, 3]
+        query_points = query_points[..., [2, 1, 0]]
+        query_tsdf = nn.functional.grid_sample(tsdf, query_points, align_corners=True) # [B, C, 1, 1, N*H*512]
+        query_tsdf = query_tsdf[:, :, 0, 0, :].squeeze() # [B, C, N*H*512] => [B, N*H*512]
+        query_tsdf = query_tsdf.view(bsize, num_samp * num_hypo, -1) # [B, N*H, 512]
+        collision_loss = F.relu(-(query_tsdf - 0.1)).mean(dim=-1) # threshold at 0.1, [B, N*H]
+
+
+
+        guide_losses["collision_loss"] = collision_loss # (B, N, H)
+        collision_loss = collision_loss.mean(dim=-1)  # (B, N)
+        
+        collision_loss = collision_loss.mean() * 500 # (B,)
+        loss_tot += collision_loss
+
+        return loss_tot, guide_losses
+
+
+
