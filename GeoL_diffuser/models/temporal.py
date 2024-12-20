@@ -9,8 +9,11 @@ from einops.layers.torch import Rearrange
 import math
 from GeoL_diffuser.models.layers_2d import (
     Downsample1d,
+    DownsampleMLP,
     Upsample1d,
+    UpsampleMLP,
     Conv1dBlock,
+    PerceiverBlock,
 )
 
 from GeoL_net.models.GeoL import FeaturePerceiver
@@ -238,6 +241,7 @@ class TemporalMapUnet_v2(nn.Module):
         super().__init__()
 
         ResidualTemporalMapBlock = ResidualTemporalMapBlockConcat
+        PerceiverTemporalMapBlock = PerceiverBlock
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
@@ -251,7 +255,7 @@ class TemporalMapUnet_v2(nn.Module):
             nn.Linear(time_dim * 4, time_dim),
         )
 
-        cond_dim = cond_dim + time_dim
+        cond_dim = cond_dim
 
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
@@ -266,14 +270,20 @@ class TemporalMapUnet_v2(nn.Module):
             self.downs.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalMapBlock(
-                            dim_in, dim_out, time_embed_dim=cond_dim, horizon=horizon
+                        PerceiverTemporalMapBlock(
+                            transition_dim = dim_in,
+                            condition_dim = cond_dim,
+                            time_emb_dim = time_dim,
+                            decoder_q_input_channels = dim_out
                         ),  # Feature dimension changes, no horizon changes
-                        ResidualTemporalMapBlock(
-                            dim_out, dim_out, time_embed_dim=cond_dim, horizon=horizon
+                        PerceiverTemporalMapBlock(
+                            transition_dim = dim_out,
+                            condition_dim = cond_dim,
+                            time_emb_dim = time_dim,
+                            decoder_q_input_channels = dim_out
                         ),
                         (
-                            Downsample1d(dim_out) if not is_last else nn.Identity()
+                            DownsampleMLP(dim_out) if not is_last else nn.Identity()
                         ),  # No feature dimension changes, but horizon changes
                     ]
                 )
@@ -283,11 +293,11 @@ class TemporalMapUnet_v2(nn.Module):
                 horizon = horizon // 2
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResidualTemporalMapBlock(
-            mid_dim, mid_dim, time_embed_dim=cond_dim, horizon=horizon
+        self.mid_block1 = PerceiverTemporalMapBlock(
+            transition_dim=mid_dim, condition_dim=cond_dim, time_emb_dim=time_dim, decoder_q_input_channels=mid_dim
         )
-        self.mid_block2 = ResidualTemporalMapBlock(
-            mid_dim, mid_dim, time_embed_dim=cond_dim, horizon=horizon
+        self.mid_block2 = PerceiverTemporalMapBlock(
+            transition_dim=mid_dim, condition_dim=cond_dim, time_emb_dim=time_dim, decoder_q_input_channels=mid_dim
         )
 
         final_up_dim = None
@@ -297,17 +307,20 @@ class TemporalMapUnet_v2(nn.Module):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalMapBlock(
-                            dim_out * 2,
-                            dim_in,
-                            time_embed_dim=cond_dim,
-                            horizon=horizon,
+                        PerceiverBlock(
+                            transition_dim=dim_out * 2,
+                            condition_dim=cond_dim,
+                            time_emb_dim=time_dim,
+                            decoder_q_input_channels=dim_in,
                         ),  # Feature dimension changes, no horizon changes
-                        ResidualTemporalMapBlock(
-                            dim_in, dim_in, time_embed_dim=cond_dim, horizon=horizon
+                        PerceiverBlock(
+                            transition_dim=dim_in,
+                            condition_dim=cond_dim,
+                            time_emb_dim=time_dim,
+                            decoder_q_input_channels=dim_in,
                         ),
                         (
-                            Upsample1d(dim_in) if not is_last else nn.Identity()
+                            UpsampleMLP(dim_in) if not is_last else nn.Identity()
                         ),  # No feature dimension change, but horizon changes
                     ]
                 )
@@ -337,7 +350,7 @@ class TemporalMapUnet_v2(nn.Module):
             print(f"[ models/temporal ] Using Perceiver")
             self.perceiver = FeaturePerceiver(
                 transition_dim=transition_dim,
-                condition_dim=cond_dim - time_dim,
+                condition_dim=cond_dim,
                 time_emb_dim=time_dim,
             )
             self.proj = nn.Linear(self.perceiver.last_dim, transition_dim)
@@ -352,49 +365,49 @@ class TemporalMapUnet_v2(nn.Module):
 
 
         if self.use_perceiver:
-            x = self.perceiver(x, cond[:, None], t[:, None])
-            x = self.proj(x)
-        x = einops.rearrange(x, "b h t -> b t h")
-        t = torch.cat([t, cond], dim=-1)  # [time+object+action+spatial]
+            x = self.perceiver(x, cond[:, None], t[:, None]) # [batch, horizon, 256]
+            x = self.proj(x) # [batch, horizon, transition]
+        #x = einops.rearrange(x, "b h t -> b t h") # [batch, transition, horizon]
+        #t = torch.cat([t, cond], dim=-1)  # [time+object+action+spatial]
 
         h = []
         for ii, (resnet, resnet2, downsample) in enumerate(self.downs):
-            x = resnet(x, t)
-            x = resnet2(x, t)
-
-            h.append(x)
+            x = resnet(x, cond[:,None], t[:, None]) # should be like [B, T, H], but [B, H, T]
+            x = resnet2(x, cond[:, None], t[:, None]) # [B, 64, H]
+            
+            h.append(x) # [B, H, T] in h
             x = downsample(
                 x
             )  # Increase the feature dimension, reduce the horizon (consider the spatial resolution in image)
             # print("Downsample step {}, with shape {}".format(ii, x.shape)) # [B, C, H]
             # print(f"[ models/temporal ] Downsample step {ii}, with shape {x.shape}")
 
-        x = self.mid_block1(x, t)
-        x = self.mid_block2(x, t)
+        x = self.mid_block1(x, cond[:, None], t[:, None])
+        x = self.mid_block2(x, cond[:, None], t[:, None])
         for ii, (resnet, resnet2, upsample) in enumerate(self.ups):
-            x = torch.cat((x, h.pop()), dim=1)
-            x = resnet(x, t)
-            x = resnet2(x, t)
+            x = torch.cat((x, h.pop()), dim=-1)
+            x = resnet(x, cond[:, None],t[:, None])
+            x = resnet2(x, cond[:, None], t[:, None])
             x = upsample(x)  # Decrease the feature dimension, increase the horizon
             # print("Upsample step {}, with shape {}".format(ii, x.shape)) # [B, C, H]
         B = x.size(0)
-        H = x.size(2)
+        H = x.size(1)
         x_viewed = x.view(x.size(0), -1) # [B, T*H]
-        x = self.final_mlp(x_viewed).view(B, -1, H)
+        x = self.final_mlp(x_viewed)
         x = einops.rearrange(x, "b t h -> b h t")
         return x
 
 if __name__ == "__main__":
-    model = TemporalMapUnet_v2(
+    model = TemporalMapUnet(
         horizon=80,  # time horizon
-        transition_dim=87,  # dimension of the input trajectory
+        transition_dim=3,  # dimension of the input trajectory
         cond_dim=32,  # dimension of the condition (from image, depth, text, etc.)
         output_dim=3,  # dimension of the output trajectory
         dim=32,  # base feature dimension
         dim_mults=(2, 4, 8),  # number of the layers
         use_perceiver=True,
     )
-    x = torch.randn(2, 80, 87)
+    x = torch.randn(2, 80, 3)
     cond = torch.randn(2, 32)
     time = torch.randn(2)
     print("Input shape: ", x.permute(0, 2, 1).shape)  # [B, input_dim, H]

@@ -49,7 +49,7 @@ class Diffusion(nn.Module):
         else:
             self.model_state_dim = self.state_dim
 
-        self.model = TemporalMapUnet(
+        self.model = TemporalMapUnet_v2(
             horizon=self.horizon,
             transition_dim=self.model_state_dim, # 3 + 1
             cond_dim=18, # 64 + 64
@@ -165,16 +165,16 @@ class Diffusion(nn.Module):
         top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
         top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
         top_positions = self.top_position(affordance, pc_position, topk=5)
-        #top_positions = self.scale_xyz_pose(top_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        #top_positions = top_positions.view(-1, 5*3)
+        top_positions = self.scale_xyz_pose(top_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        top_positions = top_positions.view(-1, 5*3)
         #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
 
         affordance_non_cond = torch.randn_like(affordance)
         top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
         top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
         top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=5)
-        #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        #top_positions_non_cond = top_positions_non_cond.view(-1, 5*3)
+        top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        top_positions_non_cond = top_positions_non_cond.view(-1, 5*3)
 
         cond_feat = torch.cat(
             [   
@@ -231,13 +231,13 @@ class Diffusion(nn.Module):
         affordance: [batch_size, num_points, 1]
         pc_position: [batch_size, num_points, 3]
         
-        return: [batch_size, topk*3]
+        return: [batch_size, topk, 3]
         """
         affordance = affordance.squeeze(-1)
         top_indices = torch.topk(affordance, topk, dim=1).indices
         batch_indices = torch.arange(affordance.size(0), device=pc_position.device).unsqueeze(1)
         top_positions = pc_position[batch_indices, top_indices]
-        top_positions = top_positions.view(-1, topk * 3)
+        top_positions = top_positions.view(-1, topk, 3)
 
         return top_positions
 
