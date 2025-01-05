@@ -53,7 +53,7 @@ def json2text(json_path, out_dir=None):
 
     if out_dir is None:
         scene_id = json_path.split("/")[-1].split(".")[0]
-        parent_folder = "dataset/scene_RGBD_mask_v2_kinect_cfg"
+        parent_folder = "dataset/scene_RGBD_mask_data_aug"
         out_dir = os.path.join(parent_folder, scene_id)
         # if not exists, create the folder
         if not os.path.exists(out_dir):
@@ -129,7 +129,7 @@ def json2text(json_path, out_dir=None):
 
 if __name__ =="__main__":
 
-    json_folder_path = "dataset/scene_gen/scene_mesh_json_kinect"
+    json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
     json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
 
     amount_dataset = 0

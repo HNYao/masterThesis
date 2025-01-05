@@ -40,6 +40,20 @@ def visualize_points(points, colors=None):
         pcd.colors = o3d.utility.Vector3dVector(colors)
     return pcd
 
+def project_3d(point, intr):
+    """
+    Project 3D points to 2D
+    Args:
+        point: [num_points, 3]
+        intr: [3, 3]
+    Returns:
+        uv: [num_points, 2]
+    """
+    point = point / point[..., 2:]
+    uv = point @ intr.T
+    uv = uv[..., :2]
+    return uv
+
 
 if __name__ == "__main__":
     depth_path = "dataset/scene_RGBD_mask/no_obj/test_pbr/000000/depth/000000.png"

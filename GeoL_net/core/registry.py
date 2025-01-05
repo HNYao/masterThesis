@@ -100,6 +100,20 @@ class Registry(metaclass=Singleton):
         )
 
     @classmethod
+    def register_affordance_encoder(
+        cls, to_register=None, *, name: Optional[str] = None
+    ):
+        r"""Register a affordance model to registry with key :p:`name`
+
+        :param name: Key with which the affordance model will be registered.
+            If :py:`None` will use the name of the class
+        """
+
+        return cls._register_impl(
+            "affordance_encoder", to_register, name, assert_type=Module
+        )
+
+    @classmethod
     def register_diffusion_model(
         cls, to_register=None, *, name: Optional[str] = None
     ):
@@ -162,6 +176,10 @@ class Registry(metaclass=Singleton):
     @classmethod
     def get_affordance_model(cls, name: str) -> Type[Module]:
         return cls._get_impl("affordance_model", name)
+    
+    @classmethod
+    def get_affordance_encoder(cls, name: str) -> Type[Module]:
+        return cls._get_impl("affordance_encoder", name)
     
     @classmethod
     def get_diffusion_model(cls, name: str):

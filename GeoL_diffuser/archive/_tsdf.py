@@ -17,17 +17,17 @@ if __name__ == "__main__":
     import torch
 
     # Load RGB-D image
-    depth = cv2.imread("dataset/scene_RGBD_mask_v2/id494_1/bottle_0001_plastic/with_obj/test_pbr/000000/depth/000000.png", cv2.IMREAD_UNCHANGED)
+    depth = cv2.imread("dataset/scene_gen/scene_RGBD_mask_data_aug_test/id71_id64_0_0/cup_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png", cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32) /1000.0
     color = cv2.imread(
-        "dataset/scene_RGBD_mask_v2/id494_1/bottle_0001_plastic/with_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR
+        "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id71_id64_0_0/cup_0003_green/with_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR
     )
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
 
 
-    cam_intr = np.array([[591.0125 ,   0.     , 322.525  ],
-                [  0.     , 590.16775, 244.11084],
-                [  0.     ,   0.     ,   1.     ]])
+    cam_intr = np.array([[607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],])
 
     cam_pose = np.eye(4)
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     query_tsdf = query_tsdf[:, :, 0, 0, :].squeeze()  # [B, C, N] => [N]
     query_tsdf = query_tsdf.cpu().numpy()
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
 
     # Get mesh from TSDF volume
     mesh = tsdf_vol.get_mesh()

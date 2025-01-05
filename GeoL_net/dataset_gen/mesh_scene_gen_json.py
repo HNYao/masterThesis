@@ -17,7 +17,7 @@ from GeoL_net.dataset_gen.solver_scene_generate import *
 from utils import get_obj_from_scene, bbox_pos_scale_all_obj, rotate_mesh_around_center, get_obj_from_scene_inslabel, move_trimeshobj_to_position, get_unique_filename
 
 
-def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="dataset/scene_gen/mesh", directory_json_save="dataset/scene_gen/scene_mesh_json_kinect"):
+def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="dataset/scene_gen/mesh", directory_json_save="dataset/scene_gen/scene_mesh_json_aug"):
     """
     Using open3d and trimesh
     OBJ with out texture
@@ -280,6 +280,35 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
 
 if __name__ == "__main__":
 
+    # 定义 ply 文件夹的路径
+    ply_folder = "dataset/data_aug/generated_data/ply"
+
+    # 遍历 ply 文件夹中的所有 .ply 文件
+    start_time = time.time()
+    bad = 0
+    good = 0
+    for root, dirs, files in os.walk(ply_folder):
+        for file in files:
+            if file.endswith(".ply"):
+                ply_path = os.path.join(root, file)
+                npz_path = os.path.join("dataset/data_aug/generated_data/npz", file.replace(".ply", ".npz"))
+                print(f"Found PLY file: {ply_path}")
+                print(f"Found NPZ file: {npz_path}")
+                result = generate_mesh_scene_all_texute_v2(
+                    ply_path=ply_path, 
+                    npz_path=npz_path, 
+                    directory_mesh_save="dataset/scene_gen/mesh", 
+                    diroectory_json_save="dataset/scene_gen/scene_mesh_json_aug")
+                if result is None:
+                    bad = bad + 1
+                else:
+                    good = good + 1
+    end_time = time.time()
+    print(f"Running time: {end_time - start_time} s")
+
+    print("good:", good)
+    print("bad:", bad)
+"""
     # 打开并读取文件
     # generate batch 
     with open('GeoL_net/dataset_gen/to_scene.txt', 'r') as file:
@@ -313,8 +342,6 @@ if __name__ == "__main__":
     print(f"运行时间: {end_time - start_time} 秒")
     print("good:", good)
     print("bad:", bad)
-    '''
-    ply_path = f"dataset/TO_scene_ori/TO-crowd/ply/train/id1.ply"
-    npz_path = f"dataset/TO_scene_ori/TO-crowd/npz/train/id1.npz"
-    generate_mesh_scene_all_texute_v2(ply_path=ply_path, npz_path=npz_path)
-    '''
+
+"""
+

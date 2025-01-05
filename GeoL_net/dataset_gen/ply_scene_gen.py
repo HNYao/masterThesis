@@ -14,6 +14,7 @@ import open3d as o3d
 import numpy as np
 from collections import deque
 from GeoL_net.dataset_gen.utils import * 
+
 import os
 
 def check_obj_exist(ply_path, npz_path, obj_id):
@@ -158,7 +159,7 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
     """
     # tiem_dict
     item_dict = {}
-    with open('scripts/dataset_gen/classes.txt', 'r') as file:
+    with open('GeoL_net/dataset_gen/classes.txt', 'r') as file:
         for line in file:
             parts = line.strip().split('	')
             num = int(parts[0])
@@ -200,6 +201,7 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
     queue.append((first_instance_label, first_instance_name, first_node_position))
 
     # 遍历队列中的每个节点
+    instance_label = 100
     while queue:
         # 弹出队列中的节点
         current_instance_label, current_name, current_position = queue.popleft()
@@ -226,14 +228,16 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
 
             # 获取邻居节点的物体名称
             obj_name = neighbor_node[1]
+            if obj_name == 'remote_control':
+                obj_name = 'remote control'
             #print('obj name', neighbor_node[0], obj_name)
 
             # 检查邻居节点是否已经添加过
             if neighbor_node[0] not in added_nodes:
                 # 读取物体点云
                 #print('enter in obj name', neighbor_node[0], obj_name, current_position, x_distance, y_distance, neighbor_position)
-                #random_obj_name = get_similar_random_obj(obj_name)
-                random_obj_name = obj_name
+                random_obj_name = get_similar_random_obj(obj_name)
+                #random_obj_name = obj_name
                 obj_pcd_path = os.path.join(obj_dataset_folder, f"{random_obj_name}")
                 all_files = os.listdir(obj_pcd_path)
                 ply_files = [file for file in all_files if file.endswith('.ply')]
@@ -286,7 +290,7 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
                         moves += 1
 
 
-                
+
                 if len(obj_all_pcd.points) <=20 or collision_percentage < collision_threshold:
                     # 将物体点云合并到场景点云中
                     obj_all_pcd += obj_pcd
@@ -298,7 +302,7 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
                             break
                     
                     updated_npz['semantic_label'] = np.concatenate((updated_npz['semantic_label'], semantic_label * np.ones(len(obj_pcd.points))))
-                    instance_label = 100
+                    
                     updated_npz['instance_label'] = np.concatenate((updated_npz['instance_label'], instance_label * np.ones(len(obj_pcd.points))))
                     instance_label += 1
                 #print(f"add {neighbor_node[0], obj_name}")
@@ -373,20 +377,20 @@ def replace_entries(graph_a, graph_b, obj_name_list):
             graph_b[key_b] = new_dict_b
 
 
-if __name__ == "__main__":
-    # given 2 scenes
-    ply_path_b = 'dataset/TO_scene_ori/TO-crowd/ply/train/id15.ply'
-    npz_path_b = 'dataset/TO_scene_ori/TO-crowd/npz/train/id15.npz'
-    ply_path_a = 'dataset/TO_scene_ori/TO-crowd/ply/train/id158.ply'
-    npz_path_a = 'dataset/TO_scene_ori/TO-crowd/npz/train/id158.npz'
+def generate_new_scene_from_demos(id_a, id_b):
+        # given 2 scenes
+    ply_path_b = f'dataset/data_aug/human_demos/ply/{id_b}.ply'
+    npz_path_b = f'dataset/data_aug/human_demos/npz/{id_b}.npz'
+    ply_path_a = f'dataset/data_aug/human_demos/ply/{id_a}.ply'
+    npz_path_a = f'dataset/data_aug/human_demos/npz/{id_a}.npz'
     # convert to dict and graph
     dict_a = convert_dict(ply_path_a, npz_path_a)
     graph_a = convert_to_graph_v2(dict_a)
     dict_b = convert_dict(ply_path_b, npz_path_b)
     graph_b = convert_to_graph_v2(dict_b)
-    #print(dict_a)
-    print(graph_a)
-    print(graph_b)
+
+    #print(graph_a)
+    #print(graph_b)
 
     # merge graphs
     a_name_index = {key[1] for key in graph_a.keys()}
@@ -425,11 +429,39 @@ if __name__ == "__main__":
                                         obj_dataset_folder= "dataset/obj/ply",
                                         scale = scale)
     # save ply and npz
-    output_folder = "dataset/scene_gen/ply"
-    output_ply_path = os.path.join(output_folder, f"test.ply")
-    output_npz_path = os.path.join(output_folder, f"test.npz")
-    
+    id_a = ply_path_a.split('/')[-1].split('.')[0]
+    id_b = ply_path_b.split('/')[-1].split('.')[0]
+    output_ply = "dataset/data_aug/generated_data/ply"
+    output_npz = "dataset/data_aug/generated_data/npz"
+    output_ply_path = os.path.join(output_ply, f"{id_a}_{id_b}.ply")
+    output_npz_path = os.path.join(output_npz, f"{id_a}_{id_b}.npz")
+    output_ply_path = get_unique_filename(directory=output_ply, filename=f"{id_a}_{id_b}", extension=".ply")
+    output_npz_path = get_unique_filename(directory=output_npz, filename=f"{id_a}_{id_b}", extension=".npz")
+
     o3d.io.write_point_cloud(output_ply_path, new_scene)
     np.savez(output_npz_path, semantic_label=new_npz['semantic_label'], instance_label=new_npz['instance_label'])
 
     print(f"Point cloud saved to {output_ply_path}")
+
+
+if __name__ == "__main__":
+    # ply folder
+    ply_folder = "dataset/data_aug/human_demos/ply"
+    id_list = []
+    amount_scene = 0
+    # Iterate through all .ply files in the ply folder
+    for root, dirs, files in os.walk(ply_folder):
+        for file in files:
+            if file.endswith(".ply"):
+                file_path = os.path.join(root, file)
+                print(f"Found PLY file: {file_path}")
+                id_list.append(file.split('.')[0])
+    for id_a in id_list:
+        for id_b in id_list:
+            if id_a != id_b:
+                if os.path.exists(f"dataset/data_aug/generated_data/ply/{id_a}_{id_b}_0.ply"): # no repeat _0
+                    continue
+                generate_new_scene_from_demos(id_a, id_b)
+                print(f"generate new scene from {id_a} and {id_b}")
+                amount_scene += 1
+                print(f"amount_scene: {amount_scene}")

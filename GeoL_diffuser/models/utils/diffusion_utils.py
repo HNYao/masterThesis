@@ -12,6 +12,7 @@ from pointnet2.models.pointnet2_ssg_sem import PointNet2SemSegSSG
 from pointnet2_ops import pointnet2_utils
 from pointnet2_ops.pointnet2_modules import PointnetFPModule, PointnetSAModule
 from thirdpart.Pointnet2_PyTorch.pointnet2.models.pointnet2_ssg_cls import PointNet2ClassificationSSG
+from GeoL_net.core.registry import registry
 
 def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32, device="cuda"):
     """
@@ -192,6 +193,47 @@ class ObjectNameEncoder(nn.Module):
 
         return x
 
+class ObjectNameEncoder_v2(nn.Module):
+    """
+    encode the object text name by clip
+    """
+    def __init__(self, out_dim, device='cuda') -> None:
+        super().__init__()
+        self.device = device
+        self.out_dim = out_dim
+        self._load_clip()
+        self.mlp = nn.Sequential(
+            nn.Linear(1024, 128).to(self.device),
+            nn.Mish(),
+            nn.Linear(128, out_dim).to(self.device),
+        )
+    def _load_clip(self):
+        model, _ = load_clip("RN50", device=self.device)
+        self.clip_rn50 = build_model(model.state_dict()).to(self.device) #10kw frozen
+        del model
+        #Frozen clip
+        for param in self.clip_rn50.parameters():
+            param.requires_grad = False
+    
+    def encode_text(self, x):
+        with torch.no_grad():
+            
+            tokens = tokenize(x).to('cuda')
+            
+            self.clip_rn50.cuda()
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+
+        return text_feat, text_emb
+
+    def forward(self, x):
+        
+        text_feat, text_emb= self.encode_text(x)
+        x = torch.tensor(text_feat, dtype=torch.float32).to(self.device)
+        x = self.mlp(x)
+
+        return x
+
+
 class ObjectPCEncoder(nn.Module):
     """
     encode the object point cloud
@@ -203,6 +245,53 @@ class ObjectPCEncoder(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         return x
+
+class ObjectPCEncoder_v2(nn.Module):
+    """
+    encode the object point cloud
+    """
+    def __init__(self, device='cuda') -> None:
+        super().__init__()
+        self.device = device
+        self.encoder = nn.Sequential(
+            PointNet2SemSegMSG(True).cuda(),
+            nn.Mish(),
+        )
+        self.linear_1 = nn.Linear(64, 1)
+        self.mish = nn.Mish()
+        self.mlp = nn.Sequential(
+            nn.Linear(512, 64),
+            nn.Mish(),
+            nn.Linear(64, 16),
+        )
+    def forward(self, x):
+        x = self.encoder(x).permute(0, 2, 1)
+        x = self.mish(x)
+        x= self.linear_1(x).squeeze(-1)
+        x = self.mlp(x)
+        return x
+
+class TopAffordancePositionEncoder(nn.Module):
+    """
+    encode the top affordance and position
+    """
+    def __init__(self, device='cuda') -> None:
+        super().__init__()
+        self.device = device
+        self.encoder = nn.Sequential(
+            nn.Linear(3, 128),
+            nn.Mish(),
+            nn.Linear(128, 256),
+            nn.Mish(),
+            nn.Linear(256, 128),
+            nn.Mish(),
+            nn.Linear(128, 16),
+        )
+    def forward(self, x):
+        x = self.encoder(x)
+        return x
+    
+
 
 class PCxyPositionEncoder(nn.Module):
     def __init__(self, state_dim=2, hidden_dim=256, device="cuda"):
@@ -333,15 +422,115 @@ class PointNet2SemSegMSG(PointNet2SemSegSSG):
             nn.Conv1d(128, 64, kernel_size=1),
         )
 
-if __name__ == "__main__":
-    # test 
-    model_with_affordance = PointNet2SemSegMSG_with_affordance(True).cuda()
-    model_obj = ObjectPCEncoder().cuda()
-    model_scene = PCPositionAndAffordanceEncoder().cuda()
 
-    scene_pc_affordance = torch.randn(16, 2048, 4).cuda()
-    object_pc = torch.randn(16, 512, 3).cuda()
-    output_scene = model_scene(scene_pc_affordance)
-    output_obj = model_obj(object_pc)
-    print(output_scene.shape)
-    print(output_obj.shape)
+class MapFeatureExtractor(nn.Module):
+    def  __init__(
+            self
+    ):
+        super(MapFeatureExtractor, self).__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(1, 32),
+            nn.Mish(),
+            nn.Linear(32, 64),
+        )
+    def weighted_features(self, query, scene, feats, distances, alpha=1.0, k=None):
+
+        if k is not None:
+
+            topk_indices = torch.topk(-distances, k, dim=-1).indices  # [b, n_query, k]
+
+            selected_feats = torch.gather(feats[:, None, :, :].expand(-1, query.shape[1], -1, -1), 2, topk_indices[..., None].expand(-1, -1, -1, feats.shape[-1]))
+            selected_distances = torch.gather(distances, 2, topk_indices)
+
+            weights = torch.exp(-alpha * selected_distances)  # [b, n_query, k]
+        else:
+            weights = torch.exp(-alpha * distances)  # [b, n_query, n]
+            selected_feats = feats[:, None, :, :].expand(-1, query.shape[1], -1, feats.shape[-1])  # [b, n_query, n, 1]
+
+        weighted_feats = torch.sum(weights[:, :, :, None] * selected_feats, dim=2)  # [b, n_query, 1]
+        normalization = torch.sum(weights, dim=2, keepdim=True)  # [b, n_query, 1]
+
+        return weighted_feats / (normalization + 1e-6)
+
+
+
+        
+    def forward(self, query_points, scene_pc, scene_pc_feats, alpha=1.0):
+        """
+        query_points: [batch_size, num_points, 3]
+        scene_pc: [batch_size, num_points, 3]
+        scene_pc_feats: [batch_size, num_points, 1]
+
+        query_feats: [batch_size, num_points, 2]
+        """
+
+        ##### weighted, distance
+        distances = torch.norm(query_points[:, :, None, :2] - scene_pc[:, None, :, :2], dim=-1)
+
+        weights =  torch.exp(-distances * alpha)
+        weighted_feats = torch.sum(weights[:, :, :, None] * scene_pc_feats[:, None, :, :], dim=2)
+        normalization = torch.sum(weights, dim=2, keepdim=True)
+        query_feats = weighted_feats / normalization
+
+        ####  nearest
+        #nearest_indices = torch.argmin(distances, dim=-1)
+        #b, n_query = nearest_indices.shape
+        #batch_indices = torch.arange(b, device=nearest_indices.device).unsqueeze(-1).repeat(1, n_query)
+        #query_feats = scene_pc_feats[batch_indices, nearest_indices]
+
+        #### wieghted, x, y split
+        #k1 = 1024
+        #k2 = 64
+
+        #dist_x = torch.abs(query_points[:, :, None, 0] - scene_pc[:, None, :, 0])  # [b, n_query, n]
+        #dist_y = torch.abs(query_points[:, :, None, 1] - scene_pc[:, None, :, 1])  # [b, n_query, n]
+
+        #all_feats_x = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_x, k=None)  # [b, n_query, 1]
+        #all_feats_y = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_y, k=None)  # [b, n_query, 1]
+
+        #topk1_feats_x = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_x, k=k1)  # [b, n_query, 1]
+        #topk1_feats_y = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_y, k=k1)  # [b, n_query, 1]
+
+        #topk2_feats_x = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_x, k=k2)  # [b, n_query, 1]
+        #topk2_feats_y = self.weighted_features(query_points, scene_pc, scene_pc_feats, dist_y, k=k2)  # [b, n_query, 1]
+
+        # 拼接特征
+        #query_feats = torch.cat([
+        #    all_feats_x, all_feats_y,
+        #    topk1_feats_x, topk1_feats_y,
+        #    topk2_feats_x, topk2_feats_y
+        #], dim=-1)  # [b, n_query, 6]
+
+        return query_feats
+
+class AffordanceFeatureExtractor(nn.Module):
+    def __init__(
+            self
+    ):
+        self.weights = 'outputs/checkpoints/GeoL_v9_10K_meter_retrain/ckpt_29.pth'
+        self.state_affordance_dict = torch.load(self.weights, map_location='cpu')
+        self.intrinsic = np.array([[303.54, 0.0, 318.4], [0.0, 303.526, 183.679], [0.0, 0.0, 1.0]])
+        self.affordance_encoder = registry.get_affordance_encoder("AffordanceEncoder")(
+            input_shape=[3, 360,640], 
+            target_input_shape=[3, 128, 128],
+            intrinsic=self.intrinsic,
+            ).to('cuda')
+        self.affordance_encoder.load_state_dict(self.state_affordance_dict['state_dict'])
+    
+    def forward(self, query_points, scene_pc, scene_pc_feats, alpha=5.0):
+        """
+        query_points: [batch_size, num_points, 3]
+        scene_pc: [batch_size, num_points, 3]
+        scene_pc_feats: [batch_size, num_points, 1]
+
+        query_feats: [batch_size, num_points, 1]
+        """
+        rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/rgb/000000.jpg"
+        depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id744/bottle_0002_mixture/with_obj/test_pbr/000000/depth_noise/000000.png"
+
+        self.affordance_encoder.eval()        
+
+
+
+        
+

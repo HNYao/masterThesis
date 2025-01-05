@@ -1,0 +1,421 @@
+import numpy as np
+import torch
+from torch import nn
+import torch.nn.functional as F
+import open3d as o3d
+from matplotlib import cm
+from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
+
+
+class Guidance:
+    def __init__(self):
+        pass
+
+    def scale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+        """
+        scale the pose_xyz to [-1, 1]
+        pose_xyR: B * H * 3
+        """
+        if len(pose_xyz.shape) == 3:
+            min_bound_batch = xyz_min_bound.unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1)
+        elif len(pose_xyz.shape) == 4:
+            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        elif len(pose_xyz.shape) == 2:
+            min_bound_batch = xyz_min_bound
+            max_bound_batch = xyz_max_bound
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyz = (pose_xyz - min_bound_batch) / (scale + 1e-6)
+        pose_xyz = 2 * pose_xyz - 1
+        pose_xyz = pose_xyz.clamp(-1, 1)
+
+        return pose_xyz
+
+    def descale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+        """
+        descale the pose_xyz to the original range
+        pose_xyz: B * N * H * 3
+        """
+        if len(pose_xyz.shape) == 3:
+            min_bound_batch = xyz_min_bound.unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1)
+        elif len(pose_xyz.shape) == 4:
+            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_xyz")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyz = (pose_xyz + 1) / 2
+        pose_xyz = pose_xyz * scale + min_bound_batch
+        return pose_xyz
+
+    def get_heatmap(self, values, cmap_name="turbo", invert=False):
+        if invert:
+            values = -values
+        values = (values - values.min()) / (values.max() - values.min())
+        colormaps = cm.get_cmap(cmap_name)
+        rgb = colormaps(values)[..., :3]  # don't need alpha channel
+        return rgb
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evaluates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses and 6 is (x, y, vel, yaw, acc, yawvel)
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        return loss_tot, guide_losses
+
+class DiffuserGuidance:
+    def __init__(self, **kwargs):
+        self.goal_weight = kwargs.get("goal_weight", 0)
+        self.affordance_weight = kwargs.get("affordance_weight", 0)
+    
+        if self.goal_weight != 0:
+            self.goal_guidance = OneGoalGuidance()
+        if self.affordance_weight != 0:
+            self.affordance_guidance = AffordanceGuidance()
+    
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evaluates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        if self.goal_weight != 0:
+            goal_loss, goal_guide_losses = self.goal_guidance.compute_guidance_loss(x, t, data_batch)
+            guide_losses.update(goal_guide_losses)
+            loss_tot += goal_loss * self.goal_weight
+        
+        if self.affordance_weight != 0:
+            affordance_loss, affordance_guide_losses = self.affordance_guidance.compute_guidance_loss(x, t, data_batch)
+            guide_losses.update(affordance_guide_losses)
+            loss_tot += affordance_loss * self.affordance_weight
+        
+        loss_per_traj = 0 # NOTE: not trajectory actually, more like points sampling
+        for k, v in guide_losses.items():
+            loss_per_traj += v
+        guide_losses["loss_per_traj"] = loss_per_traj
+        return loss_tot, guide_losses
+
+
+        
+
+
+class OneGoalGuidance(Guidance):
+    def __init__(self):
+        super(OneGoalGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evaluates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size()
+        # goal_pose_xyR = data_batch["goal_pose_xyR"]  # [B, 3]
+        # goal_pose_xyR = goal_pose_xyR[:, None]  # [B, 1, 3]
+        # gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
+        # gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
+        # x_goal = self.scale_xyR_pose(
+        #     goal_pose_xyR, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound
+        # )  # [B, 1, 3]
+        # x_goal = x_goal[:, None].expand(-1, num_samp, num_hypo, -1)  # [B, N, H, 3]
+
+        # FIXME: hard-coded goal, need to think about proper way to pass goal and scale it
+        x_goal = torch.Tensor([0.6477, 0.2714, 1.040])[None, None, None].cuda()
+        #x_goal = torch.Tensor([100, 100, 100])[None, None, None].cuda()
+        x_goal = x_goal.expand(bsize, num_samp, num_hypo, -1)
+        goal_loss = F.mse_loss(
+            x_goal[..., :2], x[..., :2], reduction="none"
+        )  # [B, N, H, 3]
+        goal_loss = goal_loss.mean(dim=-1)  # [B, N, H]
+        guide_losses["goal_loss"] = goal_loss
+
+        # if t[0] == 0:
+        #     import pdb
+
+        #     pdb.set_trace()
+
+        # print()
+        goal_loss = goal_loss.mean(dim=-1)  # [B, N]
+        print("goal_loss: ", goal_loss[0, 0], x_goal[0, 0, 0, :2], x[0, 0, 0, :2])
+        goal_loss = goal_loss.mean() * 500
+        loss_tot += goal_loss
+        return loss_tot, guide_losses
+
+class AffordanceGuidance(Guidance):
+    def __init__(self):
+        super(AffordanceGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the trajectory to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size() 
+
+        # find the top k affordance
+        affordance = data_batch["affordance"] # [B, 2048, 1]
+        position = data_batch["pc_position"] # [B, 2048, 3]
+        affordance = affordance.squeeze(-1) # [B, 2048]
+        k = 10 # top k affordance values
+        topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
+        topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
+        avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3) unscaled
+        avg_topk_positions_debug = avg_topk_positions.clone() # (B, 3) unscaled
+        avg_topk_positions = avg_topk_positions[:, None, None].expand(-1, num_samp, num_hypo, -1)  # (B, N, H, 3)
+
+        # scale the topk affordance
+        avg_topk_positions = self.scale_xyz_pose(avg_topk_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        #avg_topk_positions = torch.zeros_like(avg_topk_positions) # debug
+        affordance_loss = F.mse_loss(
+            avg_topk_positions[..., :2], x[..., :2], reduction="none"
+        ) # (B, N, H, 3) scaled avg_topk_positions 
+        #avg_topk_positions = torch.ones_like(avg_topk_positions) * 0.2# debug
+        affordance_loss = torch.norm(avg_topk_positions[..., :2] - x[..., :2], dim=-1) # (B, N, H)
+        #affordance_loss = affordance_loss.mean(dim=-1)# (B, N, H)
+        #affordance_loss = affordance_loss.values # (B, N, H)
+        affordance_loss = affordance_loss * 0.5
+        affordance_loss_debug = affordance_loss.clone()
+        guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
+        affordance_loss = affordance_loss.sum(dim=-1)  # (B, N)
+        
+        affordance_loss = affordance_loss.sum() #* 500 # (B,)
+        loss_tot += affordance_loss
+
+        ####### DEBUG visualize avg_topk_positions
+        #avg_topk_positions_debug = self.scale_xyz_pose(avg_topk_positions_debug, data_batch["gt_pose_xyz_max_bound"], data_batch["gt_pose_xyz_min_bound"]) # (B, 3)
+        # avg_topk_positions_debug = avg_topk_positions_debug[0].cpu().detach().numpy() # (3,) unsacled
+        # position_debug = position[0].cpu().detach().numpy() # (2048, 3)
+        # pc = o3d.geometry.PointCloud()
+        # pc.points = o3d.utility.Vector3dVector(position_debug)
+        # pc.paint_uniform_color([0.5, 0.5, 0.5])
+        # avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
+        # descaled_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        # pred_points = descaled_x[0].view(-1, 3).cpu().detach().numpy()
+        # distances = np.sqrt(
+        #     ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
+        # ) # x, y distance 
+
+        # scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+        # scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+        # topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: pred_points.shape[0]]
+        # tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+
+        # guide_cost = affordance_loss_debug[0].flatten().cpu().detach().numpy() # [N*H]
+        # guide_cost = guide_cost[tokk_points_id_corr_anchor]
+        # guide_cost_color =  self.get_heatmap(guide_cost[None], invert=False)[0]
+
+        # points_for_place= position_debug[topk_points_id]
+        # vis = [pc, avg_topk_sphere]
+
+        # for ii, pos in enumerate(points_for_place):
+        #     pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+        #     pos_vis.compute_vertex_normals()
+        #     pos_vis.scale(0.03, center=(0, 0, 0))
+        #     pos_vis.translate(pos[:3])
+        #     vis_color = guide_cost_color[ii]
+        #     pos_vis.paint_uniform_color(vis_color)
+        #     vis.append(pos_vis)
+
+
+        #o3d.visualization.draw_geometries(vis)
+        #o3d.io.write_point_cloud("outputs/debug/AffordanceGuide_pc.ply", vis)
+
+        ##############################################
+
+        return loss_tot, guide_losses
+    
+    def draw_sphere_at_point(self, center, radius=0.06, color=[0.1, 0.1, 0.7]):
+        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+        sphere.compute_vertex_normals()
+        sphere.paint_uniform_color(color)
+        sphere.translate(center)
+        return sphere
+
+
+class ReceptacelGuidance(Guidance):
+    def __init__(self):
+        super(ReceptacelGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        bsize, num_samp, num_hypo, _ = x.size() 
+
+        receptacle_height = data_batch["receptacle_height"] # TODO: get table height
+        T_plane = data_batch['T_plane']
+        plane_model = data_batch['plane_model'] # (B, 4)
+        receptacle_height = - plane_model[:, 3] / plane_model[:, 2] # (B,)
+
+        descaled_pred_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # unscaled # (B, N, H, 3)
+        
+        descaled_pred_x_aligned = self.transform_points(descaled_pred_x, T_plane) # (B, N, H, 3) aligned to z
+
+
+        receptacle_height = receptacle_height[:, None, None, None].expand(-1, num_samp, num_hypo, 1) # unscaled
+        receptacle_height = self.scale_xyz_pose(receptacle_height, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # scaled
+        receptacle_loss =  torch.abs(receptacle_height[..., 0] - descaled_pred_x_aligned[..., 2]) # (B, N, H) # NOTE: abs or not?
+
+        receptacle_loss[receptacle_loss > 0.05] =  1000 # set a large loss for points that are far from the receptacle  
+
+        guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
+        affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
+        
+        affordance_loss = affordance_loss.mean() * 500 # (B,)
+        loss_tot += affordance_loss
+
+        return loss_tot, guide_losses
+    
+    def transform_points(self, points, transform_matrices):
+        """
+        points: (B, N, H, 3)
+        T: (B, 4, 4)
+
+        return: (B, N, H, 3)
+        """
+        batch_size, num_samp, num_hypo, _ = points.size()
+        points = points.view(batch_size,-1, 3) # (B, N*H, 3)
+        ones = torch.ones(*points.shape[:-1], 1, device=points.device)  # Shape: [Batch size, num, 1]
+        points_homogeneous = torch.cat([points, ones], dim=-1)  # Shape: [Batch size, num, 4]
+
+        # Step 2: Apply the transformation
+        transformed_points_homogeneous = torch.einsum('bij,bnj->bni', transform_matrices, points_homogeneous)  # Shape: [Batch size, num, 4]
+
+        # Step 3: Convert back to 3D
+        transformed_points = transformed_points_homogeneous[..., :3] / transformed_points_homogeneous[..., 3:] # Shape: [Batch size, num, 3]
+        transformed_points = transformed_points.view(batch_size, num_samp, num_hypo, 3) # (B, N, H, 3)
+        
+        return transformed_points
+
+        
+
+
+class NonCollisionGuidance(Guidance):
+    def __init__(self):
+        super(NonCollisionGuidance, self).__init__()
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+        guide_losses = dict()
+        loss_tot = 0.0
+        tsdf_grid = data_batch["tsdf_grid"]
+        depth = data_batch["depth"]
+        color = data_batch["color_tsdf"]
+        intrinsics = data_batch["intrinsics"]
+        vol_bnds = data_batch["vol_bnds"]
+        vol_bnds = vol_bnds[0]
+        vol_bnds[:, 0] = vol_bnds[:, 0].min()
+        vol_bnds[:, 1] = vol_bnds[:, 1].max()
+        #tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
+
+        # get the first tsdf
+        tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=30)
+        tsdf.integrate(
+            color[0].cpu().detach().numpy(), 
+            depth[0].cpu().detach().numpy(), 
+            intrinsics[0].cpu().detach().numpy(), 
+            np.eye(4))
+        mesh = tsdf.get_mesh()
+
+        # descaled_pred
+        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+
+        # get obj and scene point
+        obj_pc = data_batch['object_pc_position'] # (B, 512, 3) # aligned to z
+        scene_pc = data_batch['pc_position'] # (B, 2048, 3) # aligned to z
+        T_plane = data_batch['T_plane'] # (B, 4, 4)
+        T_plane_one = T_plane[0].cpu().detach().numpy()
+
+
+        ######## find the base point of the object
+
+        # 1. for the obj aligned to z-axis(positive)
+        min_bound = torch.min(obj_pc, dim=1)[0] # (B, 3)
+        max_bound = torch.max(obj_pc, dim=1)[0] # (B, 3)
+        base_point = torch.empty_like(min_bound) # (B, 3)
+        base_point[:, 0] = (min_bound[:, 0] + max_bound[:, 0]) / 2
+        base_point[:, 1] = (min_bound[:, 1] + max_bound[:, 1]) / 2
+        base_point[:, 2] = max_bound[:, 2] # (B, 3) # NOTE: assuming the object is aligned to z-axis
+        base_point = torch.matmul(base_point, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 1, 3)
+
+        ######## visualized the object and scene
+        obj_pc_one_data = obj_pc[0].cpu().detach().numpy()
+
+        obj_pc_one_data = np.dot(obj_pc_one_data, np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]))
+        obj_pc_one_data = np.dot(obj_pc_one_data, T_plane_one[:3, :3].T) # rotate the object to align with z-axis
+        scene_pc_one_data = scene_pc[0].cpu().detach().numpy()
+        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
+        scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc_one_data))
+        #o3d.visualization.draw_geometries([obj_pc_vis, scene_pc_vis])
+        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc))
+        #scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc))
+
+
+        # translate the objects from base point to x (unscaled)
+        obj_pc = torch.matmul(obj_pc, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 512, 3)
+        obj_pc = torch.matmul(obj_pc, torch.tensor([[1., 0., 0.], [0., -1., 0.], [0.,0.,-1.]]).cuda()) # (B, 512, 3)
+        obj_pc = obj_pc - base_point[:, None, :].expand(-1, obj_pc.size(1), -1) # (B, 512, 3)
+        bsize, num_samp, num_hypo, _ = x.size() 
+        points_for_place = x.reshape(bsize, -1, 3) # (B, N*H, 3)
+        obj_pc = obj_pc.unsqueeze(2) # [B, 512, 1, 3]
+        points_for_place = points_for_place.unsqueeze(1) # [B, 1, N*H, 3]
+        translated_points = points_for_place + obj_pc # [B, 512, N*H, 3]
+
+        # 
+        obj_pc_one_data = translated_points[0, :, 0, :].cpu().detach().numpy()
+        
+        obj_pc_one_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+        
+        #mesh = tsdf.get_mesh()
+        #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+    
+
+        query_points = translated_points.view(bsize, -1, 3) # [B, 512*N*H, 3]
+        query_points = query_points[None, None,  ...] # [B, 1, 512*N*H, 3]
+        query_points = query_points[..., [2, 1, 0]]
+        tsdf = tsdf._tsdf_vol
+        tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None] # [B, C, H, W, D]
+        query_tsdf = nn.functional.grid_sample(tsdf, query_points, align_corners=True) # [B, C, 1, 1, N*H*512]
+        query_tsdf = query_tsdf[:, :, 0, 0, :].squeeze() # [B, C, N*H*512] => [B, N*H*512]
+        query_tsdf = query_tsdf.view(bsize, num_samp * num_hypo, -1) # [B, N*H, 512]
+        collision_loss = F.relu(-(query_tsdf - 0.1)).mean(dim=-1) # threshold at 0.1, [B, N*H]
+
+        guide_losses["collision_loss"] = collision_loss # (B, N, H)
+        collision_loss = collision_loss.mean(dim=-1)  # (B, N)
+        
+        collision_loss = collision_loss.mean() * 500 # (B,)
+        loss_tot += collision_loss
+
+        return loss_tot, guide_losses
+
+
+

@@ -17,14 +17,14 @@ def get_unique_filename(directory, filename, extension):
     """
     base_name = filename
     counter = 1
-    unique_filename = f"{base_name}{extension}"
+    unique_filename = f"{base_name}_0{extension}"
     unique_file_path = os.path.join(directory, unique_filename)
     
     while os.path.exists(unique_file_path):
         unique_filename = f"{base_name}_{counter}{extension}"
         unique_file_path = os.path.join(directory, unique_filename)
         counter += 1
-    
+
     return unique_file_path
 
 def get_bottom_centric(pcd):
@@ -145,8 +145,8 @@ def get_obj_from_scene_inslabel(pcd_ply_path, ins_index:int, npz_path):
 
     
     data = np.load(npz_path)
-    points = data['xyz']
-    semantic_labels = data['semantic_label']
+    #points = data['xyz']
+    #semantic_labels = data['semantic_label']
     instance_labels = data['instance_label']
 
     removed_indices = np.where((instance_labels != ins_index))[0]
@@ -295,7 +295,7 @@ def convert_dict(pcd_ply_path, npz_path) -> dict:
 
     # index -- object name
     item_dict = {}
-    with open('scripts/dataset_gen/classes.txt', 'r') as file:
+    with open('GeoL_net/dataset_gen/classes.txt', 'r') as file:
         # 逐行读取文件内容
         for line in file:
             # 去除行尾的换行符，并将每行内容按空格分割成数字和物品名

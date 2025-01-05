@@ -2,27 +2,24 @@ import numpy as np
 import open3d as o3d
 import torch
 
-def direction_metric(y_true, y_pred):
-    """
-    calculate the direction metric between y_true and y_pred. 8 directions are condisered"""
-    pass
 
-def position_metric(y_true, y_pred):
+def position_metric(position_gt, position_pred):
     """
-    calculate the xyz position metric between y_true and y_pred
+    calculate the distance between position_pred and position_gt
     """
     pass
 
-def rotation_angle_metric(y_true, y_pred):
+def receptacle_metric(position_gt, position_pred, receptacle):
     """
-    calculate the rotation angle metric between y_true and y_pred
+    check if the prediction is on the receptacle
     """
     pass
 
 
-def collision_metric(y_true, y_pred):
+def collision_metric(y_true, y_pred, object_pc, scene_pc):
     """
     calculate the collision metric between y_true and y_pred
     """
     pass
+
 
