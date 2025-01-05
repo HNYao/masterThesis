@@ -4,6 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 import open3d as o3d
 from matplotlib import cm
+from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 
 
 class Guidance:
@@ -183,52 +184,56 @@ class AffordanceGuidance(Guidance):
 
         # scale the topk affordance
         avg_topk_positions = self.scale_xyz_pose(avg_topk_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
-
+        #avg_topk_positions = torch.zeros_like(avg_topk_positions) # debug
         affordance_loss = F.mse_loss(
             avg_topk_positions[..., :2], x[..., :2], reduction="none"
-        ) # (B, N, H, 3) scaled avg_topk_positions
-        affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
+        ) # (B, N, H, 3) scaled avg_topk_positions 
+        #avg_topk_positions = torch.ones_like(avg_topk_positions) * 0.2# debug
+        affordance_loss = torch.norm(avg_topk_positions[..., :2] - x[..., :2], dim=-1) # (B, N, H)
+        #affordance_loss = affordance_loss.mean(dim=-1)# (B, N, H)
+        #affordance_loss = affordance_loss.values # (B, N, H)
+        affordance_loss = affordance_loss * 0.5
         affordance_loss_debug = affordance_loss.clone()
         guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
-        affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
+        affordance_loss = affordance_loss.sum(dim=-1)  # (B, N)
         
-        affordance_loss = affordance_loss.mean() * 500 # (B,)
+        affordance_loss = affordance_loss.sum() #* 500 # (B,)
         loss_tot += affordance_loss
 
         ####### DEBUG visualize avg_topk_positions
         #avg_topk_positions_debug = self.scale_xyz_pose(avg_topk_positions_debug, data_batch["gt_pose_xyz_max_bound"], data_batch["gt_pose_xyz_min_bound"]) # (B, 3)
-        avg_topk_positions_debug = avg_topk_positions_debug[0].cpu().detach().numpy() # (3,) unsacled
-        position_debug = position[0].cpu().detach().numpy() # (2048, 3)
-        pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(position_debug)
-        pc.paint_uniform_color([0.5, 0.5, 0.5])
-        avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
-        descaled_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        pred_points = descaled_x[0].view(-1, 3).cpu().detach().numpy()
-        distances = np.sqrt(
-            ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
-        ) # x, y distance 
+        # avg_topk_positions_debug = avg_topk_positions_debug[0].cpu().detach().numpy() # (3,) unsacled
+        # position_debug = position[0].cpu().detach().numpy() # (2048, 3)
+        # pc = o3d.geometry.PointCloud()
+        # pc.points = o3d.utility.Vector3dVector(position_debug)
+        # pc.paint_uniform_color([0.5, 0.5, 0.5])
+        # avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
+        # descaled_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        # pred_points = descaled_x[0].view(-1, 3).cpu().detach().numpy()
+        # distances = np.sqrt(
+        #     ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
+        # ) # x, y distance 
 
-        scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
-        scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
-        topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: pred_points.shape[0]]
-        tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
+        # scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
+        # scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
+        # topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: pred_points.shape[0]]
+        # tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
 
-        guide_cost = affordance_loss_debug[0].flatten().cpu().detach().numpy() # [N*H]
-        guide_cost = guide_cost[tokk_points_id_corr_anchor]
-        guide_cost_color =  self.get_heatmap(guide_cost[None], invert=False)[0]
+        # guide_cost = affordance_loss_debug[0].flatten().cpu().detach().numpy() # [N*H]
+        # guide_cost = guide_cost[tokk_points_id_corr_anchor]
+        # guide_cost_color =  self.get_heatmap(guide_cost[None], invert=False)[0]
 
-        points_for_place= position_debug[topk_points_id]
-        vis = [pc, avg_topk_sphere]
+        # points_for_place= position_debug[topk_points_id]
+        # vis = [pc, avg_topk_sphere]
 
-        for ii, pos in enumerate(points_for_place):
-            pos_vis = o3d.geometry.TriangleMesh.create_sphere()
-            pos_vis.compute_vertex_normals()
-            pos_vis.scale(0.03, center=(0, 0, 0))
-            pos_vis.translate(pos[:3])
-            vis_color = guide_cost_color[ii]
-            pos_vis.paint_uniform_color(vis_color)
-            vis.append(pos_vis)
+        # for ii, pos in enumerate(points_for_place):
+        #     pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+        #     pos_vis.compute_vertex_normals()
+        #     pos_vis.scale(0.03, center=(0, 0, 0))
+        #     pos_vis.translate(pos[:3])
+        #     vis_color = guide_cost_color[ii]
+        #     pos_vis.paint_uniform_color(vis_color)
+        #     vis.append(pos_vis)
 
 
         #o3d.visualization.draw_geometries(vis)
@@ -262,9 +267,18 @@ class ReceptacelGuidance(Guidance):
         bsize, num_samp, num_hypo, _ = x.size() 
 
         receptacle_height = data_batch["receptacle_height"] # TODO: get table height
-        receptacle_height = receptacle_height[:, None, None].expand(-1, num_samp, num_hypo, -1) # unscaled
+        T_plane = data_batch['T_plane']
+        plane_model = data_batch['plane_model'] # (B, 4)
+        receptacle_height = - plane_model[:, 3] / plane_model[:, 2] # (B,)
+
+        descaled_pred_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # unscaled # (B, N, H, 3)
+        
+        descaled_pred_x_aligned = self.transform_points(descaled_pred_x, T_plane) # (B, N, H, 3) aligned to z
+
+
+        receptacle_height = receptacle_height[:, None, None, None].expand(-1, num_samp, num_hypo, 1) # unscaled
         receptacle_height = self.scale_xyz_pose(receptacle_height, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # scaled
-        receptacle_loss =  torch.abs(receptacle_height[..., 2] - x[..., 2]) # (B, N, H)
+        receptacle_loss =  torch.abs(receptacle_height[..., 0] - descaled_pred_x_aligned[..., 2]) # (B, N, H) # NOTE: abs or not?
 
         receptacle_loss[receptacle_loss > 0.05] =  1000 # set a large loss for points that are far from the receptacle  
 
@@ -275,6 +289,29 @@ class ReceptacelGuidance(Guidance):
         loss_tot += affordance_loss
 
         return loss_tot, guide_losses
+    
+    def transform_points(self, points, transform_matrices):
+        """
+        points: (B, N, H, 3)
+        T: (B, 4, 4)
+
+        return: (B, N, H, 3)
+        """
+        batch_size, num_samp, num_hypo, _ = points.size()
+        points = points.view(batch_size,-1, 3) # (B, N*H, 3)
+        ones = torch.ones(*points.shape[:-1], 1, device=points.device)  # Shape: [Batch size, num, 1]
+        points_homogeneous = torch.cat([points, ones], dim=-1)  # Shape: [Batch size, num, 4]
+
+        # Step 2: Apply the transformation
+        transformed_points_homogeneous = torch.einsum('bij,bnj->bni', transform_matrices, points_homogeneous)  # Shape: [Batch size, num, 4]
+
+        # Step 3: Convert back to 3D
+        transformed_points = transformed_points_homogeneous[..., :3] / transformed_points_homogeneous[..., 3:] # Shape: [Batch size, num, 3]
+        transformed_points = transformed_points.view(batch_size, num_samp, num_hypo, 3) # (B, N, H, 3)
+        
+        return transformed_points
+
+        
 
 
 class NonCollisionGuidance(Guidance):
@@ -289,27 +326,88 @@ class NonCollisionGuidance(Guidance):
         """
         guide_losses = dict()
         loss_tot = 0.0
+        tsdf_grid = data_batch["tsdf_grid"]
+        depth = data_batch["depth"]
+        color = data_batch["color_tsdf"]
+        intrinsics = data_batch["intrinsics"]
+        vol_bnds = data_batch["vol_bnds"]
+        vol_bnds = vol_bnds[0]
+        vol_bnds[:, 0] = vol_bnds[:, 0].min()
+        vol_bnds[:, 1] = vol_bnds[:, 1].max()
+        #tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
 
+        # get the first tsdf
+        tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=30)
+        tsdf.integrate(
+            color[0].cpu().detach().numpy(), 
+            depth[0].cpu().detach().numpy(), 
+            intrinsics[0].cpu().detach().numpy(), 
+            np.eye(4))
+        mesh = tsdf.get_mesh()
+
+        # descaled_pred
+        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+
+        # get obj and scene point
+        obj_pc = data_batch['object_pc_position'] # (B, 512, 3) # aligned to z
+        scene_pc = data_batch['pc_position'] # (B, 2048, 3) # aligned to z
+        T_plane = data_batch['T_plane'] # (B, 4, 4)
+        T_plane_one = T_plane[0].cpu().detach().numpy()
+
+
+        ######## find the base point of the object
+
+        # 1. for the obj aligned to z-axis(positive)
+        min_bound = torch.min(obj_pc, dim=1)[0] # (B, 3)
+        max_bound = torch.max(obj_pc, dim=1)[0] # (B, 3)
+        base_point = torch.empty_like(min_bound) # (B, 3)
+        base_point[:, 0] = (min_bound[:, 0] + max_bound[:, 0]) / 2
+        base_point[:, 1] = (min_bound[:, 1] + max_bound[:, 1]) / 2
+        base_point[:, 2] = max_bound[:, 2] # (B, 3) # NOTE: assuming the object is aligned to z-axis
+        base_point = torch.matmul(base_point, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 1, 3)
+
+        ######## visualized the object and scene
+        obj_pc_one_data = obj_pc[0].cpu().detach().numpy()
+
+        obj_pc_one_data = np.dot(obj_pc_one_data, np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]))
+        obj_pc_one_data = np.dot(obj_pc_one_data, T_plane_one[:3, :3].T) # rotate the object to align with z-axis
+        scene_pc_one_data = scene_pc[0].cpu().detach().numpy()
+        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
+        scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc_one_data))
+        #o3d.visualization.draw_geometries([obj_pc_vis, scene_pc_vis])
+        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc))
+        #scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc))
+
+
+        # translate the objects from base point to x (unscaled)
+        obj_pc = torch.matmul(obj_pc, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 512, 3)
+        obj_pc = torch.matmul(obj_pc, torch.tensor([[1., 0., 0.], [0., -1., 0.], [0.,0.,-1.]]).cuda()) # (B, 512, 3)
+        obj_pc = obj_pc - base_point[:, None, :].expand(-1, obj_pc.size(1), -1) # (B, 512, 3)
         bsize, num_samp, num_hypo, _ = x.size() 
-        points_for_place = x.view(bsize, -1, 3) # (B, N*H, 3)
-
-        tsdf = data_batch["tsdf"]._tsdf_vol
-        tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
-        obj_pc = data_batch["obj_pc"] # [B, 512, 3]
-        
+        points_for_place = x.reshape(bsize, -1, 3) # (B, N*H, 3)
         obj_pc = obj_pc.unsqueeze(2) # [B, 512, 1, 3]
         points_for_place = points_for_place.unsqueeze(1) # [B, 1, N*H, 3]
-
         translated_points = points_for_place + obj_pc # [B, 512, N*H, 3]
+
+        # 
+        obj_pc_one_data = translated_points[0, :, 0, :].cpu().detach().numpy()
+        
+        obj_pc_one_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+        
+        #mesh = tsdf.get_mesh()
+        #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+    
+
         query_points = translated_points.view(bsize, -1, 3) # [B, 512*N*H, 3]
-        query_points = obj_pc[:, None, None] # [B, 1, 512*N*H, 3]
+        query_points = query_points[None, None,  ...] # [B, 1, 512*N*H, 3]
         query_points = query_points[..., [2, 1, 0]]
+        tsdf = tsdf._tsdf_vol
+        tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None] # [B, C, H, W, D]
         query_tsdf = nn.functional.grid_sample(tsdf, query_points, align_corners=True) # [B, C, 1, 1, N*H*512]
         query_tsdf = query_tsdf[:, :, 0, 0, :].squeeze() # [B, C, N*H*512] => [B, N*H*512]
         query_tsdf = query_tsdf.view(bsize, num_samp * num_hypo, -1) # [B, N*H, 512]
         collision_loss = F.relu(-(query_tsdf - 0.1)).mean(dim=-1) # threshold at 0.1, [B, N*H]
-
-
 
         guide_losses["collision_loss"] = collision_loss # (B, N, H)
         collision_loss = collision_loss.mean(dim=-1)  # (B, N)

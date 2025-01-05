@@ -25,11 +25,16 @@ from matplotlib import cm
 import torchvision.transforms as T
 from GeoL_net.gpt.gpt import chatgpt_condition
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
-from GeoL_diffuser.models.guidance import OneGoalGuidance, AffordanceGuidance
+from GeoL_diffuser.models.guidance import *
+from GeoL_diffuser.models.utils.fit_plane import *
 import yaml
 from omegaconf import OmegaConf
 import trimesh
+from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 
+#seed=42
+#torch.manual_seed(seed)
+#np.random.seed(seed)
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
@@ -330,6 +335,12 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
         pos_vis.paint_uniform_color(vis_color)
 
         vis.append(pos_vis)
+    # pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+    # pos_vis.compute_vertex_normals()
+    # pos_vis.scale(0.1, [0, 0, 0])
+    # pos_vis.translate([ 2.1027, -0.7891,  1.0000])
+    # pos_vis.paint_uniform_color([1, 0, 0])
+    # vis.append(pos_vis)
     o3d.visualization.draw(vis)
     #o3d.io.write_point_cloud("outputs/model_output/test_diffusion/w=0.ply", pcd)
 
@@ -348,6 +359,7 @@ class pred_one_case_dataset(Dataset):
         self.direction_text = direction_text
         self.scene_pcd = scene_pcd
         self.scene_pcd_points = np.asarray(self.scene_pcd.points)
+        self.T_plane, self.plane_model = get_tf_for_scene_rotation(self.scene_pcd_points)
         self.scene_pcd_tensor = torch.tensor(
             self.scene_pcd_points, dtype=torch.float32
         ).unsqueeze(0)
@@ -375,7 +387,27 @@ class pred_one_case_dataset(Dataset):
         self.rgb_image = rgb_image
         self.depth = np.array(cv2.imread(depth_img_path, cv2.IMREAD_UNCHANGED)).astype(
             float
+        ) / 1000
+
+        self.intrinsics = np.array([[525.0, 0.0, 319.5], [0.0, 525.0, 239.5], [0.0, 0.0, 1.0]])
+        self.intrinsics[0, 2] = self.depth.shape[1] / 2
+        self.intrinsics[1, 2] = self.depth.shape[0] / 2
+        inv_intrinsics = np.linalg.pinv(self.intrinsics)
+        self.vol_bnds = np.zeros((3,2))
+        view_frust_pts = get_view_frustum(self.depth, self.intrinsics, np.eye(4))
+        self.vol_bnds[:, 0] = np.minimum(self.vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
+        self.vol_bnds[:, 1] = np.maximum(self.vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
+
+
+        color = cv2.imread(
+        rgb_image_file_path, cv2.IMREAD_COLOR
         )
+        self.color_tsdf = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
+        tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=30)
+        tsdf.integrate(self.color_tsdf, depth, self.intrinsics, np.eye(4))
+        mesh = tsdf.get_mesh()
+        self.tsdf_grid = tsdf.get_tsdf_volume()
+
 
     def __len__(self):
         return 2
@@ -393,6 +425,13 @@ class pred_one_case_dataset(Dataset):
             "direction_text": self.direction_text,
             "anchor_position": self.green_pcd_center,
             "depth": self.depth,
+            "T_plane": self.T_plane,
+            "plane_model": self.plane_model,
+            "tsdf_grid": self.tsdf_grid,
+            "intrinsics": self.intrinsics,
+            "vol_bnds": self.vol_bnds,
+            "color_tsdf": self.color_tsdf,
+
         }
         return sample
 
@@ -491,10 +530,11 @@ if __name__ == "__main__":
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
     #NOTE: wait the training to finish
     state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_rand_afford/ckpt_5.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    guidance = AffordanceGuidance()
+    #guidance = AffordanceGuidance()
+    guidance = NonCollisionGuidance()
     model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
@@ -583,10 +623,20 @@ if __name__ == "__main__":
                 .unsqueeze(0)
                 .to("cuda")
             )
-
+            batch['affordance_non_cond'] = torch.randn_like(batch['affordance']).to("cuda")
+            batch['gt_pose_xyz_for_non_cond'] = torch.randn((1,80,3)).to("cuda")
+            #batch['affordance'] = batch['affordance_non_cond']
+            #random_uniform = torch.rand((80, 3), dtype=torch.float32, device="cuda")  # Shape: (80, 3)
+            #samples = batch['gt_pose_xyz_min_bound'] + random_uniform * (batch['gt_pose_xyz_max_bound'] - batch['gt_pose_xyz_min_bound'])  # Shape: (80, 3)
+            #batch['gt_pose_xyz_for_non_cond'] = (
+            #    samples.unsqueeze(0).to("cuda")
+            #)
+ 
             # pred pose
-            pred = model_diffuser(batch, num_samp=10, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
-            print("pred:", pred)
+            pred = model_diffuser(batch, num_samp=2, class_free_guide_w=0, apply_guidance=True, guide_clean=False)  
+            #print("pred:", pred)
+            print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
+            print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
             visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 
             break

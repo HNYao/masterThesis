@@ -42,7 +42,7 @@ class PoseDiffuserTrainer(BaseTrainer):
         )
 
         subset_indice = random.sample(
-            range(self.cfg.dataset.size + 1), self.cfg.dataset.size
+            range(self.cfg.dataset.size * 5), self.cfg.dataset.size
         )
         self.dataset = Subset(self.dataset, subset_indice)
         train_size = int(0.9 * len(self.dataset))
@@ -56,7 +56,7 @@ class PoseDiffuserTrainer(BaseTrainer):
         self.train_loader = DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             sampler=None,
             num_workers=self.cfg.training.dataset.num_workers,
             drop_last=True,
@@ -65,9 +65,9 @@ class PoseDiffuserTrainer(BaseTrainer):
 
         self.validation_loader = DataLoader(
             self.val_dataset,
-            batch_size=2,
+            batch_size=self.batch_size,
             num_workers=self.cfg.training.dataset.num_workers,
-            drop_last=True,
+            drop_last=False,
             pin_memory=True,
         )
 
@@ -186,17 +186,20 @@ class PoseDiffuserTrainer(BaseTrainer):
             self.optimizer.zero_grad()
 
             batch_size = batch["image"].shape[0]
-            cond_fill_val = -1
+            #cond_fill_val = -1
             
             #drop_mask_cond_position = torch.rand(len(batch["pc_position"])) < self.cfg.model.training.cond_drop_pc_position_p
             drop_mask_cond_affordance = torch.rand(len(batch["affordance"])) < self.cfg.model.training.cond_drop_affordance_p
             #drop_mask_cond_obj_pc_position = torch.rand(len(batch["object_pc_position"])) < self.cfg.model.training.cond_drop_object_pc_position_p
 
-            random_mask = torch.rand_like(batch["affordance"])
-            batch["affordance"][drop_mask_cond_affordance] = random_mask[drop_mask_cond_affordance]
-            batch['gt_pose_xyz'][drop_mask_cond_affordance] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_affordance] # if drop the affordance, chage the gt
-            #batch['gt_pose_xyz'][drop_mask_cond_obj_pc_position] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_obj_pc_position] # if drop the affordance, chage the gt
+            #random_mask = torch.rand_like(batch["affordance"])
+            batch["affordance"][drop_mask_cond_affordance] = batch['affordance_for_non_cond'][drop_mask_cond_affordance]
+            #batch['pc_position'][drop_mask_cond_position] = cond_fill_val
             #batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
+            batch['gt_pose_xyz'][drop_mask_cond_affordance] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_affordance] # if drop the affordance, chage the gt
+            #batch['gt_pose_xyz'][drop_mask_cond_position] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_position] # if drop the affordance, chage the gt
+            #batch['gt_pose_xyz'][drop_mask_cond_obj_pc_position] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_obj_pc_position] # if drop the affordance, chage the gt
+            
 
             #batch["affordance"][drop_mask_cond_affordance] = cond_fill_val
             #batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
@@ -338,7 +341,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch = self.train_one_epoch(epoch)
-            if epoch % 2 == 0:
+            if epoch % 3 == 0:
                 self.save_state(epoch + 1)
 
             if epoch % 1 == 0:
@@ -352,7 +355,7 @@ class PoseDiffuserTrainer(BaseTrainer):
                 self.log_img(epoch, img_pred_list[0], "pred")
 
                 logger.info("Pose_4d_pred: {}".format(pose_xyz_pred[0]))
-                logger.info("Ground truth: {}".format(last_batch["gt_pose_4d"][0][0]))
+                logger.info("Ground truth: {}".format(last_batch["gt_pose_xyz"][0][0]))
                 logger.info("Min: {}".format(last_batch["gt_pose_xyz_min_bound"][0]))
                 logger.info("Max: {}".format(last_batch["gt_pose_xyz_max_bound"][0]))
 
@@ -427,9 +430,9 @@ class PoseDiffuserTrainer(BaseTrainer):
         transformed_points = torch.bmm(points, R_inv) - t.unsqueeze(1)
         pose_4d_pred[:, :, :3] = transformed_points
 
-        gt_points = batch["gt_pose_4d"][:, :, :3]
+        gt_points = batch["gt_pose_xyz"][:, :, :3]
         gt_transformed_points = torch.bmm(gt_points, R_inv) - t.unsqueeze(1)
-        batch["gt_pose_4d"][:, :, :3] = gt_transformed_points
+        batch["gt_pose_xyz"][:, :, :3] = gt_transformed_points
 
         pcs = []
         img_pred_list = []
@@ -470,7 +473,7 @@ class PoseDiffuserTrainer(BaseTrainer):
 
             colors_gt = torch.zeros_like(points_scene, dtype=torch.float32)
             distances_gt = torch.norm(
-                points_scene[None, :, :] - batch["gt_pose_4d"][i][:, :3][:, None, :],
+                points_scene[None, :, :] - batch["gt_pose_xyz"][i][:, :3][:, None, :],
                 dim=-1,
             )
             is_near_pose_gt = (distances_gt < distance_threshold).any(dim=0)

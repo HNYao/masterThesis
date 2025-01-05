@@ -262,7 +262,7 @@ class ObjectPCEncoder_v2(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(512, 64),
             nn.Mish(),
-            nn.Linear(64, 8),
+            nn.Linear(64, 16),
         )
     def forward(self, x):
         x = self.encoder(x).permute(0, 2, 1)

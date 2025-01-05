@@ -10,7 +10,15 @@ from GeoL_diffuser.models.utils.guidance_loss import DiffuserGuidance
 from GeoL_diffuser.dataset.dataset import *
 from torch.utils.data import DataLoader
 from GeoL_net.models.GeoL import FeaturePerceiver
-from GeoL_diffuser.models.temporal import TemporalMapUnet, TemporalMapUnet_v2
+from GeoL_diffuser.models.temporal import (
+    TemporalMapUnet, 
+    TemporalMapUnet_v2, 
+    TemporalMapUnet_v3, 
+    TemporalMapUnet_v4, 
+    TemporalMapUnet_v5,
+    TemporalMapUnet_v6,
+    TemporalMapUnet_v7,
+)
 
 import GeoL_diffuser.models.tensor_utils as TensorUtils
 from GeoL_diffuser.models.utils.guidance_loss import DiffuserGuidance
@@ -49,10 +57,10 @@ class Diffusion(nn.Module):
         else:
             self.model_state_dim = self.state_dim
 
-        self.model = TemporalMapUnet_v2(
+        self.model = TemporalMapUnet(
             horizon=self.horizon,
             transition_dim=self.model_state_dim, # 3 + 1
-            cond_dim=18, # 64 + 64
+            cond_dim=240, # 64 + 64
             output_dim=self.output_dim,
             dim=self.base_dim,  # time_dim
             dim_mults=(2, 4, 8),
@@ -61,7 +69,7 @@ class Diffusion(nn.Module):
 
         # feat extractor
         #self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
-        #self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device).eval() # NOTE: test v2
+        #self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device) # NOTE: test v2
         #self.pc_position_xy_affordance_encoder = PCxyPositionEncoder(state_dim=2, hidden_dim=64)
         #self.object_name_encoder = ObjectNameEncoder_v2(out_dim=4).to(self.device).eval() # NOTE: test v2
         #self.top_affordance_encoder_position_encoder = TopAffordancePositionEncoder().to(self.device).eval()
@@ -145,7 +153,7 @@ class Diffusion(nn.Module):
         """
         Instantiates test-time guidance functions using the list of configs (dicts) passed in.
         """
-        self.current_guidance = guidance # no guidance
+        self.current_guidance = guidance
 
 
     # ------------------------------------------ aux_info ------------------------------------------#
@@ -155,40 +163,64 @@ class Diffusion(nn.Module):
         affordance = data_batch[
             "affordance"
         ]  # [batch_size, num_points, affordance_dim=1]
+#        affordance_non_cond = data_batch[
+#            "affordance_non_cond"
+#        ]
         pc_position = data_batch[
             "pc_position"
         ]  # [batch_size, num_points, pc_position_dim=3]
+
 
         #object_name = data_batch["object_name"]  # [batch_size, ]
         #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
 
         top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
         top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions = self.top_position(affordance, pc_position, topk=5)
+        top_positions = self.top_position(affordance, pc_position, topk=80)
         top_positions = self.scale_xyz_pose(top_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions = top_positions.view(-1, 5*3)
+        top_positions = top_positions.view(-1, 80*3)
+
+        
         #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
 
-        affordance_non_cond = torch.randn_like(affordance)
-        top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
-        top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
-        top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=5)
+        #affordance_non_cond = torch.randn_like(affordance)
+        #top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
+        #top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
+        #top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=80)
+        #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
         top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions_non_cond = top_positions_non_cond.view(-1, 5*3)
+        top_positions_non_cond = top_positions_non_cond.view(-1, 80*3)
+        #top_positions_non_cond = top_positions
+
+        ######## debug affordance visualization
+        # affordance_non_cond_vis = affordance_non_cond[0]
+        # affordance_vis = affordance[0]
+        # pc_position_vis = pc_position[0]
+        # pc_vis = o3d.geometry.PointCloud()
+        # pc_vis.points = o3d.utility.Vector3dVector(pc_position_vis.detach().cpu().numpy())
+        # pc_colors = np.zeros_like(pc_position_vis.detach().cpu().numpy())
+        # pc_colors[:, 0] = affordance_vis.detach().cpu().numpy().squeeze()
+        # pc_vis.colors = o3d.utility.Vector3dVector(pc_colors)
+        # o3d.visualization.draw_geometries([pc_vis])
+        
 
         cond_feat = torch.cat(
             [   
 
-                top_avg_position, # [barch_size, 3]
-                top_positions # [barch_size, 15]
+                #top_avg_position, # [barch_size, 3]
+                top_positions, # [barch_size, 240]
+                #obj_pc_cond # [barch_size, 16]
+    
             ],
             dim=1,
         )
         non_cond_feat = torch.cat(
             [   
 
-                top_avg_position_non_cond, # [barch_size, 3]
-                top_positions_non_cond # [barch_size, 15]
+                #top_avg_position_non_cond, # [barch_size, 3]
+                top_positions_non_cond, # [barch_size, 240]
+                #obj_pc_non_cond # [barch_size, 16]
             ],
             dim=1,
         )
@@ -341,7 +373,7 @@ class Diffusion(nn.Module):
             # compute losses and gradient
             x_loss = x.reshape((bsize, num_samp, horizon, -1))
             tot_loss, per_losses = self.current_guidance.compute_guidance_loss(
-                x_loss, t, data_batch
+                x_loss, t, data_batch # or aux_info?
             )
             tot_loss.backward()
             guide_grad = x.grad if return_grad_of is None else return_grad_of.grad
@@ -386,6 +418,7 @@ class Diffusion(nn.Module):
         model_prediction = self.model(
             x_inp, aux_info["cond_feat"], t
         )  # x.shape = [b, h, state_dim=4] t.shape = [b, ], aux_info["cond_feat"].shape = [b, condition_dim]
+        
         if class_free_guide_w != 0:
             x_non_cond_inp = x.clone()
             if self.use_map_features:
@@ -418,14 +451,14 @@ class Diffusion(nn.Module):
                     1 + class_free_guide_w
                 ) * model_pred_noise - class_free_guide_w * model_non_cond_pred_noise
                 model_prediction = class_free_guid_noise
-        else:
-            if not self.predict_epsilon:
-                model_pred_noise = self.predict_noise_from_start(
-                    x_t=x, t=t, x_start=model_prediction
-                )
-                model_prediction = self.predict_start_from_noise(
-                    x=x, t=t, pred_noise=model_pred_noise, force_noise=True
-                )
+        # else:
+        #     if not self.predict_epsilon:
+        #         model_pred_noise = self.predict_noise_from_start(
+        #             x_t=x, t=t, x_start=model_prediction
+        #         )
+        #         model_prediction = self.predict_start_from_noise(
+        #             x=x, t=t, pred_noise=model_pred_noise, force_noise=True
+        #         )
 
         x_recon = self.predict_start_from_noise(
             x=x, t=t, pred_noise=model_prediction, force_noise=self.predict_epsilon
@@ -454,7 +487,7 @@ class Diffusion(nn.Module):
         class_free_guide_w=0.0,
         apply_guidance=True,
         guide_clean=True,
-        eval_final_guide_loss=False,  # NOTE: guide_clean is usually true
+        eval_final_guide_loss=False, 
         *args,
         **kwargs,
     ):
@@ -530,13 +563,12 @@ class Diffusion(nn.Module):
             # NOTE: variance is not dependent on x_start, so it won't change. Therefore, fine to use same noise.
             x_out = model_mean + noise
         else:
-            x_out = model_mean - guide_grad + noise
+            #x_out = model_mean - guide_grad + noise
+            x_out = model_mean -guide_grad + noise # debug guidance
+            #x_out = torch.zeros_like(x_out)
 
         # 3 evaluate guidance loss at the end. even if not applying guidance during sampling
-        if (
-            self.current_guidance is not None
-            and eval_final_guide_loss
-        ):
+        if self.current_guidance is not None and eval_final_guide_loss:
             assert (
                 not self.predict_epsilon
             ), "Guidance not implemented for epsilon prediction"
@@ -629,7 +661,7 @@ class Diffusion(nn.Module):
             class_free_guide_w=class_free_guide_w,
             **kwargs,
         )
-        action["pred_pose_xyx"] = action["pred_pose_xyz"].clamp(-1, 1)
+        action["pred_pose_xyz"] = action["pred_pose_xyz"].clamp(-1, 1)
         return action
     
     def query_map_feat_grid(self, x, aux_info):
@@ -738,7 +770,7 @@ class Diffusion(nn.Module):
             loss = self.loss_fn(noise_pred, noise)
         else:
             assert not self.predict_epsilon
-            loss = self.loss_fn(x_recon, x_start)
+            loss = self.loss_fn(x_recon[...,:2], x_start[...,:2])
 
         return loss
 

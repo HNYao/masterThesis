@@ -27,7 +27,7 @@ def main(opt_cmd):
 
     script_cmd = to_cmd(opt_cmd)
     print(f"... Running command: python scripts/train.py {script_cmd}")
-    print(f"... Checking logs using: \n tail -f {out_file}  ")
+    print(f"... Checking logs using: \n tail -f {out_file}   ")
     print("==========================================================")
 
     with open(job_file, "w") as fh:
