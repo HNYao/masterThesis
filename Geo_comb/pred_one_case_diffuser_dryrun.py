@@ -32,9 +32,9 @@ from omegaconf import OmegaConf
 import trimesh
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 
-#seed=42
-#torch.manual_seed(seed)
-#np.random.seed(seed)
+seed=42
+torch.manual_seed(seed)
+np.random.seed(seed)
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
@@ -258,10 +258,11 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     Returns:
     None
     """
-    depth = batch["depth"][0].cpu().numpy() / 1000.0
+    depth = batch["depth"][0].cpu().numpy() 
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
-    guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
+    #guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
+    guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
 
     if intrinsics is None:
@@ -275,25 +276,21 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
         np.logical_and(depth > 0, depth < 2),
         NOCS_convention=False,
     )
+    T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
     image_color = image[idx[0], idx[1], :] / 255
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_scene)
-
-    #colors = np.zeros((points_scene.shape[0], 3))
 
     points = points.cpu().numpy()
     guide_cost = guide_cost.cpu().numpy()
 
     points = points[0] # [N*H, 3]
     guide_cost = guide_cost[0] # [N*H]
-    # guide_cost_color = cm.get_cmap("turbo")(guide_cost[None])[0, :, :3]
 
     distances = np.sqrt(
         ((points_scene[:, :2][:, None, :] - points[:, :2]) ** 2).sum(axis=2)
     ) # x, y distance   
-
-    # is_near_pose = np.any(distances < distance_thershold, axis=1)
     scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
     scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
     topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: points.shape[0]]
@@ -301,12 +298,14 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
 
     guide_cost = guide_cost[tokk_points_id_corr_anchor]
     guide_cost_color = get_heatmap(guide_cost[None], invert=False)[0]
-    #guide_cost_color = np.random.rand(800, 3)
 
     pcd.colors = o3d.utility.Vector3dVector(image_color)
 
 
-    points_for_place = points_scene[topk_points_id]
+    #points_for_place = points_scene[topk_points_id] # option1: use the topk nearest points to visualize
+    
+    points_for_place = points # option2: use the plane_model to get the points 
+    points_for_place[..., 2] = (-plane_model[3] - plane_model[0] * points_for_place[..., 0] - plane_model[1] * points_for_place[..., 1]) / plane_model[2]
 
     points_for_place_goal = np.mean(points_for_place, axis=0)
     print("points_for_place_goal:", points_for_place_goal)
@@ -320,10 +319,12 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
     avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3)
     avg_topk_positions = avg_topk_positions[0].cpu().numpy()
-    avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.05, color=[1, 0, 0])
+    avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.02, color=[1, 0, 0])
     
 
     vis = [pcd, avg_topk_mean_sphere]
+    #vis = [pcd]
+    #o3d.visualization.draw(vis)
 
     # print("points_for_place_goal:", points_for_place_goal)
     for ii, pos in enumerate(points_for_place):
@@ -333,16 +334,9 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
         pos_vis.translate(pos[:3])
         vis_color = guide_cost_color[ii]
         pos_vis.paint_uniform_color(vis_color)
-
         vis.append(pos_vis)
-    # pos_vis = o3d.geometry.TriangleMesh.create_sphere()
-    # pos_vis.compute_vertex_normals()
-    # pos_vis.scale(0.1, [0, 0, 0])
-    # pos_vis.translate([ 2.1027, -0.7891,  1.0000])
-    # pos_vis.paint_uniform_color([1, 0, 0])
-    # vis.append(pos_vis)
     o3d.visualization.draw(vis)
-    #o3d.io.write_point_cloud("outputs/model_output/test_diffusion/w=0.ply", pcd)
+
 
 
 class pred_one_case_dataset(Dataset):
@@ -388,8 +382,11 @@ class pred_one_case_dataset(Dataset):
         self.depth = np.array(cv2.imread(depth_img_path, cv2.IMREAD_UNCHANGED)).astype(
             float
         ) / 1000
+        #self.depth[self.depth > 2] = 0
 
-        self.intrinsics = np.array([[525.0, 0.0, 319.5], [0.0, 525.0, 239.5], [0.0, 0.0, 1.0]])
+        #self.intrinsics = np.array([[525.0, 0.0, 319.5], [0.0, 525.0, 239.5], [0.0, 0.0, 1.0]])
+        self.intrinsics = np.array([[607.09912 / 2, 0.0, 636.85083 / 2],[0.0, 607.05212 / 2, 367.35952 / 2],[0.0, 0.0, 1.0],])
+        
         self.intrinsics[0, 2] = self.depth.shape[1] / 2
         self.intrinsics[1, 2] = self.depth.shape[0] / 2
         inv_intrinsics = np.linalg.pinv(self.intrinsics)
@@ -510,6 +507,7 @@ if __name__ == "__main__":
     color_no_obj = np.array(annotated_frame)
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32) / 1000
+    depth[depth > 2] = 0
 
     intr = INTRINSICS
     points_no_obj_scene, scene_no_obj_idx = backproject(
@@ -633,10 +631,13 @@ if __name__ == "__main__":
             #)
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=2, class_free_guide_w=0, apply_guidance=True, guide_clean=False)  
+            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=False)  
             #print("pred:", pred)
-            print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
-            print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
+            #print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
+            #print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
+            print("Collision loss:", pred["guide_losses"]['collision_loss'])
+            print("Collision loss mean:", pred["guide_losses"]['collision_loss'].mean())
+
             visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 
             break

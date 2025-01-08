@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import open3d as o3d
 from matplotlib import cm
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
+from GeoL_diffuser.models.utils.fit_plane import *
 
 
 class Guidance:
@@ -156,6 +157,11 @@ class OneGoalGuidance(Guidance):
         return loss_tot, guide_losses
 
 class AffordanceGuidance(Guidance):
+    """
+    TODO:
+    - use mse
+    - use min to get the loss of k affordance
+    """
     def __init__(self):
         super(AffordanceGuidance, self).__init__()
 
@@ -324,9 +330,9 @@ class NonCollisionGuidance(Guidance):
         - x: (B, N, H, 3) the sampled points to use to compute losses
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
+        batchsize, num_samp, num_hypo, _ = x.size()
         guide_losses = dict()
         loss_tot = 0.0
-        tsdf_grid = data_batch["tsdf_grid"]
         depth = data_batch["depth"]
         color = data_batch["color_tsdf"]
         intrinsics = data_batch["intrinsics"]
@@ -337,7 +343,7 @@ class NonCollisionGuidance(Guidance):
         #tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
 
         # get the first tsdf
-        tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=30)
+        tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=5)
         tsdf.integrate(
             color[0].cpu().detach().numpy(), 
             depth[0].cpu().detach().numpy(), 
@@ -345,19 +351,28 @@ class NonCollisionGuidance(Guidance):
             np.eye(4))
         mesh = tsdf.get_mesh()
 
-        # descaled_pred
-        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        # scene_pc align to tsdf
+        scene_pc = data_batch['pc_position']
+        scene_pc = (scene_pc - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1])
+        scene_pc = scene_pc * 2 - 1 
 
-        # get obj and scene point
-        obj_pc = data_batch['object_pc_position'] # (B, 512, 3) # aligned to z
-        scene_pc = data_batch['pc_position'] # (B, 2048, 3) # aligned to z
         T_plane = data_batch['T_plane'] # (B, 4, 4)
         T_plane_one = T_plane[0].cpu().detach().numpy()
+        T_plane_one_tsdf, plane_model_one_tsdf= get_tf_for_scene_rotation(scene_pc[0].cpu().detach().numpy())
+        plane_model_one_tsdf[3] = plane_model_one_tsdf[3] + 0.01 # add a small margin to avoid collision with desk
+        
+        # descaled_pred
+        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        x = (x - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1]) # (B, N, H, 3)
+        x = x * 2 - 1
+        x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
 
-
-        ######## find the base point of the object
-
-        # 1. for the obj aligned to z-axis(positive)
+        # get obj
+        obj_pc = data_batch['object_pc_position'] # (B, 512, 3) # aligned to z
+        obj_pc = (obj_pc - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1]) # (B, 512, 3)
+        obj_pc = obj_pc * 2 - 1 # obj point aligned to tsdf mesh
+        
+        # for the obj aligned to z-axis(positive)
         min_bound = torch.min(obj_pc, dim=1)[0] # (B, 3)
         max_bound = torch.max(obj_pc, dim=1)[0] # (B, 3)
         base_point = torch.empty_like(min_bound) # (B, 3)
@@ -366,53 +381,48 @@ class NonCollisionGuidance(Guidance):
         base_point[:, 2] = max_bound[:, 2] # (B, 3) # NOTE: assuming the object is aligned to z-axis
         base_point = torch.matmul(base_point, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 1, 3)
 
-        ######## visualized the object and scene
-        obj_pc_one_data = obj_pc[0].cpu().detach().numpy()
-
-        obj_pc_one_data = np.dot(obj_pc_one_data, np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]))
-        obj_pc_one_data = np.dot(obj_pc_one_data, T_plane_one[:3, :3].T) # rotate the object to align with z-axis
+        # visualize the scene [0]
         scene_pc_one_data = scene_pc[0].cpu().detach().numpy()
-        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
-        scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc_one_data))
-        #o3d.visualization.draw_geometries([obj_pc_vis, scene_pc_vis])
-        #obj_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc))
-        #scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc))
+        scene_pc_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(scene_pc_one_data))        
 
-
-        # translate the objects from base point to x (unscaled)
-        obj_pc = torch.matmul(obj_pc, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 512, 3)
-        obj_pc = torch.matmul(obj_pc, torch.tensor([[1., 0., 0.], [0., -1., 0.], [0.,0.,-1.]]).cuda()) # (B, 512, 3)
-        obj_pc = obj_pc - base_point[:, None, :].expand(-1, obj_pc.size(1), -1) # (B, 512, 3)
+        # translate the objects from base point to pred_x
+        obj_pc_align_plane = torch.matmul(obj_pc, torch.tensor(T_plane_one[:3,:3].T).cuda()) # (B, 512, 3)
+        obj_pc_align_plane = torch.matmul(obj_pc_align_plane, torch.tensor([[1., 0., 0.], [0., -1., 0.], [0.,0.,-1.]]).cuda()) # (B, 512, 3)
+        obj_pc_align_plane = obj_pc_align_plane - base_point[:, None, :].expand(-1, obj_pc.size(1), -1) # (B, 512, 3)
         bsize, num_samp, num_hypo, _ = x.size() 
         points_for_place = x.reshape(bsize, -1, 3) # (B, N*H, 3)
-        obj_pc = obj_pc.unsqueeze(2) # [B, 512, 1, 3]
+        obj_pc_align_plane = obj_pc_align_plane.unsqueeze(2) # [B, 512, 1, 3]
         points_for_place = points_for_place.unsqueeze(1) # [B, 1, N*H, 3]
-        translated_points = points_for_place + obj_pc # [B, 512, N*H, 3]
+        translated_points = points_for_place + obj_pc_align_plane # [B, 512, N*H, 3]
 
-        # 
-        obj_pc_one_data = translated_points[0, :, 0, :].cpu().detach().numpy()
-        
+        # prepare the first object in the first place position for visualization
+        obj_pc_one_data = translated_points[0, :, 2, :].cpu().detach().numpy()
         obj_pc_one_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
+
+        #obj_pc_all_data = translated_points[0, : , :, :].cpu().detach().numpy()
+        #obj_pc_all_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_all_data.reshape(-1, 3)))
+        # visualize coordinate frame
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-        
-        #mesh = tsdf.get_mesh()
+
+        # visualize the obj, scene, coordinate frame, mesh
         #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
     
 
+
+        ### query tsdf 
         query_points = translated_points.view(bsize, -1, 3) # [B, 512*N*H, 3]
         query_points = query_points[None, None,  ...] # [B, 1, 512*N*H, 3]
-        query_points = query_points[..., [2, 1, 0]]
+        query_points = query_points[..., [2, 1, 0]] # NOTE: change the order
         tsdf = tsdf._tsdf_vol
-        tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None] # [B, C, H, W, D]
+        tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None]# [B, C, D, H, W]
         query_tsdf = nn.functional.grid_sample(tsdf, query_points, align_corners=True) # [B, C, 1, 1, N*H*512]
-        query_tsdf = query_tsdf[:, :, 0, 0, :].squeeze() # [B, C, N*H*512] => [B, N*H*512]
         query_tsdf = query_tsdf.view(bsize, num_samp * num_hypo, -1) # [B, N*H, 512]
-        collision_loss = F.relu(-(query_tsdf - 0.1)).mean(dim=-1) # threshold at 0.1, [B, N*H]
+        collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1)
 
-        guide_losses["collision_loss"] = collision_loss # (B, N, H)
-        collision_loss = collision_loss.mean(dim=-1)  # (B, N)
+        guide_losses["collision_loss"] = collision_loss # (B, N*H)
         
-        collision_loss = collision_loss.mean() * 500 # (B,)
+        collision_loss = collision_loss.mean()  # (B,)
         loss_tot += collision_loss
 
         return loss_tot, guide_losses
