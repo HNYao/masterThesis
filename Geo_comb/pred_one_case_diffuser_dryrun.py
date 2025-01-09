@@ -258,7 +258,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     Returns:
     None
     """
-    depth = batch["depth"][0].cpu().numpy() / 1000.0
+    depth = batch["depth"][0].cpu().numpy()
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
     guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
@@ -533,8 +533,8 @@ if __name__ == "__main__":
         "outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    #guidance = AffordanceGuidance()
-    guidance = NonCollisionGuidance()
+    guidance = AffordanceGuidance()
+    #guidance = NonCollisionGuidance()
     model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
@@ -633,7 +633,7 @@ if __name__ == "__main__":
             #)
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=2, class_free_guide_w=0, apply_guidance=True, guide_clean=False)  
+            pred = model_diffuser(batch, num_samp=2, class_free_guide_w=0, apply_guidance=False, guide_clean=True)  
             #print("pred:", pred)
             print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
             print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
