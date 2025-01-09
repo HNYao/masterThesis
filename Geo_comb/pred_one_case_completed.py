@@ -514,7 +514,7 @@ if __name__ == "__main__":
         print("====> Predicting Affordance...")
     else:
         target_name = "the bowl"
-        direction_text = "Right"
+        direction_text = "Front"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(

@@ -261,8 +261,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     depth = batch["depth"][0].cpu().numpy() 
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
-    #guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
-    guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
+    guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
+    #guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
 
     if intrinsics is None:
@@ -402,7 +402,7 @@ class pred_one_case_dataset(Dataset):
         self.color_tsdf = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
         tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=30)
         tsdf.integrate(self.color_tsdf, depth, self.intrinsics, np.eye(4))
-        mesh = tsdf.get_mesh()
+        self.mesh = tsdf.get_mesh()
         self.tsdf_grid = tsdf.get_tsdf_volume()
 
 
@@ -428,6 +428,7 @@ class pred_one_case_dataset(Dataset):
             "intrinsics": self.intrinsics,
             "vol_bnds": self.vol_bnds,
             "color_tsdf": self.color_tsdf,
+
 
         }
         return sample
@@ -531,8 +532,8 @@ if __name__ == "__main__":
         "outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu"
     )
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    #guidance = AffordanceGuidance()
-    guidance = NonCollisionGuidance()
+    guidance = AffordanceGuidance()
+    #guidance = NonCollisionGuidance_v2()
     model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
@@ -631,12 +632,13 @@ if __name__ == "__main__":
             #)
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=False)  
+            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=False, guide_clean=True)  
             #print("pred:", pred)
-            #print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
-            #print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
-            print("Collision loss:", pred["guide_losses"]['collision_loss'])
-            print("Collision loss mean:", pred["guide_losses"]['collision_loss'].mean())
+            print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
+            print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
+            #print("Collision loss:", pred["guide_losses"]['collision_loss'])
+            #print("Collision loss mean:", pred["guide_losses"]['collision_loss'].mean())
+            #print("Collision loss max:", pred["guide_losses"]['collision_loss'].max())
 
             visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 
