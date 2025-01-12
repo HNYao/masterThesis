@@ -24,6 +24,11 @@ import GeoL_diffuser.models.tensor_utils as TensorUtils
 from GeoL_diffuser.models.utils.guidance_loss import DiffuserGuidance
 from GeoL_diffuser.models.utils.diffusion_utils import *
 
+SEED=42
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+
+
 
 class Diffusion(nn.Module):
     def __init__(

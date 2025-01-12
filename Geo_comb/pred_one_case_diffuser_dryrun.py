@@ -11,6 +11,7 @@ from PIL import Image
 from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
+import random
 from torch.utils.data import Dataset, DataLoader
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 import cv2
@@ -31,10 +32,17 @@ import yaml
 from omegaconf import OmegaConf
 import trimesh
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
-
 seed=42
 torch.manual_seed(seed)
 np.random.seed(seed)
+random.seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
@@ -261,6 +269,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     depth = batch["depth"][0].cpu().numpy() 
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
+    #points = batch['gt_pose_xyz_for_non_cond'] #NOTE: for debug
     guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
     #guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
@@ -296,7 +305,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: points.shape[0]]
     tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
 
-    guide_cost = guide_cost[tokk_points_id_corr_anchor]
+    #guide_cost = guide_cost[tokk_points_id_corr_anchor] # NOTE: uncomment if use the option 1 visualization
     guide_cost_color = get_heatmap(guide_cost[None], invert=False)[0]
 
     pcd.colors = o3d.utility.Vector3dVector(image_color)
@@ -308,7 +317,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     points_for_place[..., 2] = (-plane_model[3] - plane_model[0] * points_for_place[..., 0] - plane_model[1] * points_for_place[..., 1]) / plane_model[2]
 
     points_for_place_goal = np.mean(points_for_place, axis=0)
-    print("points_for_place_goal:", points_for_place_goal)
+    #print("points_for_place_goal:", points_for_place_goal)
 
     # get the topk affordance points avg position and visualize
     affordance = batch["affordance"] # [B, 2048, 1]
@@ -320,7 +329,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3)
     avg_topk_positions = avg_topk_positions[0].cpu().numpy()
     avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.02, color=[1, 0, 0])
-    
+    second_sphere = create_sphere_at_points([0.061, -0.273, 1.455], radius=0.02, color=[0, 1, 0])
 
     vis = [pcd, avg_topk_mean_sphere]
     #vis = [pcd]
@@ -400,7 +409,7 @@ class pred_one_case_dataset(Dataset):
         rgb_image_file_path, cv2.IMREAD_COLOR
         )
         self.color_tsdf = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
-        tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=30)
+        tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=5)
         tsdf.integrate(self.color_tsdf, depth, self.intrinsics, np.eye(4))
         self.mesh = tsdf.get_mesh()
         self.tsdf_grid = tsdf.get_tsdf_volume()
@@ -479,11 +488,12 @@ def rgb_obj_dect(
 
 if __name__ == "__main__":
 
+
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
     rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth_noise/000000.png"
+    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -528,17 +538,16 @@ if __name__ == "__main__":
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
     #NOTE: wait the training to finish
-    state_diffusion_dict = torch.load(
-        "outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu"
-    )
+    #state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu") # 26
+    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v1_10K/ckpt_6.pth", map_location="cpu") # test
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    guidance = AffordanceGuidance()
+    guidance = AffordanceGuidance_v2()
     #guidance = NonCollisionGuidance_v2()
     model_diffuser.nets["policy"].set_guidance(guidance)
 
     # create the dataset
     dataset = pred_one_case_dataset(
-        pcd_no_obj_scene,
+        pcd_no_obj_scene, # depth < 2
         rgb_image_file_path,
         target_name,
         direction_text,
@@ -623,7 +632,20 @@ if __name__ == "__main__":
                 .to("cuda")
             )
             batch['affordance_non_cond'] = torch.randn_like(batch['affordance']).to("cuda")
-            batch['gt_pose_xyz_for_non_cond'] = torch.randn((1,80,3)).to("cuda")
+
+            center = torch.tensor([[0.12179095, -0.38713118,  1.5404001 ]]).cuda()
+            num_points = 80
+            radius = 1
+            valid_points=[]
+            while len(valid_points) < 1:
+                random_offsets = (torch.rand((num_points, 3), dtype=torch.float32, device="cuda") - 0.5) * 2 
+                random_offsets = random_offsets / torch.norm(random_offsets.cuda(), dim=1, keepdim=True)
+                random_offsets = random_offsets * radius * torch.rand((num_points, 1)).cuda()
+                random_points = center + random_offsets
+                valid_points.append(random_points.unsqueeze(0))
+            valid_points = torch.cat(valid_points,dim=1)
+            batch['gt_pose_xyz_for_non_cond'] = valid_points.clamp(batch['gt_pose_xyz_min_bound'], batch['gt_pose_xyz_max_bound'])
+            #batch['gt_pose_xyz_for_non_cond'] = torch.randn((1,80,3)).to("cuda")
             #batch['affordance'] = batch['affordance_non_cond']
             #random_uniform = torch.rand((80, 3), dtype=torch.float32, device="cuda")  # Shape: (80, 3)
             #samples = batch['gt_pose_xyz_min_bound'] + random_uniform * (batch['gt_pose_xyz_max_bound'] - batch['gt_pose_xyz_min_bound'])  # Shape: (80, 3)
@@ -632,10 +654,16 @@ if __name__ == "__main__":
             #)
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=False, guide_clean=True)  
+            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-1, apply_guidance=False, guide_clean=False)  
             #print("pred:", pred)
-            print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
-            print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
+            for key, val in pred['guide_losses'].items():
+                #print(f"{key}: {val}")
+                print(f"{key} mean: {val.mean()}")
+                print(f"{key} max: {val.max()}")
+                print(f"{key} min: {val.min()}")
+    
+            #print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
+            #print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
             #print("Collision loss:", pred["guide_losses"]['collision_loss'])
             #print("Collision loss mean:", pred["guide_losses"]['collision_loss'].mean())
             #print("Collision loss max:", pred["guide_losses"]['collision_loss'].max())
