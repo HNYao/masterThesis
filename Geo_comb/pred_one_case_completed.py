@@ -513,7 +513,7 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the bowl"
+        target_name = "the brown glass bottle"
         direction_text = "Right"
 
     # use GroundingDINO to detect the target object
@@ -644,7 +644,7 @@ if __name__ == "__main__":
                 "max_bound_affordance": max_bound_affordance,
                 "affordance_pred": affordance_pred_sigmoid,
             }
-            np.savez_compressed("Geo_comb/afford_pred.npz", **to_save)
+            np.savez_compressed("Geo_comb/afford_pred_bottle_right.npz", **to_save)
 
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]

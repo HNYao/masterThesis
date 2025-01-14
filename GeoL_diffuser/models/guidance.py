@@ -12,46 +12,46 @@ class Guidance:
     def __init__(self):
         pass
 
-    def scale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+    def scale_xy_pose(self, pose_xy, xy_min_bound, xy_max_bound):
         """
         scale the pose_xyz to [-1, 1]
         pose_xyR: B * H * 3
         """
-        if len(pose_xyz.shape) == 3:
-            min_bound_batch = xyz_min_bound.unsqueeze(1)
-            max_bound_batch = xyz_max_bound.unsqueeze(1)
-        elif len(pose_xyz.shape) == 4:
-            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
-        elif len(pose_xyz.shape) == 2:
-            min_bound_batch = xyz_min_bound
-            max_bound_batch = xyz_max_bound
+        if len(pose_xy.shape) == 3:
+            min_bound_batch = xy_min_bound.unsqueeze(1)
+            max_bound_batch = xy_max_bound.unsqueeze(1)
+        elif len(pose_xy.shape) == 4:
+            min_bound_batch = xy_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xy_max_bound.unsqueeze(1).unsqueeze(1)
+        elif len(pose_xy.shape) == 2:
+            min_bound_batch = xy_min_bound
+            max_bound_batch = xy_max_bound
 
         scale = max_bound_batch - min_bound_batch
-        pose_xyz = (pose_xyz - min_bound_batch) / (scale + 1e-6)
-        pose_xyz = 2 * pose_xyz - 1
-        pose_xyz = pose_xyz.clamp(-1, 1)
+        pose_xy = (pose_xy - min_bound_batch) / (scale + 1e-6)
+        pose_xy = 2 * pose_xy - 1
+        pose_xy = pose_xy.clamp(-1, 1)
 
-        return pose_xyz
+        return pose_xy
 
-    def descale_xyz_pose(self, pose_xyz, xyz_min_bound, xyz_max_bound):
+    def descale_xy_pose(self, pose_xy, xy_min_bound, xy_max_bound):
         """
         descale the pose_xyz to the original range
         pose_xyz: B * N * H * 3
         """
-        if len(pose_xyz.shape) == 3:
-            min_bound_batch = xyz_min_bound.unsqueeze(1)
-            max_bound_batch = xyz_max_bound.unsqueeze(1)
-        elif len(pose_xyz.shape) == 4:
-            min_bound_batch = xyz_min_bound.unsqueeze(1).unsqueeze(1)
-            max_bound_batch = xyz_max_bound.unsqueeze(1).unsqueeze(1)
+        if len(pose_xy.shape) == 3:
+            min_bound_batch = xy_min_bound.unsqueeze(1)
+            max_bound_batch = xy_max_bound.unsqueeze(1)
+        elif len(pose_xy.shape) == 4:
+            min_bound_batch = xy_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xy_max_bound.unsqueeze(1).unsqueeze(1)
         else:
-            raise ValueError("Invalid shape of the input pose_xyz")
+            raise ValueError("Invalid shape of the input pose_xy")
 
         scale = max_bound_batch - min_bound_batch
-        pose_xyz = (pose_xyz + 1) / 2
-        pose_xyz = pose_xyz * scale + min_bound_batch
-        return pose_xyz
+        pose_xy = (pose_xy + 1) / 2
+        pose_xy = pose_xy * scale + min_bound_batch
+        return pose_xy
 
     def get_heatmap(self, values, cmap_name="turbo", invert=False):
         if invert:
@@ -189,7 +189,7 @@ class AffordanceGuidance(Guidance):
         avg_topk_positions = avg_topk_positions[:, None, None].expand(-1, num_samp, num_hypo, -1)  # (B, N, H, 3)
 
         # scale the topk affordance
-        avg_topk_positions = self.scale_xyz_pose(avg_topk_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        avg_topk_positions = self.scale_xy_pose(avg_topk_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
         #avg_topk_positions = torch.zeros_like(avg_topk_positions) # debug
         affordance_loss = F.mse_loss(
             avg_topk_positions[..., :2], x[..., :2], reduction="none"
@@ -207,14 +207,14 @@ class AffordanceGuidance(Guidance):
         loss_tot += affordance_loss
 
         ####### DEBUG visualize avg_topk_positions
-        avg_topk_positions_debug = self.scale_xyz_pose(avg_topk_positions_debug, data_batch["gt_pose_xyz_max_bound"], data_batch["gt_pose_xyz_min_bound"]) # (B, 3)
+        avg_topk_positions_debug = self.scale_xy_pose(avg_topk_positions_debug, data_batch["gt_pose_xy_max_bound"], data_batch["gt_pose_xy_min_bound"]) # (B, 3)
         avg_topk_positions_debug = avg_topk_positions_debug[0].cpu().detach().numpy() # (3,) unsacled
         position_debug = position[0].cpu().detach().numpy() # (2048, 3)
         pc = o3d.geometry.PointCloud()
         pc.points = o3d.utility.Vector3dVector(position_debug)
         pc.paint_uniform_color([0.5, 0.5, 0.5])
         avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
-        descaled_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+        descaled_x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
         pred_points = descaled_x[0].view(-1, 3).cpu().detach().numpy()
         distances = np.sqrt(
             ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
@@ -242,7 +242,7 @@ class AffordanceGuidance(Guidance):
             vis.append(pos_vis)
 
 
-        o3d.visualization.draw_geometries(vis)
+        #o3d.visualization.draw_geometries(vis)
         #o3d.io.write_point_cloud("outputs/debug/AffordanceGuide_pc.ply", vis)
 
         ##############################################
@@ -477,7 +477,7 @@ class NonCollisionGuidance_v2(Guidance):
         obj_pc = obj_pc.unsqueeze(1).unsqueeze(3).expand(-1, num_samp, -1, num_hypo, -1) # (B, N, O, H, 3)
         # descaled_pred
 
-        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
         x = (x - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1]) # (B, N, H, 3)
         x = x * 2 - 1
         x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
@@ -617,9 +617,9 @@ class AffordanceGuidance_v2(Guidance):
         avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3) unscaled
         avg_topk_positions_debug = avg_topk_positions.clone() # (B, 3) unscaled
         avg_topk_positions = avg_topk_positions[:, None, None].expand(-1, num_samp, num_hypo, -1)  # (B, N, H, 3)
-
+        avg_topk_positions = avg_topk_positions[..., :2]
         # scale the topk affordance
-        avg_topk_positions = self.scale_xyz_pose(avg_topk_positions, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        avg_topk_positions = self.scale_xy_pose(avg_topk_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
         #avg_topk_positions = torch.zeros_like(avg_topk_positions) # debug
         affordance_loss = F.mse_loss(
             avg_topk_positions[..., :2], x[..., :2], reduction="none"
@@ -641,8 +641,8 @@ class AffordanceGuidance_v2(Guidance):
         #affordance_loss = torch.norm(target_points[..., :2] - x[..., :2], dim=-1) # (B, N, H)
         #affordance_loss = torch.min(affordance_loss, dim=1)[0] # (B, H)
 
-
-        affordance_loss = affordance_loss.mean(dim=-1) * 500
+        guide_losses["distance_error"] =  affordance_loss.mean(dim=-1) # (B, N, H)
+        affordance_loss = affordance_loss.mean(dim=-1) * 300
         affordance_loss_debug = affordance_loss.clone()
         guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
         affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
@@ -659,8 +659,8 @@ class AffordanceGuidance_v2(Guidance):
         pc.points = o3d.utility.Vector3dVector(position_debug)
         pc.paint_uniform_color([0.5, 0.5, 0.5])
         avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
-        descaled_x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        pred_points = descaled_x[0].reshape(-1, 3).cpu().detach().numpy()
+        descaled_x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
+        pred_points = descaled_x[0].reshape(-1, 2).cpu().detach().numpy()
         distances = np.sqrt(
             ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
         ) # x, y distance 
@@ -675,23 +675,24 @@ class AffordanceGuidance_v2(Guidance):
         guide_cost_color =  self.get_heatmap(guide_cost[None], invert=False)[0]
 
         #points_for_place= position_debug[topk_points_id] # option1: use the nearest points
-        pred_points_align = pred_points.copy() # option2: use the plane model
-        pred_points_align[...,2] = (-plane_model[3] - plane_model[0] * pred_points_align[..., 0] - plane_model[1] * pred_points_align[..., 1]) / plane_model[2]
-        points_for_place = pred_points_align
+
+        #pred_points_align = pred_points.copy() # option2: use the plane model
+        #pred_points_align[...,2] = (-plane_model[3] - plane_model[0] * pred_points_align[..., 0] - plane_model[1] * pred_points_align[..., 1]) / plane_model[2]
+        #points_for_place = pred_points_align
 
 
 
         vis = [pc, avg_topk_sphere]
         #vis = [pc, avg_topk_sphere, second_sphere]
 
-        for ii, pos in enumerate(points_for_place):
-            pos_vis = o3d.geometry.TriangleMesh.create_sphere()
-            pos_vis.compute_vertex_normals()
-            pos_vis.scale(0.03, center=(0, 0, 0))
-            pos_vis.translate(pos[:3])
-            vis_color = guide_cost_color[ii]
-            pos_vis.paint_uniform_color(vis_color)
-            vis.append(pos_vis)
+        # for ii, pos in enumerate(points_for_place):
+        #     pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+        #     pos_vis.compute_vertex_normals()
+        #     pos_vis.scale(0.03, center=(0, 0, 0))
+        #     pos_vis.translate(pos[:3])
+        #     vis_color = guide_cost_color[ii]
+        #     pos_vis.paint_uniform_color(vis_color)
+        #     vis.append(pos_vis)
 
 
         #o3d.visualization.draw_geometries(vis)

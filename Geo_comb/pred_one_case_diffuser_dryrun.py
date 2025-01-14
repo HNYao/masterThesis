@@ -268,7 +268,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     """
     depth = batch["depth"][0].cpu().numpy() 
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
-    points = pred["pose_xyz_pred"]  # [1, N*H, 3] descaled
+    points = pred["pose_xy_pred"]  # [1, N*H, 3] descaled
     #points = batch['gt_pose_xyz_for_non_cond'] #NOTE: for debug
     guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
     #guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
@@ -314,7 +314,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     #points_for_place = points_scene[topk_points_id] # option1: use the topk nearest points to visualize
     
     points_for_place = points # option2: use the plane_model to get the points 
-    points_for_place[..., 2] = (-plane_model[3] - plane_model[0] * points_for_place[..., 0] - plane_model[1] * points_for_place[..., 1]) / plane_model[2]
+    points_for_place_z = (-plane_model[3] - plane_model[0] * points_for_place[..., 0] - plane_model[1] * points_for_place[..., 1]) / plane_model[2]
+    points_for_place = np.concatenate([points_for_place, points_for_place_z[:, None]], axis=1)
 
     points_for_place_goal = np.mean(points_for_place, axis=0)
     #print("points_for_place_goal:", points_for_place_goal)
@@ -539,7 +540,7 @@ if __name__ == "__main__":
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
     #NOTE: wait the training to finish
     #state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu") # 26
-    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v1_10K/ckpt_6.pth", map_location="cpu") # test
+    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v0__topk_1K/ckpt_21.pth", map_location="cpu") # test
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     guidance = AffordanceGuidance_v2()
     #guidance = NonCollisionGuidance_v2()
@@ -561,10 +562,18 @@ if __name__ == "__main__":
                 continue
             batch[key] = val.float().to("cuda")
         afford_pred_dict = np.load("Geo_comb/afford_pred.npz", allow_pickle=True)
+        afford_pred_dict_2= np.load("Geo_comb/afford_pred_bottle_right.npz", allow_pickle=True)
         with torch.no_grad():
             affordance_pred = torch.tensor(afford_pred_dict["affordance"]).to(
                 "cuda"
             )
+
+            # NOTE: test combine the affordance
+            affordance_pred = torch.cat([torch.tensor(afford_pred_dict["affordance"]), torch.tensor(afford_pred_dict_2["affordance"])], dim=-1)
+            # affordance_pred = torch.max(torch.cat([torch.tensor(afford_pred_dict["affordance"]), torch.tensor(afford_pred_dict_2["affordance"])], dim=-1), dim=-1)[0].to(
+            #     "cuda"
+            # ).unsqueeze(-1)
+
             fps_points_scene_affordance = afford_pred_dict[
                 "pc_position"
             ]
@@ -607,16 +616,30 @@ if __name__ == "__main__":
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyz_min_bound"] = (
+            batch['gt_pose_xyz_min_bound'] = (
                 torch.tensor(
                     min_xyz_bound, dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
             )
-            batch["gt_pose_xyz_max_bound"] = (
+            batch['gt_pose_xyz_max_bound'] = (
                 torch.tensor(
                     max_xyz_bound, dtype=torch.float32
+                )
+                .unsqueeze(0)
+                .to("cuda")
+            )
+            batch["gt_pose_xy_min_bound"] = (
+                torch.tensor(
+                    min_xyz_bound[...,:2], dtype=torch.float32
+                )
+                .unsqueeze(0)
+                .to("cuda")
+            )
+            batch["gt_pose_xy_max_bound"] = (
+                torch.tensor(
+                    max_xyz_bound[...,:2], dtype=torch.float32
                 )
                 .unsqueeze(0)
                 .to("cuda")
@@ -634,8 +657,9 @@ if __name__ == "__main__":
             batch['affordance_non_cond'] = torch.randn_like(batch['affordance']).to("cuda")
 
             center = torch.tensor([[0.12179095, -0.38713118,  1.5404001 ]]).cuda()
+            #batch['gt_pose_xy'] = center[...,:2].unsqueeze(0).repeat(1, 80, 1).to("cuda")
             num_points = 80
-            radius = 1
+            radius = 2
             valid_points=[]
             while len(valid_points) < 1:
                 random_offsets = (torch.rand((num_points, 3), dtype=torch.float32, device="cuda") - 0.5) * 2 
@@ -644,8 +668,9 @@ if __name__ == "__main__":
                 random_points = center + random_offsets
                 valid_points.append(random_points.unsqueeze(0))
             valid_points = torch.cat(valid_points,dim=1)
-            batch['gt_pose_xyz_for_non_cond'] = valid_points.clamp(batch['gt_pose_xyz_min_bound'], batch['gt_pose_xyz_max_bound'])
-            #batch['gt_pose_xyz_for_non_cond'] = torch.randn((1,80,3)).to("cuda")
+            #batch['gt_pose_xyz_for_non_cond'] = valid_points.clamp(batch['gt_pose_xyz_min_bound'], batch['gt_pose_xyz_max_bound'])
+            #batch['gt_pose_xy_for_non_cond'] = batch['gt_pose_xyz_for_non_cond'][:, :, :2]
+            batch['gt_pose_xyz_for_non_cond'] = torch.randn((1,80,3)).to("cuda")
             #batch['affordance'] = batch['affordance_non_cond']
             #random_uniform = torch.rand((80, 3), dtype=torch.float32, device="cuda")  # Shape: (80, 3)
             #samples = batch['gt_pose_xyz_min_bound'] + random_uniform * (batch['gt_pose_xyz_max_bound'] - batch['gt_pose_xyz_min_bound'])  # Shape: (80, 3)
@@ -654,7 +679,7 @@ if __name__ == "__main__":
             #)
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-1, apply_guidance=False, guide_clean=False)  
+            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=0, apply_guidance=False, guide_clean=False)  
             #print("pred:", pred)
             for key, val in pred['guide_losses'].items():
                 #print(f"{key}: {val}")

@@ -193,10 +193,11 @@ class PoseDiffuserTrainer(BaseTrainer):
             #drop_mask_cond_obj_pc_position = torch.rand(len(batch["object_pc_position"])) < self.cfg.model.training.cond_drop_object_pc_position_p
 
             #random_mask = torch.rand_like(batch["affordance"])
-            batch["affordance"][drop_mask_cond_affordance] = batch['affordance_for_non_cond'][drop_mask_cond_affordance]
+            #batch["affordance"][drop_mask_cond_affordance] = batch['affordance_for_non_cond'][drop_mask_cond_affordance]
             #batch['pc_position'][drop_mask_cond_position] = cond_fill_val
             #batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
-            batch['gt_pose_xyz'][drop_mask_cond_affordance] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_affordance] # if drop the affordance, chage the gt
+            batch['gt_pose_xyz'][drop_mask_cond_affordance] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_affordance]
+            batch['gt_pose_xy'][drop_mask_cond_affordance] = batch['gt_pose_xy_for_non_cond'][drop_mask_cond_affordance] # if drop the affordance, chage the gt
             #batch['gt_pose_xyz'][drop_mask_cond_position] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_position] # if drop the affordance, chage the gt
             #batch['gt_pose_xyz'][drop_mask_cond_obj_pc_position] = batch['gt_pose_xyz_for_non_cond'][drop_mask_cond_obj_pc_position] # if drop the affordance, chage the gt
             
@@ -204,7 +205,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             #batch["affordance"][drop_mask_cond_affordance] = cond_fill_val
             #batch["object_pc_position"][drop_mask_cond_obj_pc_position] = cond_fill_val
             
-            outputs = self.model(data_batch=batch)["pose_xyz_pred"]
+            outputs = self.model(data_batch=batch)["pose_xy_pred"]
 
             # compute the loss and its gradients
             loss = self.model.get_loss(batch, i)["loss"]
@@ -341,7 +342,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch = self.train_one_epoch(epoch)
-            if epoch % 3 == 0:
+            if epoch % 5 == 0:
                 self.save_state(epoch + 1)
 
             if epoch % 1 == 0:
@@ -385,14 +386,14 @@ class PoseDiffuserTrainer(BaseTrainer):
 
     def get_xyz_pose_pred(self, prediction, data_batch):
         """
-        Get xyz pose prediction from the model xyz prediction
+        Get xyz pose prediction from the model xy prediction
 
         Args:
-            prediction: model prediction, (B,3)
+            prediction: model prediction, (B,2)
             data_batch: data batch
         """
         batch_size = prediction.shape[0]
-        xy_pred = prediction.squeeze(1)[:, :, :2]
+        xy_pred = prediction.squeeze(1)
         scene_pc_position = data_batch["pc_position"]
         affordance = data_batch["affordance"]
 
@@ -407,6 +408,8 @@ class PoseDiffuserTrainer(BaseTrainer):
         ]
 
         return nearest_points
+
+
 
     def visualize_prediction_pose(self, pose_4d_pred, batch):
         """
