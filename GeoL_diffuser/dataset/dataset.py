@@ -327,11 +327,15 @@ class PoseDataset(Dataset):
             "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyz": max_green_point.unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyz, #[pose_samples, 3]
+            'gt_pose_xy': max_green_point[:2].unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyR[:, :2], #[pose_samples, 2]
             "gt_pose_xyz_for_non_cond": gt_non_cond, #[pos_samples, 3]
+            "gt_pose_xy_for_non_cond": gt_non_cond[:, :2], #[pos_samples, 2]
             #"gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
             #"gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
             "gt_pose_xyz_min_bound": min_xyz_bound, #[3,]
             "gt_pose_xyz_max_bound": max_xyz_bound, #[3,]
+            "gt_pose_xy_min_bound": min_xyz_bound[:2], #[2,]
+            "gt_pose_xy_max_bound": max_xyz_bound[:2], #[2,]
             #"tsdf_grid": tsdf_grid, 
             "depth": depth,
             "image": rgb_image,
@@ -479,6 +483,7 @@ class PoseDataset_top(Dataset):
         
         # find the point position with the highest affordance (G channel value)
         topk_green_points = get_top_affordance_points(fps_colors_scene_from_original, fps_points_scene_from_original, self.gt_pose_samples)
+        topk_green_points_avg = torch.mean(topk_green_points, dim=0).repeat(self.gt_pose_samples, 1)
         topk_green_points_for_non_cond = get_top_affordance_points(fps_colors_scene_from_original_for_non_cond, fps_points_scene_from_original, self.gt_pose_samples)
         #max_green_index = np.argmax(fps_colors_scene_from_original[:,1])
         #max_green_point = torch.tensor(fps_points_scene_from_original[max_green_index], dtype=torch.float32)
@@ -577,12 +582,16 @@ class PoseDataset_top(Dataset):
             #"gt_pose_xyR": torch.cat((max_green_point[:2], obj_rotation), dim=0).unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyR, #[pose_samples, 3]
             "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
             "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
-            "gt_pose_xyz": topk_green_points, #[pose_samples, 3]
+            "gt_pose_xyz": topk_green_points, #[pose_samples, 3] same point repeated 80
+            "gt_pose_xy": topk_green_points[:, :2], #[pose_samples, 2]
             "gt_pose_xyz_for_non_cond": topk_green_points_for_non_cond, #[pos_samples, 3]
+            "gt_pose_xy_for_non_cond": topk_green_points_for_non_cond[:, :2], #[pos_samples, 2]
             #"gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
             #"gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
             "gt_pose_xyz_min_bound": min_xyz_bound, #[3,]
             "gt_pose_xyz_max_bound": max_xyz_bound, #[3,]
+            "gt_pose_xy_min_bound": min_xyz_bound[:2], #[2,]
+            "gt_pose_xy_max_bound": max_xyz_bound[:2], #[2,]
             #"tsdf_grid": tsdf_grid, 
             "depth": depth,
             "image": rgb_image,

@@ -17,10 +17,10 @@ if __name__ == "__main__":
     import torch
 
     # Load RGB-D image
-    depth = cv2.imread("dataset/scene_gen/scene_RGBD_mask_data_aug_test/id71_id64_0_0/cup_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png", cv2.IMREAD_UNCHANGED)
+    depth = cv2.imread("dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth_noise/000000.png", cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32) /1000.0
     color = cv2.imread(
-        "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id71_id64_0_0/cup_0003_green/with_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR
+        "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg", cv2.IMREAD_COLOR
     )
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # Create TSDF volume and integrate observation
     import time
     query_points_scene = points_scene + np.random.randn(*points_scene.shape) * 0.0
-
+    oringin_points_scene = points_scene
     points_scene = (points_scene - vol_bnds.T[0:1]) / (
             vol_bnds.T[1:2] - vol_bnds.T[0:1]
         )
@@ -79,6 +79,7 @@ if __name__ == "__main__":
     query_points_scene = query_points_scene * 2 - 1
 
     pcd_scene = visualize_points(points_scene, colors_scene)
+    origin_pcd_scene = visualize_points(oringin_points_scene, colors_scene)
     bbox = pcd_scene.get_oriented_bounding_box()
     o3d.visualization.draw_geometries([pcd_scene])
     for _ in range(1):
@@ -100,7 +101,8 @@ if __name__ == "__main__":
     # Get mesh from TSDF volume
     mesh = tsdf_vol.get_mesh()
     # o3d.visualization.draw([mesh, bbox])
-    o3d.visualization.draw([pcd_scene, mesh, bbox])
+    o3d.visualization.draw([origin_pcd_scene, mesh, bbox])
+    o3d.visualization.draw([pcd_scene,mesh, bbox])
 
     
 
