@@ -77,7 +77,7 @@ class PoseDiffusionModel(nn.Module):
         if "guide_losses" in output and output["guide_losses"] is not None:
             for k, v in output["guide_losses"].items():
                 v = TensorUtils.detach(v)
-                output["guide_losses"][k] = v.view(B, N * H)
+                output["guide_losses"][k] = v.view(B, N * H) # hardcode to size 80
 
         return output
 

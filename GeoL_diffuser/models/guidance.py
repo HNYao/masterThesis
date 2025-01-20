@@ -2,10 +2,12 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.distributions.multivariate_normal import MultivariateNormal
 import open3d as o3d
 from matplotlib import cm
 from GeoL_diffuser.models.helpers import TSDFVolume, get_view_frustum
 from GeoL_diffuser.models.utils.fit_plane import *
+from sklearn.cluster import DBSCAN
 
 
 class Guidance:
@@ -327,7 +329,7 @@ class NonCollisionGuidance(Guidance):
     def compute_guidance_loss(self, x, t, data_batch):
         """
         Evalueates all guidance losses and total and individual values.
-        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - x: (B, N, H, 2) the sampled points to use to compute losses
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
         batchsize, num_samp, num_hypo, _ = x.size()
@@ -362,7 +364,7 @@ class NonCollisionGuidance(Guidance):
         plane_model_one_tsdf[3] = plane_model_one_tsdf[3] + 0.01 # add a small margin to avoid collision with desk
         
         # descaled_pred
-        x = self.descale_xyz_pose(x, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
+        x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
         x = (x - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1]) # (B, N, H, 3)
         x = x * 2 - 1
         x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
@@ -435,7 +437,7 @@ class NonCollisionGuidance_v2(Guidance):
     def compute_guidance_loss(self, x, t, data_batch):
         """
         Evalueates all guidance losses and total and individual values.
-        - x: (B, N, H, 3) the sampled points to use to compute losses
+        - x: (B, N, H, 2) the sampled points to use to compute losses
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
         batchsize, num_samp, num_hypo, _ = x.size()
@@ -478,10 +480,11 @@ class NonCollisionGuidance_v2(Guidance):
         # descaled_pred
 
         x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
-        x = (x - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1]) # (B, N, H, 3)
+        x = (x - vol_bnds.T[0:1][...,:2]) / (vol_bnds.T[1:2][...,:2] - vol_bnds.T[0:1][...,:2]) # (B, N, H, 2)
         x = x * 2 - 1
-        x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
-
+        x_z = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
+        #x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
+        x = torch.cat([x, x_z.unsqueeze(-1)], dim=-1) # (B, N, H, 3)
         x = x.unsqueeze(2).expand(-1, -1, num_pcdobj, -1, -1) # (B, N, O, H, 3)
 
         
@@ -519,8 +522,8 @@ class NonCollisionGuidance_v2(Guidance):
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
 
         # visualize the obj, scene, coordinate frame, mesh
-        o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
-        o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
     
         #### debug: tsdf check the tsdf value one by one
         # collision_loss = torch.zeros(bsize, num_samp, num_hypo).cuda()
@@ -575,7 +578,7 @@ class NonCollisionGuidance_v2(Guidance):
         #     obj_pc_all_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_all_data.reshape(-1, 3)))
             #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
 
-        guide_losses["collision_loss"] = collision_loss 
+        guide_losses["loss"] = collision_loss 
         
         collision_loss = collision_loss.mean()  # (B,)
         loss_tot += collision_loss
@@ -585,12 +588,8 @@ class NonCollisionGuidance_v2(Guidance):
 class AffordanceGuidance_v2(Guidance):
     """
     TODO:
-    - multiple affordance 
-    - use mse 
-    - use min to get the loss of k affordance
+    - adaptive soften
 
-    Update:
-    - use plane model to align the points instead of the nearest
     """
     def __init__(self):
         super(AffordanceGuidance_v2, self).__init__()
@@ -607,11 +606,69 @@ class AffordanceGuidance_v2(Guidance):
 
         bsize, num_samp, num_hypo, _ = x.size() 
 
+
         # find the top k affordance
-        affordance = data_batch["affordance"] # [B, 2048, 1]
-        position = data_batch["pc_position"] # [B, 2048, 3]
-        affordance = affordance.squeeze(-1) # [B, 2048]
-        k = 10 # top k affordance values
+        affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
+        affordance_ori = self.normalize_affordance(affordance_ori) # (B, 2048, num_affordance)
+        isCompact = False
+        soft_coeff = 4
+        while not isCompact:
+            
+            affordance = (affordance_ori * soft_coeff).clamp(0, 1) # (B, 2048, num_affordance)
+            position = data_batch["pc_position"] # [B, 2048, 3]
+            _, num_points, num_affordance = affordance.size()
+
+            affordance = torch.mean(affordance, dim=-1) # (B, 2048, 1)
+            sampled_position = self.topk_sampling(position, affordance, sample_k=10)
+            
+            # check if the sampled points are compact or not
+            isCompact = self.compact_sampled_points(sampled_position)
+            soft_coeff += 1
+
+        # visualize the affordance
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(position[0].cpu().detach().numpy())
+        pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance[0].cpu().detach().numpy().squeeze(), invert=False))
+
+        #o3d.visualization.draw_geometries([pcd])
+        vis = [pcd]
+        
+        # sample k points conditioned on the affordance value
+        # option1: weihgted sampling
+        #sampled_position = self.weighted_sampling_with_threshold(position, affordance, sample_k=10, threshold=0.0)
+        # option2: top k sampling
+
+
+
+        # visualize the sampled points
+        for ii in range(sampled_position.size(1)):
+            pos_vis = o3d.geometry.TriangleMesh.create_sphere()
+            pos_vis.compute_vertex_normals()
+            pos_vis.scale(0.03, center=(0, 0, 0))
+            pos_vis.translate(sampled_position[0, ii, :3].detach().cpu().numpy())
+            vis_color = [0.5, 0.5, 0.5]
+            pos_vis.paint_uniform_color(vis_color)
+            vis.append(pos_vis)
+
+
+        o3d.visualization.draw_geometries(vis)
+
+        sampled_position = self.scale_xy_pose(sampled_position[...,:2], data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
+
+        expanded_target_points = sampled_position.unsqueeze(1).unsqueeze(3)
+        expanded_predicted_points = x.unsqueeze(2)
+        affordance_loss = F.mse_loss(expanded_target_points[...,:2], expanded_predicted_points[...,:2], reduction="none") # (B, N, num_targets, H, 2)
+        affordance_loss = affordance_loss.min(dim=2)[0] # (B, N, H, 2)
+        affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
+        guide_losses["distance_error"] = affordance_loss # (B, N, H)
+
+        affordance_loss = affordance_loss * 1600
+        guide_losses['loss'] = affordance_loss
+        loss_tot += affordance_loss.mean()
+        
+        return loss_tot, guide_losses
+
+        k = 20 # top k affordance values
         topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
         topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
         avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3) unscaled
@@ -708,3 +765,78 @@ class AffordanceGuidance_v2(Guidance):
         sphere.paint_uniform_color(color)
         sphere.translate(center)
         return sphere
+
+    def weighted_sampling_with_threshold(self, position, affordance, sample_k=10, threshold=0.0):
+        """
+        position: (B, 2048, 3)
+        affordance: (B, 2048, 1)
+        """
+        weights = affordance.squeeze(-1)
+        weights = torch.where(weights > threshold, weights, torch.zeros_like(weights))
+
+        weights_sum = weights.sum(dim=1, keepdim=True) # (B, 1)
+        weights = weights / (weights_sum + 1e-8)
+
+        batch_size, num_points = weights.shape
+        sampled_indices = torch.multinomial(weights, sample_k, replacement=True) # (B, sample_k)
+
+        sampled_points = torch.gather(position, dim=1, index=sampled_indices.unsqueeze(-1).expand(-1, -1, position.size(-1))) # (B, sample_k, 3)
+        return sampled_points
+    
+    def topk_sampling(self, position, affordance, sample_k=10):
+        affordance = affordance.squeeze(-1)
+        top_k_values, top_k_indices = torch.topk(affordance, sample_k, dim=1)
+        top_k_positions = torch.gather(position, dim=1, index=top_k_indices.unsqueeze(-1).expand(-1, -1, position.size(-1)))
+        top_k_values = top_k_values.unsqueeze(-1)
+
+        return top_k_positions    
+
+    def compact_sampled_points(self, sampled_points, thershold = 0.1):
+        """
+        check if the sampled points are compact or not
+
+        sampled_points: (B, sample-k, 3)
+        """
+        # method 1: check the distance to the centroid
+        #sampled_points = sampled_points[...,:2]
+        #centroid = sampled_points.mean(dim=1) # (B, 3)
+        #distance = torch.norm(sampled_points - centroid[:, None, :], dim=-1) # (B, sample-k)
+        #result = torch.all(distance < thershold) 
+
+        # method 2: DBSCAN
+        sampled_points = sampled_points.squeeze(0).cpu().detach().numpy() # FIXME: only for batch size 1
+        min_points = 2
+        db= DBSCAN(eps=thershold, min_samples=min_points).fit(sampled_points)
+        labels = db.labels_
+        num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if num_clusters > 1:
+            result = False
+        else:
+            result = True
+        return result
+        
+
+
+    def normalize_affordance(self, affordance):
+
+        batch_min = affordance.min(dim=1, keepdim=True)[0]
+        batch_max = affordance.max(dim=1, keepdim=True)[0]
+
+        normalized_affordance = (affordance - batch_min) / (batch_max - batch_min)  
+
+        return normalized_affordance
+
+
+class CompositeGuidance(Guidance):
+    def __init__(self, guidance_list):
+        super(CompositeGuidance, self).__init__()
+        self.guidance_list = guidance_list
+
+    def compute_guidance_loss(self, x, t, data_batch):
+        loss_tot = 0.0
+        guide_losses = dict()
+        for guidance in self.guidance_list:
+            loss, guide_loss = guidance.compute_guidance_loss(x, t, data_batch)
+            loss_tot += loss
+            guide_losses.update(guide_loss)
+        return loss_tot, guide_losses

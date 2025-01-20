@@ -270,7 +270,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
     points = pred["pose_xy_pred"]  # [1, N*H, 3] descaled
     #points = batch['gt_pose_xyz_for_non_cond'] #NOTE: for debug
-    guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N*H]
+    guide_cost = pred["guide_losses"]["loss"]  # [1, N*H]
     #guide_cost = pred["guide_losses"]["collision_loss"]  # [1, N*H]
     #guide_cost = torch.zeros((1, 800))
 
@@ -322,6 +322,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
 
     # get the topk affordance points avg position and visualize
     affordance = batch["affordance"] # [B, 2048, 1]
+    affordance = torch.max(affordance, dim=-1)[0] # [B, 2048] # NOTE: test
     position = batch["pc_position"] # [B, 2048, 3]
     affordance = affordance.squeeze(-1) # [B, 2048]
     k = 10
@@ -332,8 +333,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     avg_topk_mean_sphere = create_sphere_at_points(avg_topk_positions, radius=0.02, color=[1, 0, 0])
     second_sphere = create_sphere_at_points([0.061, -0.273, 1.455], radius=0.02, color=[0, 1, 0])
 
-    vis = [pcd, avg_topk_mean_sphere]
-    #vis = [pcd]
+    #vis = [pcd, avg_topk_mean_sphere]
+    vis = [pcd]
     #o3d.visualization.draw(vis)
 
     # print("points_for_place_goal:", points_for_place_goal)
@@ -563,6 +564,7 @@ if __name__ == "__main__":
             batch[key] = val.float().to("cuda")
         afford_pred_dict = np.load("Geo_comb/afford_pred.npz", allow_pickle=True)
         afford_pred_dict_2= np.load("Geo_comb/afford_pred_bottle_right.npz", allow_pickle=True)
+        #afford_pred_dict = np.load("Geo_comb/afford_pred_plant_left.npz", allow_pickle=True)
         with torch.no_grad():
             affordance_pred = torch.tensor(afford_pred_dict["affordance"]).to(
                 "cuda"
@@ -582,7 +584,7 @@ if __name__ == "__main__":
             pc_position_xy_affordance = afford_pred_dict["pc_position_xy_affordance"]
 
             # update dataset
-            batch["affordance"] = affordance_pred
+            batch["affordance"] = affordance_pred.to("cuda")
             batch["object_name"] = ["the green bottle"]
             rgb_image = Image.open(rgb_image_file_path).convert("RGB")
             rgb_image = np.asarray(rgb_image).astype(float)
@@ -677,15 +679,21 @@ if __name__ == "__main__":
             #batch['gt_pose_xyz_for_non_cond'] = (
             #    samples.unsqueeze(0).to("cuda")
             #)
+
+            
  
             # pred pose
-            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=0, apply_guidance=False, guide_clean=False)  
+            pred = model_diffuser(batch, num_samp=1, class_free_guide_w=0, apply_guidance=True, guide_clean=True)  
             #print("pred:", pred)
             for key, val in pred['guide_losses'].items():
                 #print(f"{key}: {val}")
                 print(f"{key} mean: {val.mean()}")
                 print(f"{key} max: {val.max()}")
                 print(f"{key} min: {val.min()}")
+                if key == 'collision_loss':
+                    non_collision_mask = val < 0.01
+                    non_collision_num = non_collision_mask.int().sum()
+                    print("non collision number:", non_collision_num)
     
             #print("Affordance loss:", pred["guide_losses"]['affordance_loss'].mean())
             #print("min affordance loss:", pred["guide_losses"]['affordance_loss'].min())
