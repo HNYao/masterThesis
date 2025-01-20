@@ -496,7 +496,7 @@ if __name__ == "__main__":
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
     rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth_noise/000000.png"
+    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -513,8 +513,8 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the bowl"
-        direction_text = "Right"
+        target_name = "the green plant"
+        direction_text = "Left"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
@@ -644,7 +644,7 @@ if __name__ == "__main__":
                 "max_bound_affordance": max_bound_affordance,
                 "affordance_pred": affordance_pred_sigmoid,
             }
-            np.savez_compressed("Geo_comb/afford_pred.npz", **to_save)
+            np.savez_compressed("Geo_comb/afford_pred_plant_left.npz", **to_save)
 
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
