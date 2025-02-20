@@ -183,7 +183,7 @@ class AffordanceGuidance(Guidance):
         affordance = data_batch["affordance"] # [B, 2048, 1]
         position = data_batch["pc_position"] # [B, 2048, 3]
         affordance = affordance.squeeze(-1) # [B, 2048]
-        k = 10 # top k affordance values
+        k = 5 # top k affordance values
         topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
         topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
         avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3) unscaled
@@ -450,16 +450,17 @@ class NonCollisionGuidance_v2(Guidance):
         vol_bnds = vol_bnds[0]
         vol_bnds[:, 0] = vol_bnds[:, 0].min()
         vol_bnds[:, 1] = vol_bnds[:, 1].max()
-        #tsdf = tsdf[:, None, None].expand(-1, num_samp, num_hypo, -1)
 
-        # get the first tsdf
-        tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=2)
-        tsdf.integrate(
-            color[0].cpu().detach().numpy(), 
-            depth[0].cpu().detach().numpy(), 
-            intrinsics[0].cpu().detach().numpy(), 
-            np.eye(4))
-        mesh = tsdf.get_mesh()
+
+        #get the first tsdf
+        # tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=5)
+        # tsdf.integrate(
+        #     color[0].cpu().detach().numpy(), 
+        #     depth[0].cpu().detach().numpy(), 
+        #     intrinsics[0].cpu().detach().numpy(), 
+        #     np.eye(4))
+        # mesh = tsdf.get_mesh()
+        
 
         # scene_pc align to tsdf
         scene_pc = data_batch['pc_position']
@@ -524,6 +525,9 @@ class NonCollisionGuidance_v2(Guidance):
         # visualize the obj, scene, coordinate frame, mesh
         #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
         #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame])
+        #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame])
+    
     
         #### debug: tsdf check the tsdf value one by one
         # collision_loss = torch.zeros(bsize, num_samp, num_hypo).cuda()
@@ -542,20 +546,21 @@ class NonCollisionGuidance_v2(Guidance):
 
         #     obj_pc_one_data = translated_points[0, 0, :, ii, :].cpu().detach().numpy() # (O, 3)
         #     obj_pc_one_data_vis = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(obj_pc_one_data))
-            #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        #     o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
 
 
         ### query tsdf version: [B, N, O*H, 3]
         query_points = translated_points.view(bsize, num_samp, -1, 3) # [B, N, O*H, 3]
         query_points = query_points[..., [2, 1, 0]] # NOTE: change the order
         query_points = query_points.unsqueeze(-2) # [B, N, O*H, 1, 3]
-        tsdf = tsdf._tsdf_vol
-        tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None]# [B, C, D, H, W]
+        #tsdf = tsdf._tsdf_vol
+        #tsdf = torch.tensor(tsdf, dtype=torch.float32).cuda()[None, None]# [B, C, D, H, W]
+        tsdf = data_batch["tsdf_vol"][0][None, None] # [B, 1, D, H, W]  
         query_tsdf = nn.functional.grid_sample(tsdf, query_points, align_corners=True) # [B, 1, N, O*H, 1]
         #query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, num_hypo, -1 ) # [B, N, H, O]
         #collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1) # (B, N, H)
         query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, -1 , num_hypo,) # [B, N, O, H]
-        collision_loss = F.relu(0.1 - query_tsdf).sum(dim=-2) # (B, N, H)
+        collision_loss = F.relu(0.2 - query_tsdf).sum(dim=-2) # (B, N, H)
 
         #### query tsdf version: [B, N*H, O, 3]
         # query_points = translated_points.view(bsize, -1, num_pcdobj, 3) # [B, N*H, O, 3]
@@ -610,8 +615,28 @@ class AffordanceGuidance_v2(Guidance):
         # find the top k affordance
         affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
         affordance_ori = self.normalize_affordance(affordance_ori) # (B, 2048, num_affordance)
+        
+        affordance_filtered = affordance_ori.clone()
+        affordance_filtered = np.asarray(affordance_filtered.cpu().detach().numpy())
+        position = data_batch["pc_position"] # [B, 2048, 3]
+        for i in range(affordance_ori.size(-1)):
+        # filter out the point affordance on the ground
+            plane_model = fit_plane_from_points(np.asarray(position[i].cpu().detach().numpy()))
+
+            # if point is on the ground, set the affordance value to 0
+            distances = np.abs(plane_model[0] * position[i].cpu().detach().numpy()[:, 0] + plane_model[1] * position[i].cpu().detach().numpy()[:, 1] + plane_model[2] * position[i].cpu().detach().numpy()[:, 2] + plane_model[3])
+            #position = position[distances > 0.01]
+            affordance_filtered[i] = affordance_ori[i].cpu().detach().numpy()
+            affordance_filtered[i][distances > 0.01] = 0
+        
+        affordance_filtered = torch.tensor(affordance_filtered).cuda()
+        affordance = affordance_filtered
+        affordance_ori = affordance_filtered
+
+        
+        
         isCompact = False
-        soft_coeff = 4
+        soft_coeff = 1
         while not isCompact:
             
             affordance = (affordance_ori * soft_coeff).clamp(0, 1) # (B, 2048, num_affordance)
@@ -619,16 +644,23 @@ class AffordanceGuidance_v2(Guidance):
             _, num_points, num_affordance = affordance.size()
 
             affordance = torch.mean(affordance, dim=-1) # (B, 2048, 1)
-            sampled_position = self.topk_sampling(position, affordance, sample_k=10)
+            sampled_position = self.topk_sampling(position, affordance, sample_k=5)
             
             # check if the sampled points are compact or not
             isCompact = self.compact_sampled_points(sampled_position)
             soft_coeff += 1
 
+            isCompact = True #NOTE: if wanna compose the affordance, commment this
+
         # visualize the affordance
+
+        
+
+
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(position[0].cpu().detach().numpy())
         pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance[0].cpu().detach().numpy().squeeze(), invert=False))
+        #pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance, invert=False))
 
         #o3d.visualization.draw_geometries([pcd])
         vis = [pcd]
@@ -637,6 +669,10 @@ class AffordanceGuidance_v2(Guidance):
         # option1: weihgted sampling
         #sampled_position = self.weighted_sampling_with_threshold(position, affordance, sample_k=10, threshold=0.0)
         # option2: top k sampling
+
+
+
+
 
 
 
@@ -650,8 +686,9 @@ class AffordanceGuidance_v2(Guidance):
             pos_vis.paint_uniform_color(vis_color)
             vis.append(pos_vis)
 
+        #if t == 0:
+            #o3d.visualization.draw_geometries(vis)
 
-        o3d.visualization.draw_geometries(vis)
 
         sampled_position = self.scale_xy_pose(sampled_position[...,:2], data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
 
@@ -662,11 +699,14 @@ class AffordanceGuidance_v2(Guidance):
         affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
         guide_losses["distance_error"] = affordance_loss # (B, N, H)
 
-        affordance_loss = affordance_loss * 1600
+        affordance_loss = affordance_loss * 500
         guide_losses['loss'] = affordance_loss
+
         loss_tot += affordance_loss.mean()
         
         return loss_tot, guide_losses
+    
+    
 
         k = 20 # top k affordance values
         topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
@@ -828,15 +868,28 @@ class AffordanceGuidance_v2(Guidance):
 
 
 class CompositeGuidance(Guidance):
-    def __init__(self, guidance_list):
+    def __init__(self):
         super(CompositeGuidance, self).__init__()
-        self.guidance_list = guidance_list
+
 
     def compute_guidance_loss(self, x, t, data_batch):
-        loss_tot = 0.0
+        loss_tot = 0
         guide_losses = dict()
-        for guidance in self.guidance_list:
-            loss, guide_loss = guidance.compute_guidance_loss(x, t, data_batch)
-            loss_tot += loss
-            guide_losses.update(guide_loss)
+        # affordance guidance
+        affordance_guidance = AffordanceGuidance_v2()
+        affordance_loss, affordance_guide_losses = affordance_guidance.compute_guidance_loss(x, t, data_batch)
+        loss_tot += affordance_loss
+        guide_losses["affordance_loss"] = affordance_guide_losses["loss"]
+        guide_losses["distance_error"] = affordance_guide_losses["distance_error"]
+
+
+        # collision guidance
+        collision_guidance = NonCollisionGuidance_v2()
+        collision_loss, collision_guide_losses = collision_guidance.compute_guidance_loss(x, t, data_batch)
+        loss_tot += collision_loss
+        guide_losses["collision_loss"] = collision_guide_losses["loss"]
+
+        #
+        guide_losses["loss"] = guide_losses["affordance_loss"] + guide_losses["collision_loss"]
+
         return loss_tot, guide_losses

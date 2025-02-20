@@ -287,6 +287,7 @@ if __name__ == "__main__":
     start_time = time.time()
     bad = 0
     good = 0
+    total = 0
     for root, dirs, files in os.walk(ply_folder):
         for file in files:
             if file.endswith(".ply"):
@@ -298,7 +299,9 @@ if __name__ == "__main__":
                     ply_path=ply_path, 
                     npz_path=npz_path, 
                     directory_mesh_save="dataset/scene_gen/mesh", 
-                    diroectory_json_save="dataset/scene_gen/scene_mesh_json_aug")
+                    directory_json_save="dataset/scene_gen/scene_mesh_json_aug")
+                total = total + 1
+                print("total:", total)
                 if result is None:
                     bad = bad + 1
                 else:

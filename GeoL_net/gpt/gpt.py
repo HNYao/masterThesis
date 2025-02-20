@@ -246,7 +246,7 @@ def extract_bbox_list_from_response(response: str):
         return None
     
 
-def chatgpt_object_placement_bbox(image_path: str, prompts_obj: str, prompts_direction: str):
+def chatgpt_object_placement_bbox(gpt_version:str, image_path: str, prompts_obj_place: str, prompts_direction: str, prompts_anchor_obj: str):
     """
     ChatGPT condition for object detection and bounding box
 
@@ -267,11 +267,10 @@ def chatgpt_object_placement_bbox(image_path: str, prompts_obj: str, prompts_dir
         "Authorization": f"Bearer {api_key}"
     }
     # gpt-4o-mini
-    model = "gpt-4o-mini"
-    model = "gpt-4o"
+    # gpt-4o
 
     payload = {
-        "model": model, 
+        "model": gpt_version, 
         "messages": [
           {
             "role": "system", 
@@ -279,10 +278,10 @@ def chatgpt_object_placement_bbox(image_path: str, prompts_obj: str, prompts_dir
                   Plese avoid collision and overlap with other objects.\
                   You are given a image of the tabletop and an target object to be placed. \
                   Please respond, in text, with bounding box coordinates of potential locations to place the object.\
-                  The bounding box coordinates should be of the form [min x, min y, max x, max y] in descending  order of confidence\
+                  The bounding box coordinates should be of the form [min x, min y, max x, max y], only containing one [], no more []\
                   where x y are 0.00-1.00 correspond to fraction of the image along the width and height of the image with the top left of the image as the origin. \
                   If there are no locations in the image where \
-                  a <object_type> could be placed, respond only with the empty list '[]'.\
+                  a <object_type> could be placed, respond only with [0, 0, 1, 1].\
                   do not include any other text in your response."
                     },
           {
@@ -290,7 +289,7 @@ def chatgpt_object_placement_bbox(image_path: str, prompts_obj: str, prompts_dir
             "content": [
               {
                 "type": "text",
-                "text": f"Please provide the bounding box to placing a new {prompts_obj}. The {prompts_obj} should be placed to {prompts_direction}"
+                "text": f"Please provide the bounding box to placing a new {prompts_obj_place}. The {prompts_obj_place} should be placed to  {prompts_direction} the {prompts_anchor_obj}"
               },
               {
                 "type": "image_url",

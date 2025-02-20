@@ -33,10 +33,10 @@ from sklearn.manifold import TSNE
 # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
 # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
 # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
-# INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
-#INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
-
+#INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
+#INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
+INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
+#INTRINSICS = np.array([[911.09,   0.  , 657.44],[  0.  , 910.68,  346.58],[  0.  ,   0.  ,   1.  ]])
 def get_heatmap(values, cmap_name="turbo", invert=False):
     if invert:
         values = -values
@@ -223,11 +223,12 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(pc)
         pcd.colors = o3d.utility.Vector3dVector(
-            color_pred_list[i].cpu().numpy() * 0.3 + color_img_list[i] * 0.7
+            color_pred_list[i].cpu().numpy() * 0.3 + color_img_list[i]* 255 * 0.7
         )
-        # o3d.io.write_point_cloud(f"test_front.ply", pcd)
-        o3d.visualization.draw_geometries([pcd])
+        #o3d.io.write_point_cloud(f"test_front.ply", pcd)
+        #o3d.visualization.draw_geometries([pcd])
 
+    return pcd
 
 def generate_heatmap_feature_pc(batch, model_pred, intrinsics=None, interpolate=False):
     if intrinsics is None:
@@ -299,8 +300,8 @@ def generate_heatmap_feature_pc(batch, model_pred, intrinsics=None, interpolate=
         pcd.colors = o3d.utility.Vector3dVector(
             color_pred_list[i].cpu().numpy() * 1 + color_img_list[i] * 0
         )
-        # o3d.io.write_point_cloud(f"test_front.ply", pcd)
-        o3d.visualization.draw_geometries([pcd])
+        o3d.io.write_point_cloud(f"test_front.ply", pcd)
+        #o3d.visualization.draw_geometries([pcd])
 
 def is_red(color, tolerance=0.1):
     return color[0] > 1 - tolerance and color[1] < tolerance and color[2] < tolerance
@@ -459,8 +460,8 @@ def rgb_obj_dect(
     )
     IMAGE_PATH = image_path
     TEXT_PROMPT = text_prompt
-    BOX_TRESHOLD = 0.35
-    TEXT_TRESHOLD = 0.25
+    BOX_TRESHOLD = 0.35 # 0.35
+    TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image = load_image(IMAGE_PATH)
 
@@ -485,7 +486,10 @@ def rgb_obj_dect(
         )
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
-        cv2.imwrite(out_dir, annotated_frame)
+        #cv2.imwrite(out_dir, annotated_frame)
+        # cv2.imshow("annotated_frame", annotated_frame)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
     return annotated_frame
 
@@ -495,16 +499,20 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    #rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
-    #depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth/000000.png"
+    rgb_image_file_path = "dataset/scene_RGBD_mask_data_aug/id6_id18_0_0/bottle_0003_cola/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_RGBD_mask_data_aug/id6_id18_0_0/bottle_0003_cola/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "dataset/realsense/color/000098.png"
-    depth_image_file_path = "dataset/realsense/depth/000098.png"
+   # rgb_image_file_path = "dataset/realsense/color/000098.png"
+    #depth_image_file_path = "dataset/realsense/depth/000098.png"
+
+    # data from robot camera
+    #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
+    #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
 
     use_chatgpt = False
     if use_chatgpt:
@@ -513,8 +521,8 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the Laptop"
-        direction_text = "Front"
+        target_name = "the eyeglasses"
+        direction_text = "Right"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
@@ -555,8 +563,10 @@ if __name__ == "__main__":
 
     # load the checkpoint
     state_affordance_dict = torch.load(
-        "outputs/checkpoints/GeoL_v9_10K_meter_retrain/ckpt_29.pth", map_location="cpu"
+        "outputs/checkpoints/GeoL_v9_20K_meter_retrain_lr_1e-4_0213/ckpt_11.pth", map_location="cpu"
     )
+    #outputs/checkpoints/GeoL_v9_20K_meter_retrain_lr_1e-4_0213/ckpt_1.pth
+    #"outputs/checkpoints/GeoL_v9_10K_meter_retrain/ckpt_29.pth"
     # state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_67K/ckpt_1.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     #state_diffusion_dict = torch.load(
@@ -614,7 +624,7 @@ if __name__ == "__main__":
             # normalize the affordance prediction
 
             # add the affordance prediction to the batch
-            affordance_thershold = 0.01
+            affordance_thershold = 0.00
             fps_points_scene_from_original = batch["fps_points_scene"][0]
 
             fps_points_scene_affordance = fps_points_scene_from_original[
@@ -644,7 +654,7 @@ if __name__ == "__main__":
                 "max_bound_affordance": max_bound_affordance,
                 "affordance_pred": affordance_pred_sigmoid,
             }
-            #np.savez_compressed("Geo_comb/afford_pred_plant_left.npz", **to_save)
+            np.savez_compressed("Geo_comb/eyeglasses_right.npz", **to_save)
 
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
@@ -690,7 +700,7 @@ if __name__ == "__main__":
             )
 
             generate_heatmap_pc(
-                batch, affordance_pred, intrinsics=INTRINSICS, interpolate=False
+                batch, affordance_pred, intrinsics=INTRINSICS, interpolate=True
             )
 
             # pred pose

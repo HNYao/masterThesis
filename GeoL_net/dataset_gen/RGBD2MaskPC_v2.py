@@ -186,8 +186,8 @@ def pcd_mask_preprocessing_red_label(points_scene, points_no_obj_scene=None):
     red_center = np.mean(red_points, axis=0) # anchor obj position
 
     # 计算 x y 平面上的距离 
-    offset = np.linalg.norm(red_center[:2] - green_center[:2])
-    #offset = random.uniform(300, 400) # NOTE: hardcode
+    #offset = np.linalg.norm(red_center[:2] - green_center[:2])
+    offset = random.uniform(80, 160) # NOTE: hardcode
     direction = determine_direction(green_center[:2], red_center[:2])
     if direction == "Front" or direction == "Behind" or direction == "Left" or direction == "Right":
         offset = offset
@@ -227,16 +227,17 @@ def pcd_mask_preprocessing_red_label(points_scene, points_no_obj_scene=None):
 
     # 对于红色点进行处理
     valid_dists = dists.copy()
-    valid_dists[valid_dists > 200] = 200  # 将所有大于150的距离值截断为150
+    valid_dists[valid_dists > 150] = 150  # 将所有大于150的距离值截断为150
 
     # 将距离映射到G通道值，距离为0时R=1，距离为150时R=0
-    g_channel_values = 1 - (valid_dists / 200)
+    g_channel_values = 1 - (valid_dists / 150)
     
     # 映射成绿色，R B为0
     heatmap_colors[target_mask, 0] = 0  
     heatmap_colors[target_mask, 1] = g_channel_values
     heatmap_colors[target_mask, 2] = 0
 
+    #heatmap_colors[blue_mask] = [0, 0, 0] # 原本是蓝色的点全部黑色（不受到heatmap color 影响）
     
 
     # 更新点云颜色
@@ -250,6 +251,7 @@ def pcd_mask_preprocessing_red_label(points_scene, points_no_obj_scene=None):
         heatmap_colors[target_mask, 0] = 0  
         heatmap_colors[target_mask, 1] = 0
         heatmap_colors[target_mask, 2] = 0
+        #heatmap_colors[blue_mask] = [0, 0, 0] # 原本是蓝色的点全部黑色（不受到heatmap color 影响）
         points_scene_copy = copy.deepcopy(points_scene)
         points_scene_copy.colors = o3d.utility.Vector3dVector(heatmap_colors) # 去掉 green mask
         
@@ -282,15 +284,16 @@ def pcd_mask_preprocessing_red_label(points_scene, points_no_obj_scene=None):
 
         # 对于红色点进行处理
         valid_dists = dists.copy()
-        valid_dists[valid_dists > 250] = 250  # 将所有大于150的距离值截断为150
+        valid_dists[valid_dists > 150] = 150  # 将所有大于150的距离值截断为150
 
         # 将距离映射到G通道值，距离为0时R=1，距离为150时R=0
-        g_channel_values = 1 - (valid_dists / 250)
+        g_channel_values = 1 - (valid_dists / 150)
         
         # 映射成绿色，R B为0
         heatmap_colors[target_mask, 0] = 0  
         heatmap_colors[target_mask, 1] = g_channel_values
         heatmap_colors[target_mask, 2] = 0
+        #heatmap_colors[blue_mask] = [0, 0, 0] # 原本是蓝色的点全部黑色（不受到heatmap color 影响）
 
         points_scene_copy.colors = o3d.utility.Vector3dVector(heatmap_colors)
 
@@ -362,7 +365,8 @@ if __name__ == "__main__":
                 [  0.     , 607.05212/2, 367.35952/2],
                 [  0.     ,   0.     ,   1.     ]])
     
-    folder_path = "dataset/scene_RGBD_mask_v2_kinect_cfg"
+    #folder_path = "dataset/scene_RGBD_mask_v2_kinect_cfg"
+    folder_path = "dataset/benchmark_bproc_data_sparse"
     amount_scene = 0
     for root,dirs,files in os.walk(folder_path):
         for dir_name in dirs:
@@ -386,14 +390,21 @@ if __name__ == "__main__":
                     if os.path.exists(ply_path):
                         print(f"{output_dir}/mask_Left.ply already exists")
                         continue
-                    else:
-                        RGBD2MaskPC(depth_path=depth_path,  # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png'
+                    # else:
+                    #     RGBD2MaskPC(depth_path=depth_path,  # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png'
+                    #                 mask_hd5f_path=mask_hdf5_path,
+                    #                 output_dir=output_dir,
+                    #                 depth_removed_obj= depth_removed_obj, # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png'
+                    #                 mask_hd5f_removed_obj=mask_hdf5_removed_obj,
+                    #                 intr = intr
+                    #                 )
+                    RGBD2MaskPC(depth_path=depth_path,  # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/with_obj/test_pbr/000000/depth_noise/000000.png'
                                     mask_hd5f_path=mask_hdf5_path,
                                     output_dir=output_dir,
                                     depth_removed_obj= depth_removed_obj, # 'dataset/scene_RGBD_mask_v2/id121_1/bottle_0003_green/no_obj/test_pbr/000000/depth_noise/000000.png'
                                     mask_hd5f_removed_obj=mask_hdf5_removed_obj,
                                     intr = intr
-                                    )
+                                    )     
                     end_time = time.time()
                     print(f"{output_dir} is done, comsuming {end_time - start_time} s")
                     

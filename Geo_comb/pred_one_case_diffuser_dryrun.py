@@ -49,7 +49,7 @@ if torch.cuda.is_available():
 # INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
 # INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
 INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
-
+#INTRINSICS = np.array([[911.09,   0.  , 657.44],[  0.  , 910.68,  346.58],[  0.  ,   0.  ,   1.  ]])
 
 def get_heatmap(values, cmap_name="turbo", invert=False):
     if invert:
@@ -405,16 +405,18 @@ class pred_one_case_dataset(Dataset):
         view_frust_pts = get_view_frustum(self.depth, self.intrinsics, np.eye(4))
         self.vol_bnds[:, 0] = np.minimum(self.vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
         self.vol_bnds[:, 1] = np.maximum(self.vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
-
+        self.vol_bnds[:, 0] = self.vol_bnds[:, 0].min()
+        self.vol_bnds[:, 1] = self.vol_bnds[:, 1].max()
 
         color = cv2.imread(
         rgb_image_file_path, cv2.IMREAD_COLOR
         )
         self.color_tsdf = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
-        tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=5)
-        tsdf.integrate(self.color_tsdf, depth, self.intrinsics, np.eye(4))
-        self.mesh = tsdf.get_mesh()
+        tsdf = TSDFVolume(self.vol_bnds, voxel_dim=256, num_margin=2)
+        tsdf.integrate(self.color_tsdf, self.depth, self.intrinsics, np.eye(4))
+        
         self.tsdf_grid = tsdf.get_tsdf_volume()
+        self.tsdf_vol = tsdf._tsdf_vol
 
 
     def __len__(self):
@@ -439,6 +441,7 @@ class pred_one_case_dataset(Dataset):
             "intrinsics": self.intrinsics,
             "vol_bnds": self.vol_bnds,
             "color_tsdf": self.color_tsdf,
+            'tsdf_vol': self.tsdf_vol
 
 
         }
@@ -494,8 +497,8 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_gen/scene_RGBD_mask_data_aug_test/id108_id96_0_0/bowl_0001_wooden/with_obj/test_pbr/000000/depth/000000.png"
+    rgb_image_file_path = "dataset/scene_RGBD_mask_data_aug/id15_id395_0_0/monitor_0011_white/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_RGBD_mask_data_aug/id15_id395_0_0/monitor_0011_white/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -504,6 +507,9 @@ if __name__ == "__main__":
     # realsense data
     # rgb_image_file_path = "dataset/realsense/color/000098.png"
     # depth_image_file_path = "dataset/realsense/depth/000098.png"
+    # data from robot camera
+    #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
+    #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
 
     use_chatgpt = False
     if use_chatgpt:
@@ -542,6 +548,7 @@ if __name__ == "__main__":
     #NOTE: wait the training to finish
     #state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v1/ckpt_26.pth", map_location="cpu") # 26
     state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v0__topk_1K/ckpt_21.pth", map_location="cpu") # test
+    #state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v0__topk_1K/ckpt_176.pth", map_location="cpu") # test
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     guidance = AffordanceGuidance_v2()
     #guidance = NonCollisionGuidance_v2()
@@ -562,7 +569,8 @@ if __name__ == "__main__":
             if type(val) == list:
                 continue
             batch[key] = val.float().to("cuda")
-        afford_pred_dict = np.load("Geo_comb/afford_pred.npz", allow_pickle=True)
+        afford_pred_dict = np.load("Geo_comb/redbook_front.npz", allow_pickle=True)
+        #afford_pred_dict = np.load("Geo_comb/robot_data_laptop.npz", allow_pickle=True)
         afford_pred_dict_2= np.load("Geo_comb/afford_pred_bottle_right.npz", allow_pickle=True)
         #afford_pred_dict = np.load("Geo_comb/afford_pred_plant_left.npz", allow_pickle=True)
         with torch.no_grad():
@@ -571,7 +579,7 @@ if __name__ == "__main__":
             )
 
             # NOTE: test combine the affordance
-            affordance_pred = torch.cat([torch.tensor(afford_pred_dict["affordance"]), torch.tensor(afford_pred_dict_2["affordance"])], dim=-1)
+            #affordance_pred = torch.cat([torch.tensor(afford_pred_dict["affordance"]), torch.tensor(afford_pred_dict_2["affordance"])], dim=-1)
             # affordance_pred = torch.max(torch.cat([torch.tensor(afford_pred_dict["affordance"]), torch.tensor(afford_pred_dict_2["affordance"])], dim=-1), dim=-1)[0].to(
             #     "cuda"
             # ).unsqueeze(-1)

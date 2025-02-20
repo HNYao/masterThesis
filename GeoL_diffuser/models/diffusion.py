@@ -25,9 +25,7 @@ import GeoL_diffuser.models.tensor_utils as TensorUtils
 from GeoL_diffuser.models.utils.guidance_loss import DiffuserGuidance
 from GeoL_diffuser.models.utils.diffusion_utils import *
 
-SEED=42
-torch.manual_seed(SEED)
-np.random.seed(SEED)
+
 
 
 
@@ -44,6 +42,9 @@ class Diffusion(nn.Module):
         **kwargs,
     ):
         super(Diffusion, self).__init__()
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
         self.state_dim = kwargs["obs_dim"]
         self.action_dim = kwargs["act_dim"]
         self.hidden_dim = kwargs["hidden_dim"]
@@ -182,7 +183,7 @@ class Diffusion(nn.Module):
         #top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
         #top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
         top_positions = self.top_position(affordance, pc_position, topk=80)
-        #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
+        #top_positions = top_positions.mean(dim=2, keepdim=True).repeat(1, 1, 80, 1)
         top_positions = top_positions[...,:2] # [batch_size, 80, 2]
         #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
         #top_positions = data_batch["gt_pose_xy"]
@@ -270,7 +271,47 @@ class Diffusion(nn.Module):
 
         return top_avg_position
     
-    def top_position(self, affordance, pc_position, topk=5):
+
+
+    def top_position(self, affordance, pc_position, topk=5, threshold=0.5, min_valid=80):
+        """
+        选出 topk 个 affordance 得分最高的点，并确保所有选中点的 affordance > threshold
+        如果符合条件的点少于 min_valid，则允许重复采样
+
+        affordance: [batch_size, num_points, num_affordance]
+        pc_position: [batch_size, num_points, 3]
+
+        return: [batch_size, num_affordance, topk, 3]
+        """
+        num_affordance = affordance.shape[-1]
+        
+        if num_affordance == 1:
+            affordance = affordance.squeeze(-1)  # [batch_size, num_points]
+        
+        # Step 1: 获取满足阈值的掩码 [batch_size, num_points, num_affordance]
+        valid_mask = affordance > threshold
+        
+        # Step 2: 统计满足条件的点的数量
+        valid_counts = valid_mask.sum(dim=1, keepdim=True)  # [batch_size, 1, num_affordance]
+        
+        # Step 3: 处理不足 min_valid 的情况，确保不会出现空选
+        valid_mask = valid_mask | (valid_counts < min_valid).expand_as(valid_mask)  # 允许低分点
+        
+        # Step 4: 使用负无穷填充无效点，确保 topk 计算不会选到它们
+        affordance_masked = affordance.clone()
+        affordance_masked[~valid_mask] = float('-inf')  # 低于 threshold 的点设为 -inf
+        
+        # Step 5: 计算 topk 索引
+        topk_indices = torch.topk(affordance_masked, topk, dim=1, largest=True, sorted=True).indices  # [batch_size, topk, num_affordance]
+        
+        # Step 6: 生成 batch 索引并提取对应点的坐标
+        batch_indices = torch.arange(affordance.shape[0], device=pc_position.device).view(-1, 1, 1)
+        top_positions = pc_position[batch_indices, topk_indices]  # [batch_size, num_affordance, topk, 3]
+
+        return top_positions
+
+
+    def top_position_old(self, affordance, pc_position, topk=5):
         """
         get the topk positions and average them
         
@@ -672,66 +713,24 @@ class Diffusion(nn.Module):
                     guide_clean=guide_clean,
                     eval_final_guide_loss=(i == 0),
                 )  # denoise
-            guide_losses_final.append(guide_losses["loss"])
+            if guide_losses is not None:
+                guide_losses_final.append(guide_losses["loss"])
             x_final.append(x)
-                # use map feature to mix the x_i
-                #if data_batch['affordance'].shape[-1] > 1: # multi affordance map
 
-                    ## option1: use the map feature to mix the x_i, seems not work well cuz the order is disturbed
-                    #map_feature = self.query_map_feat_grid(x_i, new_aux_info) # [b, h, feat_dim]
-                    #num_x = x_mix_split_indice[affordance_index+1] - x_mix_split_indice[affordance_index]
-                    #map_feature = map_feature.squeeze(-1)  # shape: [b, h]
-                    #topk_values, topk_indices = torch.topk(map_feature, k=num_x, dim=1)  # [b, n]
-                    #x_high_feat = torch.gather(x, dim=1, index=topk_indices.unsqueeze(-1).expand(-1, -1, 2))
-                    #x_mix[:, x_mix_split_indice[affordance_index]:x_mix_split_indice[affordance_index+1], :] = x_high_feat
-
-                    ## option2: avg the x_i, works but can not handle the guidance. avg will also avg the guidance loss and perturb the x_i
-                #    x_mix[:, affordance_index, :, :] = x_i
-                    #x_mix_map_feat[:, affordance_index, :, :] = self.query_map_feat_grid(x_i, new_aux_info).mean(dim=1, keepdim=True)
-                    #if guide_losses is not None:
-                    #    guide_losses_mix[:, affordance_index, :] = guide_losses["collision_loss"]
-                                
+        #### used for composition
+        # x = torch.cat(x_final, dim=1)
+        # guide_losses_final = torch.cat(guide_losses_final, dim=-1)    
                 
-                #else:
-                #    x_mix = x_i
-                #    guide_losses = guide_losses
-
-            #if len(x_mix.shape) == 3:
-            #    x = x_mix
-
-            #elif len(x_mix.shape) == 4:
-                # option1: use avg
-                #x = x_mix.mean(dim=1, keepdim=False)
-
-                # option2: use max, condition on the map feature value
-                #max_indices = torch.argmax(x_mix_map_feat, dim=1, keepdim=True)
-                #x_mix = torch.gather(x_mix, dim=1, index=max_indices.expand(-1, -1, 80, 2))
-                #x = x_mix.squeeze(1)
-
-                # option3: use max, condition on the guidance loss
-                #max_indices = torch.argmax(guide_losses_mix, dim=1, keepdim=True)
-                #x_mix = torch.gather(x_mix, dim=1, index=max_indices.unsqueeze(-1).expand(-1, -1, 80, 2))
-                #x = x_mix.squeeze(1)
-                
-                # option4: random mix the x_i, works well
-                #batch_size, num_affordance, horizon, _ = x_mix.shape
-                #random_mask = torch.randint(0, num_affordance, (batch_size, 1, horizon, 2), device=device)
-                #x = torch.gather(x_mix, dim=1, index=random_mask).squeeze(1)
-                #if guide_losses is not None and i != 0:
-                    #guide_losses["collision_loss"] = torch.gather(guide_losses_mix, dim=1, index=random_mask.squeeze(1)).squeeze(1)
-
-        x = torch.cat(x_final, dim=1)
-        guide_losses_final = torch.cat(guide_losses_final, dim=-1)    
-                
-        loss = guide_losses_final.squeeze(1)
-        sorted_indices = torch.argsort(loss, dim=1)
-        topk_indices = sorted_indices[:, :horizon]
-        x = torch.gather(x, 1, topk_indices.unsqueeze(-1).expand(-1, -1, 2))
-        guide_losses_final = torch.gather(guide_losses_final, -1, topk_indices.unsqueeze(1).expand(1, 1, -1))
-        guide_losses['loss'] = guide_losses_final
+        # loss = guide_losses_final.squeeze(1)
+        # sorted_indices = torch.argsort(loss, dim=1)
+        # topk_indices = sorted_indices[:, :horizon]
+        # x = torch.gather(x, 1, topk_indices.unsqueeze(-1).expand(-1, -1, 2))
+        # guide_losses_final = torch.gather(guide_losses_final, -1, topk_indices.unsqueeze(1).expand(1, 1, -1))
+        # guide_losses['loss'] = guide_losses_final
+        ####
 
         x = TensorUtils.reshape_dimensions(
-            x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp)
+             x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp)
         )
         out_dict = {"pred_pose_xy": x}
         if return_guidance_losses:
@@ -1613,20 +1612,7 @@ class Diffusion_muti_affordance(nn.Module):
                 x = x_mix
 
             elif len(x_mix.shape) == 4:
-                # option1: use avg
-                #x = x_mix.mean(dim=1, keepdim=False)
 
-                # option2: use max, condition on the map feature value
-                #max_indices = torch.argmax(x_mix_map_feat, dim=1, keepdim=True)
-                #x_mix = torch.gather(x_mix, dim=1, index=max_indices.expand(-1, -1, 80, 2))
-                #x = x_mix.squeeze(1)
-
-                # option3: use max, condition on the guidance loss
-                #max_indices = torch.argmax(guide_losses_mix, dim=1, keepdim=True)
-                #x_mix = torch.gather(x_mix, dim=1, index=max_indices.unsqueeze(-1).expand(-1, -1, 80, 2))
-                #x = x_mix.squeeze(1)
-                
-                # option4: random mix the x_i, works well
                 batch_size, num_affordance, horizon, _ = x_mix.shape
                 random_mask = torch.randint(0, num_affordance, (batch_size, 1, horizon, 2), device=device)
                 x = torch.gather(x_mix, dim=1, index=random_mask).squeeze(1)
