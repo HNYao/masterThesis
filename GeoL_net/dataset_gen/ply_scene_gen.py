@@ -49,7 +49,7 @@ def find_center_object(obj_dict):
     center_object = None
     
     # 遍历所有物体，找到离平均位置最近的物体
-    for key, value in obj_dict.items():
+    for key, value in filtered_objects.items():
         position = value[2]
         distance = np.linalg.norm(position - mean_position)
         if distance < min_distance:
@@ -229,7 +229,7 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
             # 获取邻居节点的物体名称
             obj_name = neighbor_node[1]
             if obj_name == 'remote_control':
-                obj_name = 'remote control'
+                 obj_name = 'remote control'
             #print('obj name', neighbor_node[0], obj_name)
 
             # 检查邻居节点是否已经添加过
@@ -295,11 +295,14 @@ def add_objects_to_scene_v2(scene_pcd_path, scene_npz_path, first_node_position,
                     # 将物体点云合并到场景点云中
                     obj_all_pcd += obj_pcd
 
+                    if obj_name == 'remote control':
+                        obj_name = 'remote_control'
+
                     # Update semantic and instance labels in npz
                     for key, val in item_dict.items():
                         if val == obj_name:
                             semantic_label = key
-                            break
+                            # break
                     
                     updated_npz['semantic_label'] = np.concatenate((updated_npz['semantic_label'], semantic_label * np.ones(len(obj_pcd.points))))
                     
@@ -379,10 +382,10 @@ def replace_entries(graph_a, graph_b, obj_name_list):
 
 def generate_new_scene_from_demos(id_a, id_b):
         # given 2 scenes
-    ply_path_b = f'dataset/data_aug/human_demos/ply/{id_b}.ply'
-    npz_path_b = f'dataset/data_aug/human_demos/npz/{id_b}.npz'
-    ply_path_a = f'dataset/data_aug/human_demos/ply/{id_a}.ply'
-    npz_path_a = f'dataset/data_aug/human_demos/npz/{id_a}.npz'
+    ply_path_b = f'dataset/TO_scene_ori/TO-crowd/ply/train/{id_b}.ply'
+    npz_path_b = f'dataset/TO_scene_ori/TO-crowd/npz/train/{id_b}.npz'
+    ply_path_a = f'dataset/TO_scene_ori/TO-crowd/ply/train/{id_a}.ply'
+    npz_path_a = f'dataset/TO_scene_ori/TO-crowd/npz/train/{id_a}.npz'
     # convert to dict and graph
     dict_a = convert_dict(ply_path_a, npz_path_a)
     graph_a = convert_to_graph_v2(dict_a)
@@ -446,8 +449,13 @@ def generate_new_scene_from_demos(id_a, id_b):
 
 if __name__ == "__main__":
     # ply folder
-    ply_folder = "dataset/data_aug/human_demos/ply"
+    #ply_folder = "dataset/data_aug/human_demos/ply/
+    ply_folder = "dataset/TO_scene_ori/TO-crowd/ply/train"
     id_list = []
+    id_is_in_list = []
+    with open("GeoL_net/dataset_gen/scene_id_for_geneate.txt", "r") as f:
+        for line in f:
+            id_is_in_list.append("id"+line.strip())
     amount_scene = 0
     # Iterate through all .ply files in the ply folder
     for root, dirs, files in os.walk(ply_folder):
@@ -457,11 +465,17 @@ if __name__ == "__main__":
                 print(f"Found PLY file: {file_path}")
                 id_list.append(file.split('.')[0])
     for id_a in id_list:
+        if id_a not in id_is_in_list:
+            continue
         for id_b in id_list:
+            if id_b not in id_is_in_list:
+                continue
+
             if id_a != id_b:
+
                 if os.path.exists(f"dataset/data_aug/generated_data/ply/{id_a}_{id_b}_0.ply"): # no repeat _0
                     continue
+                print(f"generating new scene from {id_a} and {id_b} ...")
                 generate_new_scene_from_demos(id_a, id_b)
-                print(f"generate new scene from {id_a} and {id_b}")
                 amount_scene += 1
                 print(f"amount_scene: {amount_scene}")

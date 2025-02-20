@@ -10,3 +10,6 @@
 [submodule "thirdpart/seeing-unseen"]
 	path = thirdpart/seeing-unseen
 	url = https://github.com/Ram81/seeing-unseen.git
+[submodule "thirdpart/LLaVA-NeXT"]
+	path = thirdpart/LLaVA-NeXT
+	url = https://github.com/LLaVA-VL/LLaVA-NeXT.git

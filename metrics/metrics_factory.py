@@ -121,6 +121,69 @@ def directional_sptail_metric(mask_prediction, batch):
         success_rate = np.mean(metrics_direction)
     return metrics_direction
 
+def directional_spatial_metric_bbox(bbox_prediction:list, batch):
+    """
+    calculate the directional spatial metric
+    """
+    anchor_points = batch['anchor_point']
+    directions = batch['direction']
+    image = batch['image']
+    depth = batch['depth']
+    pc_positions = batch['fps_points_scene_from_original']
+    pc_colors = batch['fps_colors_scene_from_original']
+
+    # get the ground truth position
+    max_indices = torch.argmax(pc_colors[:, :, 1], dim=1)
+    max_positions = pc_positions[torch.arange(pc_positions.shape[0]), max_indices]
+
+    # get the pred position, find the most highest n points
+    batch_size, height, width = mask_prediction.shape
+    n = 10
+    prediction_flat = mask_prediction.view(batch_size, -1)
+    topk_values, topk_indices = torch.topk(prediction_flat, n, dim=1) 
+    row_indices = topk_indices // mask_prediction.shape[2]
+    col_indices = topk_indices % mask_prediction.shape[2]
+
+    batch_indices = torch.arange(batch_size).view(-1, 1).repeat(1, n).flatten()
+    row_indices_flat = row_indices.flatten()
+    col_indices_flat = col_indices.flatten()
+
+    color_pred = torch.zeros((batch_size, height, width, 3), dtype=torch.uint8) 
+    color_pred[batch_indices, row_indices_flat, col_indices_flat] = torch.tensor([0, 0, 255], dtype=torch.uint8)
+    
+    # get the point cloud from pred
+    intrinsics = np.array([[591.0125 ,   0.     , 322.525  ],
+                            [  0.     , 590.16775, 244.11084],
+                            [  0.     ,   0.     ,   1.     ]])
+    depth = depth.detach().cpu().numpy()
+    color_pred = color_pred.detach().cpu().numpy()
+
+    metrics_direction = []
+    for i in range(batch_size):
+        points_scene, _ = backproject(depth[i], intrinsics, depth[i]>0)
+        T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
+        pc_pred = visualize_points(points_scene, color_pred[i].reshape(-1, 3).astype(np.float64))
+        points = np.asarray(pc_pred.points)
+        colors = np.asarray(pc_pred.colors)
+        blue_mask = (colors[:, 0] <= 0.1) & (colors[:, 1] <= 0.1) & (colors[:, 2] >= 0.9)
+
+        blue_points = points[blue_mask] # predicted points
+
+        # transform the predicted position and anchor point to the plane coordinate
+        anchor_point = anchor_points[i].detach().cpu().numpy()
+        anchor_point = np.dot(anchor_point, T_plane[:3, :3])
+        blue_point = np.dot(blue_points, T_plane[:3, :3])
+
+        # calculate the direction
+        for k in range(len(blue_point)):
+            direction_pred = determine_direction(anchor_point, blue_point[k])
+            direction_gt = directions[i]
+            if direction_pred == direction_gt:
+                metrics_direction.append(1) # success
+            else:
+                metrics_direction.append(0) # fail
+        success_rate = np.mean(metrics_direction)
+    return metrics_direction
 
 
 def receptacle_metric(mask_prediction, batch):

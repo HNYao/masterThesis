@@ -2294,7 +2294,7 @@ class GeoL_net_v8(nn.Module):
 
 
 @registry.register_affordance_model(name="GeoL_net_v9")
-class GeoL_net_v8(nn.Module):
+class GeoL_net_v9(nn.Module):
     """
     GeoL_net_v9:
         1. use data based on kinect cfg

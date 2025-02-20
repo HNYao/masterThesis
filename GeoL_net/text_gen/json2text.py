@@ -77,6 +77,7 @@ def json2text(json_path, out_dir=None):
     positions = {key: value[0][:2] for key, value in data.items()}
 
     # nearest
+    nearest_distance = 0.005 # TODO: reduce the threshold
     nearest_neighbors = {}
     for obj1, pos1 in positions.items():
         nearest_obj = None
@@ -86,9 +87,18 @@ def json2text(json_path, out_dir=None):
                 if "eraser" in obj2 or "pencil" in obj2 or "plant" in obj2:
                     continue
                 distance = euclidean_distance(pos1, pos2)
-                if distance < min_distance and distance > 0.2: # 0.2 is the threshold
+                if distance < min_distance and distance > nearest_distance: # 0.1 is the threshold
                     min_distance = distance
                     nearest_obj = obj2
+        
+        # check if the nearest object is none, random select
+        if nearest_obj is None:
+            nearest_obj = random.choice(list(positions.keys()))
+            while nearest_obj == obj1:
+                nearest_obj = random.choice(list(positions.keys()))
+            min_distance = euclidean_distance(pos1, positions[nearest_obj])
+
+
         direction = determine_direction(pos1, positions[nearest_obj])
         nearest_neighbors[obj1] = (nearest_obj, direction)
 
@@ -140,7 +150,7 @@ if __name__ =="__main__":
         except FileNotFoundError:
             continue
         amount_dataset += 1
-
+        print(f"amount_dataset: {amount_dataset}")
         
     
     print(amount_dataset)

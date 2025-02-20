@@ -342,7 +342,7 @@ class PoseDiffuserTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch = self.train_one_epoch(epoch)
-            if epoch % 5 == 0:
+            if epoch % 30 == 0:
                 self.save_state(epoch + 1)
 
             if epoch % 1 == 0:

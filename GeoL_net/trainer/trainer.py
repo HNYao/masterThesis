@@ -456,10 +456,10 @@ class GeometryLanguageTrainer(BaseTrainer):
             # Train model
             self.model.train()
             avg_loss, model_pred, last_batch  = self.train_one_epoch(epoch)
-            if epoch % 200 == 0:
+            if epoch % 5 == 0:
                 self.save_state(epoch + 1)
             
-            if epoch% 1 ==0:
+            if epoch% 2 ==0:
                 #self.model.generate_heatmap(epoch)
                 #img_rgb_list, file_name_list, phrase_list = self.model.pcdheatmap2img()
                 #img_rgb_list, img_gt_list, file_name_list, phrase_list = self.generate_heatmap(last_batch, model_pred)

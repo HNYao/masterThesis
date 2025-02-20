@@ -537,7 +537,7 @@ class PoseDataset_top(Dataset):
         # get the object pc position (rotated, scaled, translated to the origin point)
         scene_id = pc_path.split('/')[2]
         obj_name = pc_path.split('/')[3]
-        json_path = os.path.join("dataset/scene_gen/scene_mesh_json_kinect", f"{scene_id}.json") #e.g. "dataset/scene_mesh_json_kinect/id3.json"
+        json_path = os.path.join("dataset/scene_gen/scene_mesh_json_aug", f"{scene_id}.json") #e.g. "dataset/scene_mesh_json_kinect/id3.json"
         # find the key which includes obj_name
         with open(json_path, 'r', encoding='utf-8') as file:
             data = json.load(file)

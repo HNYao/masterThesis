@@ -439,7 +439,7 @@ def dynamic_sleep():
             sleep_time = MAX_SLEEP
 
         print(f"Sleep time : {sleep_time:.2f} s")
-        time.sleep(sleep_time)
+        time.sleep(1 + sleep_time)
     else:
         print("fail to get CPU temp, sleep 1s")
         time.sleep(1)
@@ -447,7 +447,7 @@ def dynamic_sleep():
 
 if __name__ == "__main__":
     
-    '''
+    
     bproc.init()
 
     json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
@@ -475,6 +475,7 @@ if __name__ == "__main__":
                 print(f"{scene_id} is already made, so skip")
                 data_size += 1
                 print(f"Data size: {data_size}")
+                start_datasize = data_size
                 continue
 
         
@@ -503,48 +504,53 @@ if __name__ == "__main__":
         )
         data_size += 1
 
-        bpy.ops.wm.memory_statistics()
+
+
+        #bpy.ops.wm.memory_statistics()
 
         # 检查 CPU usage and temp
-        result = os.popen("sensors").read()
-        print("Sensor temp:")
-        print(result)
+        #result = os.popen("sensors").read()
+        #print("Sensor temp:")
+        #print(result)
 
-        cpu_usage = psutil.cpu_percent()
-        print(f"CPU Usage: {cpu_usage}%")
+        #cpu_usage = psutil.cpu_percent()
+        #print(f"CPU Usage: {cpu_usage}%")
         print(f"Data size: {data_size}")
-        dynamic_sleep()
+
+        if (data_size - start_datasize) % 30 == 0:
+            print("RESTART")
+        #dynamic_sleep()
 
         bproc.clean_up(True)
 
     
 
    
-    '''
+    
     ######### test object size hard code
-    bproc.init()
-    json_file = "dataset/scene_gen/scene_mesh_json_aug/id114_id64_0_0.json"
-    parent_dir = "dataset/scene_gen/scene_RGBD_mask_data_aug_test"
+    # bproc.init()
+    # json_file = "dataset/scene_gen/scene_mesh_json_aug/id114_id64_0_0.json"
+    # parent_dir = "dataset/scene_gen/scene_RGBD_mask_data_aug_test"
 
-    anchor_obj_path_list = []
-    removed_obj_path_list = []
-    text_guidance_file = os.path.join("dataset/scene_RGBD_mask_data_aug", "id114_id64_0_0", "text_guidance.json")
-    with open(text_guidance_file, 'r') as f:
-        text_guidance_data = json.load(f)
-    for key in text_guidance_data:
-        anchor_obj_name = text_guidance_data[key][0] # e.g. the brown bottle
-        removed_obj_name  = key # e.g. the glass bottle
-        anchor_obj_path = text_guidance_data[key][5]
-        removed_obj_path = text_guidance_data[key][4]
+    # anchor_obj_path_list = []
+    # removed_obj_path_list = []
+    # text_guidance_file = os.path.join("dataset/scene_RGBD_mask_data_aug", "id114_id64_0_0", "text_guidance.json")
+    # with open(text_guidance_file, 'r') as f:
+    #     text_guidance_data = json.load(f)
+    # for key in text_guidance_data:
+    #     anchor_obj_name = text_guidance_data[key][0] # e.g. the brown bottle
+    #     removed_obj_name  = key # e.g. the glass bottle
+    #     anchor_obj_path = text_guidance_data[key][5]
+    #     removed_obj_path = text_guidance_data[key][4]
 
-        anchor_obj_path_list.append(anchor_obj_path)
-        removed_obj_path_list.append(removed_obj_path)
+    #     anchor_obj_path_list.append(anchor_obj_path)
+    #     removed_obj_path_list.append(removed_obj_path)
 
-    bproc_gen_mask_with_and_without_obj(
-    scene_mesh_json=json_file,
-    RGBD_out_dir=parent_dir,
-    removed_obj_path_list=removed_obj_path_list,
-    anchor_obj_path_list=anchor_obj_path_list
-    )
+    # bproc_gen_mask_with_and_without_obj(
+    # scene_mesh_json=json_file,
+    # RGBD_out_dir=parent_dir,
+    # removed_obj_path_list=removed_obj_path_list,
+    # anchor_obj_path_list=anchor_obj_path_list
+    # )
 
-    bproc.clean_up(True)
+    # bproc.clean_up(True)
