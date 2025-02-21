@@ -13,7 +13,7 @@ import argparse
 from visual_tool.bpy_utils import setMat_pointCloudColoredEmission
 
 OBJ_COLOR_BLUE = [153.0 / 255, 203.0 / 255, 67.0 / 255, 1.0]
-OBJ_COLOR_RED = [250.0 / 255, 114.0 / 255, 104.0 / 255, 1.0]
+OBJ_COLOR_RED = [250.0 / 255, 114.0 / 255, 104.0 / 255, 0.5]
 
 MESH_COLOR = bt.colorObj(OBJ_COLOR_RED, 0.5, 1.0, 1.0, 0.0, 2.0)
 POINT_COLOR = bt.colorObj([], 0.5, 1.0, 1.0, 0.0, 0.2)
@@ -47,14 +47,14 @@ def main(args):
     pts_without_obj.colors = o3d.utility.Vector3dVector(npy_file["scene_pcd_color"])
 
     # Processing the object mesh
-    obj_mesh_path = "selected_scene/mesh.obj"
+    obj_mesh_path = "selected_scene/mesh.obj" # get the mesh path
     obj_mesh = o3d.io.read_triangle_mesh(obj_mesh_path)
     obj_mesh.compute_vertex_normals()
-    obj_scale = np.array(npy_file["obj_scale"])
+    obj_scale = np.array(npy_file["obj_scale"]) # get the obj mesh scale
     obj_mesh.scale(obj_scale[0], center=[0, 0, 0])
     obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
     obj_rotation = 0
-    obj_rotation_matrix = np.array(npy_file["obj_rotation_matrix"])
+    obj_rotation_matrix = np.array(npy_file["obj_rotation_matrix"]) # get the obj full rotation matrix
     obj_mesh.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
     obj_mesh.translate([0, -1, 1])
     obj_pcd.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
@@ -89,21 +89,26 @@ def main(args):
     bt.shadowThreshold(alphaThreshold=0.05, interpolationMode="CARDINAL")
     cam = bt.setCamera_from_UI(cam_location, cam_rotation, focalLength=focal_length)
 
+    ################################ BLENDER RENDERING ################################
     # Prepare the scene points
     scene_mesh = bt.readNumpyPoints(
         npy_file["scene_pcd_point"], (0, 0, 0), (0, 0, 0), (1, 1, 1)
     )
     scene_mesh = bt.setPointColors(scene_mesh, npy_file["scene_pcd_color"])
-    bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
-    # setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
+    # bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
+    setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
     scene_mesh.name = "SceneGeo"
 
     # Prepare the object mesh
     o3d.io.write_triangle_mesh("visual_tool/obj.ply", obj_mesh)  # Save the mesh ..
     mesh = bt.readMesh("visual_tool/obj.ply", (0, 0, 0), (0, 0, 0), (1, 1, 1))
     bpy.ops.object.shade_smooth()
-    bt.setMat_plastic(mesh, MESH_COLOR)
+    # bt.setMat_plastic(mesh, MESH_COLOR)
+    C1 = bt.colorObj(bt.coralRed, 0.5, 1.0, 1.0, 0.0, 0.5)
+    C2 = bt.colorObj(bt.caltechOrange, 0.5, 1.0, 1.0, 0.0, 0.0)
+    bt.setMat_carPaint(mesh, C1, C2)
     os.remove("visual_tool/obj.ply")  # .. and remove it
+    ################################ BLENDER RENDERING ################################
 
     # Tweak the ground rotation
     # bpy.data.objects["Plane"].rotation_euler[1] = np.pi / 2
