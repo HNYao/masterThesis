@@ -279,38 +279,50 @@ def generate_mesh_scene_all_texute_v2(ply_path, npz_path, directory_mesh_save="d
     return unique_json_path
 
 if __name__ == "__main__":
+    # generate one case and save as picked dataset
+    ply_path = "dataset/TO_scene_ori/TO-crowd/ply/train/id108.ply"
+    npz_path = "dataset/TO_scene_ori/TO-crowd/npz/train/id108.npz"
+    print(f"Found PLY file: {ply_path}")
+    print(f"Found NPZ file: {npz_path}")
+    result = generate_mesh_scene_all_texute_v2(
+        ply_path=ply_path, 
+        npz_path=npz_path, 
+        directory_mesh_save="dataset/scene_gen/picked_mesh", 
+        directory_json_save="dataset/scene_gen/picked_scene_mesh_json")
 
-    # 定义 ply 文件夹的路径
-    ply_folder = "dataset/data_aug/generated_data/ply"
+    # ##### generate in batch
+    # # 定义 ply 文件夹的路径
+    # ply_folder = "dataset/data_aug/generated_data/ply"
 
-    # 遍历 ply 文件夹中的所有 .ply 文件
-    start_time = time.time()
-    bad = 0
-    good = 0
-    total = 0
-    for root, dirs, files in os.walk(ply_folder):
-        for file in files:
-            if file.endswith(".ply"):
-                ply_path = os.path.join(root, file)
-                npz_path = os.path.join("dataset/data_aug/generated_data/npz", file.replace(".ply", ".npz"))
-                print(f"Found PLY file: {ply_path}")
-                print(f"Found NPZ file: {npz_path}")
-                result = generate_mesh_scene_all_texute_v2(
-                    ply_path=ply_path, 
-                    npz_path=npz_path, 
-                    directory_mesh_save="dataset/scene_gen/mesh", 
-                    directory_json_save="dataset/scene_gen/scene_mesh_json_aug")
-                total = total + 1
-                print("total:", total)
-                if result is None:
-                    bad = bad + 1
-                else:
-                    good = good + 1
-    end_time = time.time()
-    print(f"Running time: {end_time - start_time} s")
+    # # 遍历 ply 文件夹中的所有 .ply 文件
+    # start_time = time.time()
+    # bad = 0
+    # good = 0
+    # total = 0
+    # for root, dirs, files in os.walk(ply_folder):
+    #     for file in files:
+    #         if file.endswith(".ply"):
+    #             ply_path = os.path.join(root, file)
+    #             npz_path = os.path.join("dataset/data_aug/generated_data/npz", file.replace(".ply", ".npz"))
+    #             print(f"Found PLY file: {ply_path}")
+    #             print(f"Found NPZ file: {npz_path}")
+    #             result = generate_mesh_scene_all_texute_v2(
+    #                 ply_path=ply_path, 
+    #                 npz_path=npz_path, 
+    #                 directory_mesh_save="dataset/scene_gen/mesh", 
+    #                 directory_json_save="dataset/scene_gen/scene_mesh_json_aug")
+    #             total = total + 1
+    #             print("total:", total)
+    #             if result is None:
+    #                 bad = bad + 1
+    #             else:
+    #                 good = good + 1
+    # end_time = time.time()
+    # print(f"Running time: {end_time - start_time} s")
 
-    print("good:", good)
-    print("bad:", bad)
+    # print("good:", good)
+    # print("bad:", bad)
+    # ######
 """
     # 打开并读取文件
     # generate batch 

@@ -1034,40 +1034,64 @@ def objs_keep_in_scene(json_file, number_of_objects):
 
 
 if __name__ == "__main__":
-    
+    ##### generate one case
     bproc.init()
-    json_folder_path = "dataset/scene_gen/scene_mesh_json"
-    json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
-    data_size = 0
-    for json_file_path in json_files:
-        print(f"-----start process {json_file_path} ------")
-        start_time = time.time()
-        parent_dir = "dataset/scene_RGBD_mask_sequence"
-        json_file = json_file_path
-        scene_id = json_file.split("/")[-1].split(".")[0]
-        if os.path.exists(parent_dir + "/" + scene_id):
-                continue
-        obj_keep_list, filtered_data, anchor_obj, removed_obj_list = objs_keep_in_scene(json_file=json_file, number_of_objects=1)
+    json_file = "dataset/scene_gen/picked_scene_mesh_json/id15_0.json"
+    parent_dir = "dataset/picked_RGBD"
+    
+    scene_id = json_file.split("/")[-1].split(".")[0]
 
-        # only keep the objects in obj_keep_list and removed_obj_list
-        with open(json_file, 'r') as f:
-            data = json.load(f)
 
-        for removed_obj in removed_obj_list:
+    with open(json_file, 'r') as f:
+                data = json.load(f)
+
+    for removed_obj in removed_obj_list:
+        
+        filtered_data = {k: v for k, v in data.items() if k in obj_keep_list or k == removed_obj}
+        removed_obj_name = removed_obj.split("/")[-2]
+        RGBD_out_dir = parent_dir + "/" + scene_id + "/" + removed_obj_name
+        # check if the data already exists
+
+
+        bproc_gen_mask_with_and_without_obj_sequnce(filtered_data, RGBD_out_dir, removed_obj)
+        bproc.clean_up()
+
+
+
+    ##### generate scene and obj in sequence
+    # bproc.init()
+    # json_folder_path = "dataset/scene_gen/scene_mesh_json"
+    # json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
+    # data_size = 0
+    # for json_file_path in json_files:
+    #     print(f"-----start process {json_file_path} ------")
+    #     start_time = time.time()
+    #     parent_dir = "dataset/scene_RGBD_mask_sequence"
+    #     json_file = json_file_path
+    #     scene_id = json_file.split("/")[-1].split(".")[0]
+    #     if os.path.exists(parent_dir + "/" + scene_id):
+    #             continue
+    #     obj_keep_list, filtered_data, anchor_obj, removed_obj_list = objs_keep_in_scene(json_file=json_file, number_of_objects=1)
+
+    #     # only keep the objects in obj_keep_list and removed_obj_list
+    #     with open(json_file, 'r') as f:
+    #         data = json.load(f)
+
+    #     for removed_obj in removed_obj_list:
             
-            filtered_data = {k: v for k, v in data.items() if k in obj_keep_list or k == removed_obj}
-            removed_obj_name = removed_obj.split("/")[-2]
-            RGBD_out_dir = parent_dir + "/" + scene_id + "/" + removed_obj_name
-             # check if the data already exists
+    #         filtered_data = {k: v for k, v in data.items() if k in obj_keep_list or k == removed_obj}
+    #         removed_obj_name = removed_obj.split("/")[-2]
+    #         RGBD_out_dir = parent_dir + "/" + scene_id + "/" + removed_obj_name
+    #          # check if the data already exists
 
 
-            bproc_gen_mask_with_and_without_obj_sequnce(filtered_data, RGBD_out_dir, removed_obj)
-            bproc.clean_up()
-            data_size += 1
+    #         bproc_gen_mask_with_and_without_obj_sequnce(filtered_data, RGBD_out_dir, removed_obj)
+    #         bproc.clean_up()
+    #         data_size += 1
 
-        end_time = time.time()
-        print(f"------Consume: {end_time - start_time} s--------")
-        print(f"------Data size: {data_size}--------")
+    #     end_time = time.time()
+    #     print(f"------Consume: {end_time - start_time} s--------")
+    #     print(f"------Data size: {data_size}--------")
     
     '''
     bproc.init()

@@ -138,20 +138,29 @@ def json2text(json_path, out_dir=None):
     print(f"Text guidance is saved at {out_dir}/text_guidance.json")
 
 if __name__ =="__main__":
+    #### generate one case
+    json_file = "dataset/scene_gen/picked_scene_mesh_json/id108_0.json"
+    out_dir = "dataset/picked_scene_RGBD_mask/id108_0"
+    # check if out_dir exists
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    json2text(json_path=json_file, out_dir=out_dir)
 
-    json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
-    json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
 
-    amount_dataset = 0
-    for json_file_path in json_files:
-        json_path = json_file_path
-        try:
-            json2text(json_path=json_path)
-        except FileNotFoundError:
-            continue
-        amount_dataset += 1
-        print(f"amount_dataset: {amount_dataset}")
+    ### generate in batch
+    # json_folder_path = "dataset/scene_gen/scene_mesh_json_aug"
+    # json_files = glob.glob(os.path.join(json_folder_path, '*.json'))
+
+    # amount_dataset = 0
+    # for json_file_path in json_files:
+    #     json_path = json_file_path
+    #     try:
+    #         json2text(json_path=json_path)
+    #     except FileNotFoundError:
+    #         continue
+    #     amount_dataset += 1
+    #     print(f"amount_dataset: {amount_dataset}")
         
     
-    print(amount_dataset)
+    # print(amount_dataset)
     # json2text(json_path="dataset/scene_gen/scene_mesh_json_kinect/id100.json") generate single json
