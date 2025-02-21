@@ -181,7 +181,7 @@ def generate_incompleted_sparse_mesh_from_json(file_path, json_path, export_path
             desk_mesh.apply_translation([0, 0, -z_height/2])
 
             desk_mesh.apply_scale([scale_x, scale_y, scale_z])
-            #scene_mesh_list.append(desk_mesh) # NOTE: do not add the desk to the scene, so the collision will only caused by the objects
+            scene_mesh_list.append(desk_mesh) # NOTE: do not add the desk to the scene, so the collision will only caused by the objects
             break
 
         # load each object
@@ -257,11 +257,11 @@ if __name__ == "__main__":
     ######
 
     ###### generate the incompleted mesh for the benchmark_bproc_data sparse scenes
-    root_dir = "dataset/benchmark_bproc_data_sparse"
+    root_dir = "dataset/picked_scene_RGBD_mask"
     for folder_name in os.listdir(root_dir):
         folder_path = os.path.join(root_dir, folder_name)
         scene_id = folder_path.split('/')[-1]
-        json_path = f"dataset/scene_gen/scene_mesh_json_aug/{scene_id}.json"
+        json_path = f"dataset/scene_gen/picked_scene_mesh_json/{scene_id}.json"
         if os.path.isdir(folder_path):  # 确保是文件夹
             print(folder_path)
 
