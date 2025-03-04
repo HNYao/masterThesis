@@ -23,7 +23,7 @@ from GeoL_net.models.modules import ProjectColorOntoImage_v3, ProjectColorOntoIm
 from scipy.spatial.distance import cdist
 from matplotlib import cm
 import torchvision.transforms as T
-from GeoL_net.gpt.gpt import chatgpt_condition
+from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
@@ -460,7 +460,7 @@ def rgb_obj_dect(
     )
     IMAGE_PATH = image_path
     TEXT_PROMPT = text_prompt
-    BOX_TRESHOLD = 0.35 # 0.35
+    BOX_TRESHOLD = 0.20 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image = load_image(IMAGE_PATH)
@@ -473,6 +473,8 @@ def rgb_obj_dect(
         text_threshold=TEXT_TRESHOLD,
     )
 
+    phrases = [f"{text_prompt} id{id}" for id in range(len(phrases))]
+
     h, w, _ = image_source.shape
     ori_boxes = boxes * torch.Tensor([w, h, w, h])
     ori_boxes = torch.round(ori_boxes)
@@ -484,6 +486,14 @@ def rgb_obj_dect(
         annotated_frame = annotate(
             image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
         )
+        write_path = "Geo_comb/annotated.jpg"
+        cv2.imwrite(write_path, annotated_frame)
+
+        if len(phrases) > 0:
+            id_list, direction = chatgpt_select_id(write_path)
+            id = int(id_list[0])
+            center_x = int(ori_boxes[id][0].item())
+            center_y = int(ori_boxes[id][1].item())
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
         #cv2.imwrite(out_dir, annotated_frame)
@@ -499,8 +509,8 @@ if __name__ == "__main__":
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "dataset/scene_RGBD_mask_data_aug/id6_id18_0_0/bottle_0003_cola/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_RGBD_mask_data_aug/id6_id18_0_0/bottle_0003_cola/with_obj/test_pbr/000000/depth/000000.png"
+    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/rgb/000000.jpg"
+    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
@@ -521,8 +531,8 @@ if __name__ == "__main__":
         )
         print("====> Predicting Affordance...")
     else:
-        target_name = "the eyeglasses"
-        direction_text = "Right"
+        target_name = "the book"
+        direction_text = "Left"
 
     # use GroundingDINO to detect the target object
     annotated_frame = rgb_obj_dect(
