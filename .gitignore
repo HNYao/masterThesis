@@ -25,3 +25,4 @@ GeoL_net/models/__pycache__/
 GeoL_net/gpt/__pycache__/
 GeoL_diffuser/dataset/__pycache__/
 GeoL_diffuser/models/utils/__pycache__/
+selected_scene/
