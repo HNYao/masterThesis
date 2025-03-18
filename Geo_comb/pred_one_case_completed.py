@@ -496,10 +496,7 @@ def rgb_obj_dect(
             center_y = int(ori_boxes[id][1].item())
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
-        #cv2.imwrite(out_dir, annotated_frame)
-        # cv2.imshow("annotated_frame", annotated_frame)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+
 
     return annotated_frame
 
@@ -664,7 +661,7 @@ if __name__ == "__main__":
                 "max_bound_affordance": max_bound_affordance,
                 "affordance_pred": affordance_pred_sigmoid,
             }
-            np.savez_compressed("Geo_comb/eyeglasses_right.npz", **to_save)
+            np.savez_compressed("Geo_comb/book_left.npz", **to_save)
 
             batch["affordance"] = affordance_pred
             batch["object_name"] = ["the green bottle"]
