@@ -29,6 +29,7 @@ from GeoL_diffuser.models.utils.diffusion_utils import *
 
 
 
+
 class Diffusion(nn.Module):
     def __init__(
         self,
@@ -56,7 +57,7 @@ class Diffusion(nn.Module):
         self.use_map_features = use_map_features
 
         self.horizon = horizon
-        self.output_dim = 2
+        self.output_dim = 3
         self.base_dim = 32  # time_dim
         
         if self.use_map_features:
@@ -67,7 +68,7 @@ class Diffusion(nn.Module):
         self.model = TemporalMapUnet(
             horizon=self.horizon,
             transition_dim=self.model_state_dim, # 2 + 1
-            cond_dim=160, # 64 + 64
+            cond_dim=176, # 160 + 16
             output_dim=self.output_dim,
             dim=self.base_dim,  # time_dim
             dim_mults=(2, 4, 8),
@@ -76,7 +77,7 @@ class Diffusion(nn.Module):
 
         # feat extractor
         #self.pc_position_encoder = PCPositionEncoder(state_dim=3, hidden_dim=256, device=self.device)
-        #self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device) # NOTE: test v2
+        self.obj_position_encoder = ObjectPCEncoder_v2().to(self.device) # NOTE: test v2
         #self.pc_position_xy_affordance_encoder = PCxyPositionEncoder(state_dim=2, hidden_dim=64)
         #self.object_name_encoder = ObjectNameEncoder_v2(out_dim=4).to(self.device).eval() # NOTE: test v2
         #self.top_affordance_encoder_position_encoder = TopAffordancePositionEncoder().to(self.device).eval()
@@ -176,53 +177,79 @@ class Diffusion(nn.Module):
             "pc_position"
         ]  # [batch_size, num_points, pc_position_dim=3]
 
+        #obj_rotation = data_batch["obj_rotation"]  # [batch_size, 80, 1]
 
         #object_name = data_batch["object_name"]  # [batch_size, ]
         #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
 
-        #top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
-        #top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions = self.top_position(affordance, pc_position, topk=80)
-        #top_positions = top_positions.mean(dim=2, keepdim=True).repeat(1, 1, 80, 1)
-        top_positions = top_positions[...,:2] # [batch_size, 80, 2]
-        #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
-        #top_positions = data_batch["gt_pose_xy"]
+
+        #top_positions = self.top_position(affordance, pc_position, topk=80) # for testing
+        #top_positions = torch.cat([top_positions, top_positions], dim=-1) # [batch_size, 80, 4]
+
+        #top_positions = top_positions.mean(dim=-2, keepdim=True).repeat(1, 80, 1) # use the average position
+
+
+        top_positions = data_batch["gt_pose_xyz"] # for training
+
+        top_positions_for_vis = top_positions
+        top_positions = top_positions[...,:2] # [batch_size, 80, 2] 
+
         top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
-        top_positions = top_positions.view(-1, num_affordance, 80*2)
+        #top_positions = torch.ones_like(top_positions) * 0.5
+        top_positions = top_positions.reshape(-1, 80*2)
 
-        
-        #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
-
-        #affordance_non_cond = torch.randn_like(affordance)
-        #top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
-        #top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
-        #top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=80)
-        #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
         top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
         top_positions_non_cond = top_positions_non_cond[...,:2] # [batch_size, 80, 2]
         top_positions_non_cond = self.scale_xy_pose(top_positions_non_cond, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
 
         top_positions_non_cond = top_positions_non_cond.reshape(-1, 80*2)
-        #top_positions_non_cond = top_positions
+
+        obj_pc_cond = self.obj_position_encoder(data_batch["object_pc_position"]) # [batch_size, 16]
+        obj_pc_non_cond = self.obj_position_encoder(torch.rand_like(data_batch["object_pc_position"])) # [batch_size, 16]
 
         ######## debug affordance visualization
-        # affordance_non_cond_vis = affordance_non_cond[0]
-        # affordance_vis = affordance[0]
-        # pc_position_vis = pc_position[0]
-        # pc_vis = o3d.geometry.PointCloud()
-        # pc_vis.points = o3d.utility.Vector3dVector(pc_position_vis.detach().cpu().numpy())
-        # pc_colors = np.zeros_like(pc_position_vis.detach().cpu().numpy())
-        # pc_colors[:, 0] = affordance_vis.detach().cpu().numpy().squeeze()
-        # pc_vis.colors = o3d.utility.Vector3dVector(pc_colors)
-        # o3d.visualization.draw_geometries([pc_vis])
+        #affordance_non_cond_vis = affordance_non_cond[0]
+        affordance_vis = affordance[0]
+        pc_position_vis = pc_position[0]
+        pc_vis = o3d.geometry.PointCloud()
+        pc_vis.points = o3d.utility.Vector3dVector(pc_position_vis.detach().cpu().numpy())
+        pc_colors = np.zeros_like(pc_position_vis.detach().cpu().numpy())
+        pc_colors[:, 0] = affordance_vis.detach().cpu().numpy().squeeze()
+        pc_vis.colors = o3d.utility.Vector3dVector(pc_colors)
+        top_positions_for_vis = top_positions_for_vis[0].detach().cpu().numpy()
+
+
+        ### visualize top positions from affordance
+        # vis = [pc_vis]
+        # for i in range(top_positions_for_vis.shape[0]):
+        #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
+        #     sphere.compute_vertex_normals()
+        #     sphere.translate(top_positions_for_vis[i])
+        #     vis.append(sphere)
+        # o3d.visualization.draw_geometries(vis, window_name="top_positions")
+
+        # ### visualize gt
+        # vis = [pc_vis]
+        # gt_xyz = data_batch["gt_pose_xyz"][0].detach().cpu().numpy()
+
+        
+        # for i in range(gt_xyz.shape[0]):
+        #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
+        #     sphere.compute_vertex_normals()
+        #     sphere.translate(gt_xyz[i])
+        #     vis.append(sphere) # 
+        # o3d.visualization.draw_geometries(vis, window_name="gt_positions")
+
         
 
         cond_feat = torch.cat(
             [   
 
                 #top_avg_position, # [barch_size, 3]
-                top_positions, # [barch_size, num_affo 160]
-                #obj_pc_cond # [barch_size, 16]
+                top_positions, # [barch_size, 160]
+                #torch.rand_like(top_positions), # [barch_size, 160]
+                #top_positions, # [barch_size, num_affo 160]
+                obj_pc_cond # [barch_size, 16]
     
             ],
             dim=1,
@@ -232,7 +259,7 @@ class Diffusion(nn.Module):
 
                 #top_avg_position_non_cond, # [barch_size, 3]
                 top_positions_non_cond, # [barch_size, 160]
-                #obj_pc_non_cond # [barch_size, 16]
+                obj_pc_non_cond # [barch_size, 16]
             ],
             dim=1,
         )
@@ -241,15 +268,15 @@ class Diffusion(nn.Module):
         aux_info = {
             "cond_feat": cond_feat,  
             "non_cond_feat": non_cond_feat,  
-            "gt_pose_4d_min_bound": data_batch["gt_pose_4d_min_bound"],  # [batch_size, 4]
-            "gt_pose_4d_max_bound": data_batch["gt_pose_4d_max_bound"],
-            "gt_pose_xyz_min_bound": data_batch["gt_pose_xyz_min_bound"],  # [batch_size, 3] x, y, z
-            "gt_pose_xyz_max_bound": data_batch["gt_pose_xyz_max_bound"],
+            "gt_pose_xyR_min_bound": data_batch["gt_pose_xyR_min_bound"],  # [batch_size, 3] x, y, z
+            "gt_pose_xyR_max_bound": data_batch["gt_pose_xyR_max_bound"],
             "gt_pose_xy_min_bound": data_batch["gt_pose_xy_min_bound"],  # [batch_size, 2] x, y
             "gt_pose_xy_max_bound": data_batch["gt_pose_xy_max_bound"],
             "pc_position": data_batch["pc_position"],
             "affordance": data_batch["affordance"],
-            "map_affordance": torch.max(data_batch["affordance"], dim=-1)[0], # [batch_size, 2048, 1] # used for map feature
+            "map_affordance": data_batch["affordance"], # [batch_size, 2048, 1] # used for map feature
+            #"depth": data_batch["depth"], # for visualization
+            #"image": data_batch["image"], # for visualization
         }
 
         return aux_info
@@ -273,44 +300,27 @@ class Diffusion(nn.Module):
     
 
 
-    def top_position(self, affordance, pc_position, topk=5, threshold=0.5, min_valid=80):
+    def top_position(self, affordance, pc_position, topk=80, threshold=0, min_valid=80):
         """
-        选出 topk 个 affordance 得分最高的点，并确保所有选中点的 affordance > threshold
+        选出 topk 个 affordance
         如果符合条件的点少于 min_valid，则允许重复采样
 
         affordance: [batch_size, num_points, num_affordance]
         pc_position: [batch_size, num_points, 3]
 
-        return: [batch_size, num_affordance, topk, 3]
+        return: [batch_size, topk, 3]
         """
-        num_affordance = affordance.shape[-1]
-        
-        if num_affordance == 1:
-            affordance = affordance.squeeze(-1)  # [batch_size, num_points]
-        
-        # Step 1: 获取满足阈值的掩码 [batch_size, num_points, num_affordance]
-        valid_mask = affordance > threshold
-        
-        # Step 2: 统计满足条件的点的数量
-        valid_counts = valid_mask.sum(dim=1, keepdim=True)  # [batch_size, 1, num_affordance]
-        
-        # Step 3: 处理不足 min_valid 的情况，确保不会出现空选
-        valid_mask = valid_mask | (valid_counts < min_valid).expand_as(valid_mask)  # 允许低分点
-        
-        # Step 4: 使用负无穷填充无效点，确保 topk 计算不会选到它们
-        affordance_masked = affordance.clone()
-        affordance_masked[~valid_mask] = float('-inf')  # 低于 threshold 的点设为 -inf
-        
-        # Step 5: 计算 topk 索引
-        topk_indices = torch.topk(affordance_masked, topk, dim=1, largest=True, sorted=True).indices  # [batch_size, topk, num_affordance]
-        
-        # Step 6: 生成 batch 索引并提取对应点的坐标
-        batch_indices = torch.arange(affordance.shape[0], device=pc_position.device).view(-1, 1, 1)
-        top_positions = pc_position[batch_indices, topk_indices]  # [batch_size, num_affordance, topk, 3]
-
+        masked_affordance = affordance.clone()
+        masked_affordance[masked_affordance < threshold] = float("-inf")
+        values, indices = torch.topk(masked_affordance, topk, dim=1)
+        for i in range(affordance.size(0)):
+            valid_count = (values[i] > -float("inf")).sum().item()
+            if valid_count < min_valid:
+                max_valid_idx = indices[i, 0]
+                indices[i, valid_count:] = max_valid_idx
+        top_positions = torch.gather(pc_position, 1, indices.expand(-1, -1, 3))
         return top_positions
-
-
+        
     def top_position_old(self, affordance, pc_position, topk=5):
         """
         get the topk positions and average them
@@ -383,6 +393,49 @@ class Diffusion(nn.Module):
         pose_xy = pose_xy * scale + min_bound_batch
         return pose_xy
 
+
+
+    def scale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
+        """
+        scale the pose_xy to [-1, 1]
+        pose_xy: B * H * 3
+        """
+        if len(pose_xyR.shape) == 3:
+            min_bound_batch = xyR_min_bound.unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1)
+        elif len(pose_xyR.shape) == 4:
+            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
+        elif len(pose_xyR.shape) == 2:
+            min_bound_batch = xyR_min_bound
+            max_bound_batch = xyR_max_bound
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyR = (pose_xyR - min_bound_batch) / (scale + 1e-6)
+        pose_xyR = 2 * pose_xyR - 1
+        pose_xyR = pose_xyR.clamp(-1, 1)
+
+        return pose_xyR
+
+
+    def descale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
+        """
+        descale the pose_xy to the original range
+        pose_xy: B * N * H * 3
+        """
+        if len(pose_xyR.shape) == 3:
+            min_bound_batch = xyR_min_bound.unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1)
+        elif len(pose_xyR.shape) == 4:
+            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_xyR")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyR = (pose_xyR + 1) / 2
+        pose_xyR = pose_xyR * scale + min_bound_batch
+        return pose_xyR
     # ------------------------------------------ TBD ------------------------------------------#
 
     def get_loss_weights(self, action_weight, discount):
@@ -655,7 +708,7 @@ class Diffusion(nn.Module):
         num_samp,
         return_guidance_losses=False,
         class_free_guide_w=0.0,
-        apply_guidance=True,
+        apply_guidance=False,
         guide_clean=False,
         *args,
         **kwargs,
@@ -666,56 +719,56 @@ class Diffusion(nn.Module):
         device = self.device
         batch_size, num_sample, horizon, _ = shape
 
-        x_final = []
+
         guide_losses_final = []
-        for affordance_index in range(data_batch['affordance'].shape[-1]):
-            x = torch.randn(shape, device=device)  # random noise
-            x = TensorUtils.join_dimensions(
-                x, begin_axis=0, end_axis=2
-            )  # [batch_size * num_samp, horizon, state_dim]
-            aux_info = TensorUtils.repeat_by_expand_at(aux_info, repeats=num_samp, dim=0)
 
-            if self.current_guidance is not None and not apply_guidance:
-                print(
-                    "WARNING: not using guidance during sampling, only evaluating guidance loss at very end..."
-                )
+        x = torch.randn(shape, device=device)  # random noise
+        x = TensorUtils.join_dimensions(
+            x, begin_axis=0, end_axis=2
+        )  # [batch_size * num_samp, horizon, state_dim]
+        aux_info = TensorUtils.repeat_by_expand_at(aux_info, repeats=num_samp, dim=0)
 
-            #new_data_batch = data_batch.copy()
-            new_aux_info = aux_info.copy()
-            new_aux_info["cond_feat"] = aux_info["cond_feat"][:, affordance_index, :]
-            new_aux_info['affordance'] = aux_info['affordance'][:, :, affordance_index].unsqueeze(-1)
-            for i in reversed(range(0, self.T)):  # reverse, denoise from the last step
-                t = torch.full(
-                    (batch_size * num_samp,), i, device=device, dtype=torch.long
-                )  # timestep
+        if self.current_guidance is not None and not apply_guidance:
+            print(
+                "WARNING: not using guidance during sampling, only evaluating guidance loss at very end..."
+            )
 
-                #x_mix = torch.zeros_like(x)
-                #x_mix = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, 2, device=device)
-                #guide_losses_mix = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, device=device)
-                #x_mix_map_feat = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, 1, device=device)
-                
-                #x_mix_split_indice = self.get_split_indices(80, data_batch["affordance"].shape[-1]) # work not well
-        
-                #new_data_batch['affordance'] = data_batch['affordance'][:,:, affordance_index].unsqueeze(-1)
-                #new_aux_info["affordance"] = aux_info["affordance"][:, :, affordance_index].unsqueeze(-1)
-                #new_aux_info['cond_feat'] = aux_info['cond_feat'][:, affordance_index, :]
-                #
-                
+        #new_data_batch = data_batch.copy()
+        # TODO: change the composition
 
-                x, guide_losses = self.p_sample(  # TODO: x, guide_losses = self.p_sample
-                    x,
-                    t,
-                    data_batch, # use new data_batch
-                    new_aux_info,  # use new aux_info
-                    num_samp=num_samp,
-                    class_free_guide_w=class_free_guide_w,
-                    apply_guidance=apply_guidance,
-                    guide_clean=guide_clean,
-                    eval_final_guide_loss=(i == 0),
-                )  # denoise
-            if guide_losses is not None:
-                guide_losses_final.append(guide_losses["loss"])
-            x_final.append(x)
+    
+        for i in reversed(range(0, self.T)):  # reverse, denoise from the last step
+            t = torch.full(
+                (batch_size * num_samp,), i, device=device, dtype=torch.long
+            )  # timestep
+
+            #x_mix = torch.zeros_like(x)
+            #x_mix = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, 2, device=device)
+            #guide_losses_mix = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, device=device)
+            #x_mix_map_feat = torch.empty(batch_size, data_batch["affordance"].shape[-1], 80, 1, device=device)
+            
+            #x_mix_split_indice = self.get_split_indices(80, data_batch["affordance"].shape[-1]) # work not well
+    
+            #new_data_batch['affordance'] = data_batch['affordance'][:,:, affordance_index].unsqueeze(-1)
+            #new_aux_info["affordance"] = aux_info["affordance"][:, :, affordance_index].unsqueeze(-1)
+            #new_aux_info['cond_feat'] = aux_info['cond_feat'][:, affordance_index, :]
+            #
+            
+
+            x, guide_losses = self.p_sample(  # TODO: x, guide_losses = self.p_sample
+                x,
+                t,
+                data_batch, # use new data_batch
+                aux_info,  # use new aux_info
+                num_samp=num_samp,
+                class_free_guide_w=class_free_guide_w,
+                apply_guidance=apply_guidance,
+                guide_clean=guide_clean,
+                eval_final_guide_loss=(i == 0),
+            )  # denoise
+        if guide_losses is not None:
+            guide_losses_final.append(guide_losses["loss"])
+
 
         #### used for composition
         # x = torch.cat(x_final, dim=1)
@@ -732,7 +785,7 @@ class Diffusion(nn.Module):
         x = TensorUtils.reshape_dimensions(
              x, begin_axis=0, end_axis=1, target_dims=(batch_size, num_samp)
         )
-        out_dict = {"pred_pose_xy": x}
+        out_dict = {"pred_pose_xyR": x}
         if return_guidance_losses:
             out_dict.update({"guide_losses": guide_losses})
 
@@ -761,13 +814,16 @@ class Diffusion(nn.Module):
             class_free_guide_w=class_free_guide_w,
             **kwargs,
         )
-        action["pred_pose_xy"] = action["pred_pose_xy"].clamp(-1, 1)
+        action["pred_pose_xyR"] = action["pred_pose_xyR"].clamp(-1, 1)
+        #action["pred_pose_xyR"] = torch.ones_like(action["pred_pose_xyR"])
+
         return action
     
     def query_map_feat_grid(self, x, aux_info):
         """
         query the affordance feature from the map (whole point cloud scene)
         """
+        x  =  x[..., :2]
         query_points = self.descale_xy_pose(x, aux_info["gt_pose_xy_min_bound"], aux_info["gt_pose_xy_max_bound"])
         #self.visualize_seed_points(query_points, aux_info)
         points_feature = self.map_feature_extractor(query_points, aux_info["pc_position"], aux_info["affordance"])
@@ -898,11 +954,11 @@ class Diffusion(nn.Module):
     def compute_losses(self, data_batch):
         aux_info = self.get_aux_info(data_batch)
 
-        pose_xy = data_batch["gt_pose_xy"]
-        gt_pose_xy_min_bound = data_batch["gt_pose_xy_min_bound"]
-        gt_pose_xy_max_bound = data_batch["gt_pose_xy_max_bound"]
+        pose_xyR = data_batch["gt_pose_xyR"]
+        gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
+        gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
 
-        x = self.scale_xy_pose(pose_xy, gt_pose_xy_min_bound, gt_pose_xy_max_bound)
+        x = self.scale_xyR_pose(pose_xyR, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound)
         diffusion_loss = self.loss(x, aux_info=aux_info)
         losses = OrderedDict(diffusion_loss=diffusion_loss)
         return losses
@@ -926,20 +982,29 @@ class Diffusion(nn.Module):
             guide_clean=guide_clean,
             return_guidance_losses=return_guidance_losses,
         )
-        pose_xy_scaled = cond_samp_out["pred_pose_xy"]
+        pose_xyR_scaled = cond_samp_out["pred_pose_xyR"]
         # import pdb
 
         # pdb.set_trace()
         gt_pose_xy_min_bound = data_batch["gt_pose_xy_min_bound"]
         gt_pose_xy_max_bound = data_batch["gt_pose_xy_max_bound"]
+        gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
+        gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
 
-        pose_xy = self.descale_xy_pose(
-            pose_xy_scaled, gt_pose_xy_min_bound, gt_pose_xy_max_bound
-        )
 
-        outputs = {"pose_xy_pred": pose_xy}
+       
+        pose_xyR = self.descale_xyR_pose(
+            pose_xyR_scaled, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound
+        ) # depends on the xy or xyR
+        
+        outputs = {"pose_xyR_pred": pose_xyR}
         if "guide_losses" in cond_samp_out:
             outputs["guide_losses"] = cond_samp_out["guide_losses"]
+
+    
+        # visualize the results
+        #visualize_xy_pred_points(outputs, aux_info)
+
 
         return outputs
 
@@ -1103,7 +1168,7 @@ class Diffusion_muti_affordance(nn.Module):
         #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
         top_positions = top_positions[...,:2] # [batch_size, 80, 2]
         #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
-        #top_positions = data_batch["gt_pose_xy"]
+        top_positions = data_batch["gt_pose_xy"]
         top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
         top_positions = top_positions.view(-1, num_affordance, 80*2)
 
@@ -1167,6 +1232,8 @@ class Diffusion_muti_affordance(nn.Module):
             "pc_position": data_batch["pc_position"],
             "affordance": data_batch["affordance"],
             "map_affordance": torch.max(data_batch["affordance"], dim=-1)[0], # [batch_size, 2048, 1] # used for map feature
+            "depth": data_batch["depth"], # for visualization
+            "normal": data_batch["normal"], # for visualization
         }
 
         return aux_info
@@ -1794,10 +1861,10 @@ class Diffusion_muti_affordance(nn.Module):
         aux_info = self.get_aux_info(data_batch)
 
         pose_xy = data_batch["gt_pose_xy"]
-        gt_pose_xy_min_bound = data_batch["gt_pose_xy_min_bound"]
-        gt_pose_xy_max_bound = data_batch["gt_pose_xy_max_bound"]
+        gt_pose_xyR_min_bound = data_batch["gt_pose_xyR_min_bound"]
+        gt_pose_xyR_max_bound = data_batch["gt_pose_xyR_max_bound"]
 
-        x = self.scale_xy_pose(pose_xy, gt_pose_xy_min_bound, gt_pose_xy_max_bound)
+        x = self.scale_xyR_pose(pose_xy, gt_pose_xyR_min_bound, gt_pose_xyR_max_bound)
         diffusion_loss = self.loss(x, aux_info=aux_info)
         losses = OrderedDict(diffusion_loss=diffusion_loss)
         return losses
@@ -1851,24 +1918,31 @@ if __name__ == "__main__":
         predict_epsilon=False,
         supervise_epsilons=False,
         obs_dim=3,
-        act_dim=2,
+        act_dim=3,
         hidden_dim=256,
-        T=50,
+        T=100,
         device=device,
     ).to("cuda")
 
     data_batch = {}
     data_batch["affordance"] = torch.randn(2, 2048, 1).to(device)
     data_batch["pc_position"] = torch.randn(2, 2048, 3).to(device)
+    data_batch['obj_rotation'] = torch.randn(2,80, 1).to(device)
+    data_batch["affordance_for_non_cond"] = torch.randn(2, 2048, 1).to(device)
     data_batch["object_name"] = ["black keyboard", "white mouse"]
+
     data_batch["object_pc_position"] = torch.randn(2, 512, 3).to(device)
-    data_batch["gt_pose_4d"] = torch.randn(2, 80, 4).to(device)
-    data_batch["gt_pose_4d_min_bound"] = torch.randn(2, 4).to(device)
-    data_batch["gt_pose_4d_max_bound"] = torch.randn(2, 4).to(device)
-    data_batch["pc_position_xy_affordance"] = torch.randn(2, 512, 2).to(device)
+    data_batch['gt_pose_xyR_min_bound'] = torch.randn(2, 3).to(device)
+    data_batch['gt_pose_xyR_max_bound'] = torch.randn(2, 3).to(device)
+    data_batch["gt_pose_xy_min_bound"] = torch.randn(2, 2).to(device)
+    data_batch["gt_pose_xy_max_bound"] = torch.randn(2, 2).to(device)
+    data_batch["T_plane"] = torch.randn(2, 4, 4).to(device)
+    data_batch["plane_model"] = torch.randn(2, 4).to(device)
+    data_batch["gt_pose_xyz_for_non_cond"] = torch.randn(2, 80, 3).to(device)
     data_batch["gt_pose_xyz"] = torch.randn(2, 80, 3).to(device)
-    data_batch["gt_pose_xyz_min_bound"] = torch.randn(2, 3).to(device)
-    data_batch["gt_pose_xyz_max_bound"] = torch.randn(2, 3).to(device)
+    data_batch["gt_pose_xyR"] = torch.randn(2, 80, 3).to(device)
+    data_batch['gt_pose_xy'] = torch.randn(2, 80, 2).to(device)
+
     
 
     optimizer = torch.optim.Adam(diffuser.parameters(), lr=1e-3)
@@ -1886,9 +1960,9 @@ if __name__ == "__main__":
         loss["diffusion_loss"].backward()
         optimizer.step()
 
-        print("pred: ", out_info["pose_xyz_pred"][0])
-        print("  gt: ", data_batch["gt_pose_xyz"][0][0])
-        print(" min:", data_batch["gt_pose_xyz_min_bound"][0])
-        print(" max:", data_batch["gt_pose_xyz_max_bound"][0])
+        print("pred: ", out_info["pose_xyR_pred"][0])
+        print("  gt: ", data_batch["gt_pose_xyR"][0][0])
+        print(" min:", data_batch["gt_pose_xyR_min_bound"][0])
+        print(" max:", data_batch["gt_pose_xyR_max_bound"][0])
         print(f"step:{_}, loss: {loss['diffusion_loss'].item()}")
 
