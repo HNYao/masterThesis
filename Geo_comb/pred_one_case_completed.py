@@ -226,7 +226,7 @@ def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
             color_pred_list[i].cpu().numpy() * 0.3 + color_img_list[i]* 255 * 0.7
         )
         #o3d.io.write_point_cloud(f"test_front.ply", pcd)
-        #o3d.visualization.draw_geometries([pcd])
+        o3d.visualization.draw_geometries([pcd])
 
     return pcd
 
@@ -497,6 +497,58 @@ def rgb_obj_dect(
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
 
+
+    return annotated_frame
+
+
+def rgb_obj_dect_no_vlm(
+    image_path,
+    text_prompt,
+    out_dir=None,
+    model_path="GroundingDINO/weights/groundingdino_swint_ogc.pth",
+):
+
+    model = load_model(
+        "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", model_path
+    )
+    IMAGE_PATH = image_path
+    TEXT_PROMPT = text_prompt
+    BOX_TRESHOLD = 0.20 # 0.35
+    TEXT_TRESHOLD = 0.25 # 0.25
+
+    image_source, image = load_image(IMAGE_PATH)
+
+    boxes, logits, phrases = predict(
+        model=model,
+        image=image,
+        caption=TEXT_PROMPT,
+        box_threshold=BOX_TRESHOLD,
+        text_threshold=TEXT_TRESHOLD,
+    )
+
+    phrases = [f"{text_prompt} id{id}" for id in range(len(phrases))]
+
+    h, w, _ = image_source.shape
+    ori_boxes = boxes * torch.Tensor([w, h, w, h])
+    ori_boxes = torch.round(ori_boxes)
+
+    if len(ori_boxes) == 0:
+        center_x = 100
+        center_y = 100
+    else:
+        center_x = int(ori_boxes[0][0].item())
+        center_y = int(ori_boxes[0][1].item())
+    if out_dir is not None:
+        # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
+        annotated_frame = annotate(
+            image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
+        )
+
+
+        annotated_frame[:] = 0
+        cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
+        write_path = "Geo_comb/annotated.jpg"
+        cv2.imwrite(write_path, annotated_frame)
 
     return annotated_frame
 
