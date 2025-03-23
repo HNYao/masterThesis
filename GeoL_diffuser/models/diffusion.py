@@ -183,13 +183,14 @@ class Diffusion(nn.Module):
         #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
 
 
-        #top_positions = self.top_position(affordance, pc_position, topk=80) # for testing
+        top_positions = self.top_position(affordance, pc_position, topk=80) # for testing
+        top_positions_descaled = top_positions #for testing
         #top_positions = torch.cat([top_positions, top_positions], dim=-1) # [batch_size, 80, 4]
 
         #top_positions = top_positions.mean(dim=-2, keepdim=True).repeat(1, 80, 1) # use the average position
 
 
-        top_positions = data_batch["gt_pose_xyz"] # for training
+        #top_positions = data_batch["gt_pose_xyz"] # for training
 
         top_positions_for_vis = top_positions
         top_positions = top_positions[...,:2] # [batch_size, 80, 2] 
@@ -198,7 +199,8 @@ class Diffusion(nn.Module):
         #top_positions = torch.ones_like(top_positions) * 0.5
         top_positions = top_positions.reshape(-1, 80*2)
 
-        top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
+        #top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
+        top_positions_non_cond = top_positions_for_vis + (torch.randn_like(top_positions_for_vis) - 0.5)*2 *1
         top_positions_non_cond = top_positions_non_cond[...,:2] # [batch_size, 80, 2]
         top_positions_non_cond = self.scale_xy_pose(top_positions_non_cond, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
 

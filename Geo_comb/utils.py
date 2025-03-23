@@ -33,7 +33,6 @@ def add_obj_into_pcd(obj_path:str, scene_pcd, target_point:list, rotation_matrix
         if mesh.has_vertex_colors():
             print("Mesh has vertex colors. Using them.")
 
-        # 4. 可视化
         o3d.visualization.draw_geometries([obj_pcd])
 
     else:
@@ -51,9 +50,8 @@ def add_obj_into_pcd(obj_path:str, scene_pcd, target_point:list, rotation_matrix
     ])
 
     obb = obj_pcd.get_oriented_bounding_box()
-    obb.color = (0, 1, 0)  # 绿色表示 OBB
+    obb.color = (0, 1, 0)
 
-    # 计算底部中心点 (OBB)
     obb_points = np.asarray(obb.get_box_points())
     obb_bottom_face = obb_points[np.argsort(obb_points[:, 2])[:4]]  # z 最小的 4 个点
     bottom_center_obb = np.mean(obb_bottom_face, axis=0)

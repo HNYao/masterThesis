@@ -32,13 +32,7 @@ from omegaconf import OmegaConf
 import trimesh
 from sklearn.manifold import TSNE
 
-# INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-# INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
-# intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
-#INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
-#INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
-INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
-#INTRINSICS = np.array([[911.09,   0.  , 657.44],[  0.  , 910.68,  346.58],[  0.  ,   0.  ,   1.  ]])
+
 def get_heatmap(values, cmap_name="turbo", invert=False):
     if invert:
         values = -values
@@ -323,8 +317,8 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     """
     depth = batch["depth"][0].cpu().numpy()
     image = batch["image"][0].permute(1, 2, 0).cpu().numpy()
-    points = pred["pose_xyz_pred"]  # [1, N, 3]
-    guide_cost = pred["guide_losses"]["goal_loss"]  # [1, N]
+    points = pred["pose_xyR_pred"]  # [1, N, 3]
+    guide_cost = pred["guide_losses"]["affordance_loss"]  # [1, N]
 
     if intrinsics is None:
         intrinsics = np.array(
@@ -365,7 +359,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     guide_cost_color = get_heatmap(guide_cost[None])[0]
 
     colors[topk_points_id] = [1, 0, 0]
-    pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7)
+    pcd.colors = o3d.utility.Vector3dVector(colors * 0.3 + image_color * 0.7 * 255)
 
 
     points_for_place = points_scene[topk_points_id]
@@ -378,7 +372,7 @@ def visualize_xy_pred_points(pred, batch, intrinsics=None):
     for ii, pos in enumerate(points_for_place):
         pos_vis = o3d.geometry.TriangleMesh.create_sphere()
         pos_vis.compute_vertex_normals()
-        pos_vis.scale(30, [0, 0, 0])
+        pos_vis.scale(0.01, [0, 0, 0])
         pos_vis.translate(pos[:3])
         vis_color = guide_cost_color[ii]
         pos_vis.paint_uniform_color(vis_color)
@@ -455,6 +449,7 @@ def rgb_obj_dect(
     text_prompt,
     out_dir=None,
     model_path="GroundingDINO/weights/groundingdino_swint_ogc.pth",
+    use_chatgpt=False,
 ):
 
     model = load_model(
@@ -491,11 +486,16 @@ def rgb_obj_dect(
         write_path = "Geo_comb/annotated.jpg"
         cv2.imwrite(write_path, annotated_frame)
 
+
         if len(phrases) > 0:
-            id_list, direction = chatgpt_select_id(write_path)
-            id = int(id_list[0])
-            center_x = int(ori_boxes[id][0].item())
-            center_y = int(ori_boxes[id][1].item())
+            if use_chatgpt:
+                id_list, direction = chatgpt_select_id(write_path)
+                id = int(id_list[0])
+                center_x = int(ori_boxes[id][0].item())
+                center_y = int(ori_boxes[id][1].item())
+            else:
+                center_x = int(ori_boxes[0][0].item())
+                center_y = int(ori_boxes[0][1].item())
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
         #cv2.imwrite(out_dir, annotated_frame)
@@ -504,6 +504,8 @@ def rgb_obj_dect(
         # cv2.destroyAllWindows()
 
     return annotated_frame
+
+
 
 def full_pipeline(
         rgb_image_file_path,
@@ -530,23 +532,8 @@ def full_pipeline(
         target_name = [target_name] 
         direction_text = [direction_text]
 
-    #2 use GroundingDINO to detect the target object
-    annotated_frame = rgb_obj_dect(
-        rgb_image_file_path, target_name[0], "exps/pred_one/RGB_ref.jpg"
-    )
-    color_no_obj = np.array(annotated_frame)
-    depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
-    depth = depth.astype(np.float32) / 1000.0
-    points_no_obj_scene, scene_no_obj_idx = backproject(
-        depth,
-        intrinsics,
-        np.logical_and(depth > 0, depth < 2),
-        NOCS_convention=False,
-    )
-    colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
-    pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)  
 
-    #3 load the mapper and diffuser model
+    #2 load the mapper and diffuser model
     # mapper model
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
     model_affordance = model_affordance_cls(
@@ -567,75 +554,160 @@ def full_pipeline(
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     model_diffuser.nets["policy"].set_guidance(guidance)
 
-    # 4 dataset to the mapper
-    dataset_mapper = pred_one_case_dataset(
-        pcd_no_obj_scene,
-        rgb_image_file_path,
-        target_name[0],
-        direction_text[0],
-        depth_image_file_path,
-    )
-    data_loader_mapper = DataLoader(dataset_mapper, batch_size=1, shuffle=False)
+    #3 use GroundingDINO to detect the target object
+    pred_affordance_list = []
+    for i in range(len(target_name)):
+        annotated_frame = rgb_obj_dect(
+            rgb_image_file_path, target_name[i], "exps/pred_one/RGB_ref.jpg", use_chatgpt=False
+        )
+        color_no_obj = np.array(annotated_frame)
+        depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
+        depth = depth.astype(np.float32) / 1000.0
+        points_no_obj_scene, scene_no_obj_idx = backproject(
+            depth,
+            intrinsics,
+            np.logical_and(depth > 0, depth < 2),
+            NOCS_convention=False,
+        )
+        colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
+        pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)  
 
-    #5 mapper model prediction and visualization
-    model_affordance.eval()
-    for i, batch in enumerate(data_loader_mapper):
-        for key, val in batch.items():
-            if type(val) == list:
-                continue
-            batch[key] = val.float().to("cuda")
-        with torch.no_grad():
-            affordance_pred = model_affordance(batch=batch)["affordance"].squeeze(1)
-            affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
-            # normalize the affordance prediction
 
-            # add the affordance prediction to the batch
-            affordance_thershold = 0.00
-            fps_points_scene_from_original = batch["fps_points_scene"][0]
 
-            fps_points_scene_affordance = fps_points_scene_from_original[
-                affordance_pred_sigmoid[0][:, 0] > affordance_thershold
-            ]
-            fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
-            min_bound_affordance = np.append(
-                np.min(fps_points_scene_affordance, axis=0), -180
-            )
-            max_bound_affordance = np.append(
-                np.max(fps_points_scene_affordance, axis=0), 180
-            )
-            # sample 512 points from fps_points_scene_affordance
-            fps_points_scene_affordance = fps_points_scene_affordance[
-                np.random.choice(
-                    fps_points_scene_affordance.shape[0], 512, replace=True
+        # 4 dataset to the mapper
+        dataset_mapper = pred_one_case_dataset(
+            pcd_no_obj_scene,
+            rgb_image_file_path,
+            target_name[i],
+            direction_text[i],
+            depth_image_file_path,
+        )
+        data_loader_mapper = DataLoader(dataset_mapper, batch_size=1, shuffle=False)
+
+        #5 mapper model prediction and visualization
+
+        model_affordance.eval()
+        for i, batch in enumerate(data_loader_mapper):
+            for key, val in batch.items():
+                if type(val) == list:
+                    continue
+                batch[key] = val.float().to("cuda")
+            with torch.no_grad():
+                affordance_pred = model_affordance(batch=batch)["affordance"].squeeze(1)
+                affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
+                # normalize the affordance prediction
+
+                # add the affordance prediction to the batch
+                affordance_thershold = 0.00
+                fps_points_scene_from_original = batch["fps_points_scene"][0]
+
+                fps_points_scene_affordance = fps_points_scene_from_original[
+                    affordance_pred_sigmoid[0][:, 0] > affordance_thershold
+                ]
+                fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
+                min_bound_affordance = np.append(
+                    np.min(fps_points_scene_affordance, axis=0), -1
                 )
-            ]  # [512, 3]
+                max_bound_affordance = np.append(
+                    np.max(fps_points_scene_affordance, axis=0), 1
+                )
+                # sample 512 points from fps_points_scene_affordance
+                fps_points_scene_affordance = fps_points_scene_affordance[
+                    np.random.choice(
+                        fps_points_scene_affordance.shape[0], 512, replace=True
+                    )
+                ]  # [512, 3]
+                break 
 
-            generate_heatmap_pc(
-                batch, affordance_pred, intrinsics, interpolate=False
-            )
-        break
+        pred_affordance_list.append(affordance_pred) # make the affordance map smoother
+        #generate_heatmap_pc(batch, affordance_pred, intrinsics, interpolate=False) # visualize single case
+            
+        
+        # merge the affordance prediction to the scene point cloud
+    # merge the affordance prediction: use the GMM or the mean
+    pred_affordance_merge = torch.cat(pred_affordance_list, dim=0)
+    pred_affordance_merge = (pred_affordance_merge ).mean(dim=0, keepdim=True)
+    # normalize the affordance prediction
+    pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min()) 
+    generate_heatmap_pc(batch, pred_affordance_merge, intrinsics, interpolate=False) # visualize single case
+
+    # 7 normalize the prediction for the diffuser
+    pred_affordance_merge = affordance_pred.sigmoid()
+    pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min())
+
+    # 8 prepare the data for the diffuser
+    batch['affordance'] = pred_affordance_merge.to("cuda")
+    obj_mesh = trimesh.load_mesh(obj_to_place_path)
+    obj_pc = obj_mesh.sample(512)
+    batch['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+
+    vol_bnds = np.zeros((3, 2))
+    view_frust_pts = get_view_frustum(depth, intrinsics, np.eye(4))
+    vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
+    vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
+    vol_bnds[:, 0] = vol_bnds[:, 0].min()
+    vol_bnds[:, 1] = vol_bnds[:, 1].max()
+
+    color_tsdf = cv2.cvtColor(color_no_obj, cv2.COLOR_BGR2RGB)
+    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=2)
+    tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
+    T_plane, plane_model = get_tf_for_scene_rotation(points_no_obj_scene)
+    batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
+    batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
+  
+    # 9 predict the xyR 
+    pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.2, apply_guidance=True, guide_clean=True)
+
+    # 10 select topk points
+    topk = 1
+
+    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()
+    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()
+    guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()
+    min_colliion_loss = guide_collision_loss.min()
+    guide_composite_loss = guide_affordance_loss
+    guide_composite_loss[guide_collision_loss > min_colliion_loss] = np.inf
+    min_guide_loss_idx = np.argsort(guide_composite_loss)[0][:topk]
+    pred_points = pred['pose_xyR_pred'][0][min_guide_loss_idx]
+    print("min distance loss:", guide_distance_error[0][min_guide_loss_idx])
+    print("min collision loss:", guide_collision_loss[0][min_guide_loss_idx])
+    print("pred:", pred_points) 
+
     
 
+    visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
 
-
-    
 
 
 if __name__ == "__main__":
-
+    # INTRINSICS = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+    # INTRINSICS = np.array([[591.0125 ,   0.     , 636  ],[  0.     , 590.16775, 367],[  0.     ,   0.     ,   1.     ]])
+    # intr = np.array([[591.0125 ,   0.     , 322.525  ],[  0.     , 590.16775, 244.11084],[  0.     ,   0.     ,   1.     ]])
+    #INTRINSICS = np.array([[619.0125 ,   0.     , 326.525  ],[  0.     , 619.16775, 239.11084],[  0.     ,   0.     ,   1.     ]]) #realsense
+    #INTRINSICS = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # kinect
+    #INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
+    INTRINSICS = np.array([[911.09,   0.  , 657.44],[  0.  , 910.68,  346.58],[  0.  ,   0.  ,   1.  ]]) # realsense
     # congiguration
     # scene_pcd_file_path = "dataset/scene_RGBD_mask_direction_mult/id10_1/clock_0001_normal/mask_Behind.ply"
     # blendproc dataset
-    rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/rgb/000000.jpg"
-    depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/depth/000000.png"
+    #rgb_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/rgb/000000.jpg"
+    #depth_image_file_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id110/eye_glasses_0003_black/with_obj/test_pbr/000000/depth/000000.png"
 
     # kinect data
     # rgb_image_file_path = "dataset/kinect_dataset/color/000025.png"
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-   # rgb_image_file_path = "dataset/realsense/color/000098.png"
-    #depth_image_file_path = "dataset/realsense/depth/000098.png"
+    rgb_image_file_path = "dataset/realworld_2103/color/000056.png"
+    depth_image_file_path = "dataset/realworld_2103/depth/000056.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
@@ -644,14 +716,14 @@ if __name__ == "__main__":
     full_pipeline(
         rgb_image_file_path=rgb_image_file_path,
         depth_image_file_path=depth_image_file_path,
-        obj_to_place_path="",
+        obj_to_place_path="dataset/obj/mesh/bowl/bowl_0003_white/mesh.obj",
         intrinsics=INTRINSICS,
-        target_name=["book"],
-        direction_text=["Left"],
+        target_name=["Knife"],
+        direction_text=["Left Front"],
         use_vlm=False,
         use_gmm=False,
         visualize_affordance=False,
         visualize_diff=False,
         visualize_final_obj=False,
-        guidance=AffordanceGuidance_v2(),
+        guidance=CompositeGuidance(),
     )

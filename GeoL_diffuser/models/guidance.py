@@ -55,6 +55,7 @@ class Guidance:
         pose_xy = pose_xy * scale + min_bound_batch
         return pose_xy
 
+
     def get_heatmap(self, values, cmap_name="turbo", invert=False):
         if invert:
             values = -values
@@ -440,6 +441,7 @@ class NonCollisionGuidance_v2(Guidance):
         - x: (B, N, H, 2) the sampled points to use to compute losses
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
+        x = x[..., :2] # only need xy
         batchsize, num_samp, num_hypo, _ = x.size()
         guide_losses = dict()
         loss_tot = 0.0
