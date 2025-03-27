@@ -457,7 +457,7 @@ def rgb_obj_dect(
     )
     IMAGE_PATH = image_path
     TEXT_PROMPT = text_prompt
-    BOX_TRESHOLD = 0.20 # 0.35
+    BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image = load_image(IMAGE_PATH)
@@ -498,7 +498,7 @@ def rgb_obj_dect(
                 center_y = int(ori_boxes[0][1].item())
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
-        #cv2.imwrite(out_dir, annotated_frame)
+        cv2.imwrite("Geo_comb/annotated_circle.jpg", annotated_frame)
         # cv2.imshow("annotated_frame", annotated_frame)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
@@ -511,6 +511,7 @@ def full_pipeline(
         rgb_image_file_path,
         depth_image_file_path,
         obj_to_place_path,
+        obj_target_size,
         intrinsics,
         target_name=[],
         direction_text = [],
@@ -519,6 +520,7 @@ def full_pipeline(
         visualize_affordance = False,
         visualize_diff = False,
         visualize_final_obj = False,
+        rendering = False,
         guidance = AffordanceGuidance_v2(),
 ):
     #1 use chatgpt or directly provide target_name and direction_text
@@ -635,10 +637,29 @@ def full_pipeline(
     pred_affordance_merge = affordance_pred.sigmoid()
     pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min())
 
-    # 8 prepare the data for the diffuser
+    # 8 prepare the data for the diffuser, especially the object mesh
     batch['affordance'] = pred_affordance_merge.to("cuda")
-    obj_mesh = trimesh.load_mesh(obj_to_place_path)
-    obj_pc = obj_mesh.sample(512)
+    # obj_mesh = trimesh.load_mesh(obj_to_place_path)
+    # obj_pc = obj_mesh.sample(512)
+    obj_mesh = o3d.io.read_triangle_mesh(obj_to_place_path)
+    obj_mesh.compute_vertex_normals()
+
+    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
+    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
+    obj_scale_matrix = np.array([
+        [obj_scale[0], 0, 0, 0],
+        [0, obj_scale[1], 0, 0],
+        [0, 0, obj_scale[2], 0],
+        [0,0,0,1]
+    ])
+    obj_mesh.transform(obj_scale_matrix)
+    obj_pc = obj_mesh.sample_points_uniformly(512)
+    obj_pc = np.asarray(obj_pc.points)
+
+    #obj_mesh.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
+    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    #obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
     batch['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -653,7 +674,7 @@ def full_pipeline(
     vol_bnds[:, 1] = vol_bnds[:, 1].max()
 
     color_tsdf = cv2.cvtColor(color_no_obj, cv2.COLOR_BGR2RGB)
-    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=2)
+    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
     tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
     T_plane, plane_model = get_tf_for_scene_rotation(points_no_obj_scene)
     batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -664,7 +685,7 @@ def full_pipeline(
     batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
   
     # 9 predict the xyR 
-    pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.2, apply_guidance=True, guide_clean=True)
+    pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=False, guide_clean=True)
 
     # 10 select topk points
     topk = 1
@@ -679,11 +700,92 @@ def full_pipeline(
     pred_points = pred['pose_xyR_pred'][0][min_guide_loss_idx]
     print("min distance loss:", guide_distance_error[0][min_guide_loss_idx])
     print("min collision loss:", guide_collision_loss[0][min_guide_loss_idx])
-    print("pred:", pred_points) 
+    print("pred xyR:", pred_points) 
 
     
+    if visualize_diff:
+        visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
+    
 
-    visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
+    #11 add mesh obj to the scene
+    obj_mesh = o3d.io.read_triangle_mesh(obj_to_place_path)
+    obj_mesh.compute_vertex_normals()
+    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
+    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
+    obj_scale_matrix = np.array([
+        [obj_scale[0], 0, 0, 0],
+        [0, obj_scale[1], 0, 0],
+        [0, 0, obj_scale[2], 0],
+        [0,0,0,1]
+    ])
+    obj_mesh.transform(obj_scale_matrix)
+
+    obj_rotation = 0
+    obj_rotation_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, 0.6, 0.8],
+            [0, -0.8, 0.6],
+        ]
+    )
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
+    #obj_mesh.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
+    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
+
+    #obj_mesh.translate([0, -1, 1])
+    #obj_pcd.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
+    #obj_pcd.translate([0, -1, 1])
+    obj_max_bound = obj_pcd.get_max_bound()
+    obj_min_bound = obj_pcd.get_min_bound()
+    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+    #obj_pcd.translate(
+        #pred_points[0].cpu().numpy() - obj_bottom_center
+    #)  # move obj mesh to target point
+
+
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+
+    rgb_image = cv2.imread(rgb_image_file_path, cv2.IMREAD_COLOR_BGR)
+    color_scene = np.array(rgb_image)/255.0
+    depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
+    depth = depth.astype(np.float32) / 1000.0
+    points_scene, scene_idx = backproject(
+        depth,
+        intrinsics,
+        np.logical_and(depth > 0, depth < 2),
+        NOCS_convention=False,
+    )
+    colors_scene = color_scene[scene_idx[0], scene_idx[1]]
+    pcd_scene = visualize_points(points_scene, colors_scene) 
+
+    # use the plane model to determine the z
+    pred_xy = pred_points[0][...,:2].cpu().numpy()
+    pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
+    pred_xyz = np.append(pred_xy, pred_z)
+
+    obj_mesh.translate(pred_xyz - obj_bottom_center)  # move obj
+    # create sphere
+    sphere_target = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+    sphere_target.compute_vertex_normals()
+    sphere_target.paint_uniform_color([0.1, 0.1, 0.7])
+    sphere_target.translate(pred_xyz)
+
+    sphere_obj = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+    sphere_obj.compute_vertex_normals()
+    sphere_obj.paint_uniform_color([0.1, 0.7, 0.1])
+    sphere_obj.translate(obj_bottom_center)
+    o3d.visualization.draw_geometries([obj_mesh, pcd_scene, coordinate_frame, sphere_target, sphere_obj])
+
 
 
 
@@ -706,24 +808,27 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "dataset/realworld_2103/color/000056.png"
-    depth_image_file_path = "dataset/realworld_2103/depth/000056.png"
+    rgb_image_file_path = "dataset/realworld_2103/color/000002.png"
+    depth_image_file_path = "dataset/realworld_2103/depth/000002.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
     #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
 
+
     full_pipeline(
         rgb_image_file_path=rgb_image_file_path,
         depth_image_file_path=depth_image_file_path,
-        obj_to_place_path="dataset/obj/mesh/bowl/bowl_0003_white/mesh.obj",
+        obj_to_place_path="dataset/obj/mesh/keyboard/keyboard_0001_black/mesh.obj",
+        obj_target_size = [0.8, 0.2, 0.01], # H W D
         intrinsics=INTRINSICS,
-        target_name=["Knife"],
-        direction_text=["Left Front"],
+        target_name=["Monitor"],
+        direction_text=["Front"],
         use_vlm=False,
         use_gmm=False,
         visualize_affordance=False,
-        visualize_diff=False,
+        visualize_diff=True,
         visualize_final_obj=False,
+        rendering = False,
         guidance=CompositeGuidance(),
     )
