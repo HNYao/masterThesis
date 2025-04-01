@@ -29,6 +29,7 @@ from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
+from scipy.spatial.transform import Rotation as SciR
 
 
 
@@ -794,7 +795,7 @@ def full_pipeline_v2(
     os.makedirs(".tmp", exist_ok=True)
     cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8))
     cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
-    
+
     if use_vlm:
         # Save temporary image for VLM processing
         target_name, direction_text = chatgpt_condition(
@@ -814,6 +815,7 @@ def full_pipeline_v2(
         
         color_no_obj = np.array(annotated_frame)
         depth = depth_image.astype(np.float32) / 1000.0
+        depth[depth > 1.5] = 0
         points_no_obj_scene, scene_no_obj_idx = backproject(
             depth,
             intrinsics,
@@ -944,6 +946,13 @@ def full_pipeline_v2(
         visualize_xy_pred_points(pred, batch, intrinsics=intrinsics)
 
     #11 add mesh obj to the scene
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
     obj_mesh.compute_vertex_normals()
     current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
     obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
@@ -954,24 +963,13 @@ def full_pipeline_v2(
         [0,0,0,1]
     ])
     obj_mesh.transform(obj_scale_matrix)
-
-    obj_rotation = 0
-    obj_rotation_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, 0.6, 0.8],
-            [0, -0.8, 0.6],
-        ]
-    )
-    obj_inverse_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-        ]
-    )
-    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
     obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+
+    obj_rotation = pred['pose_xyR_pred'][0][:, 2][min_guide_loss_idx].cpu().numpy()
+    obj_rotation_deg = obj_rotation[0] * 180 / np.pi
+    dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
+    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
+    obj_mesh.rotate(dR_object, center=[0, 0, 0])
     obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
 
     obj_max_bound = obj_pcd.get_max_bound()
@@ -997,6 +995,7 @@ def full_pipeline_v2(
     pred_xyz = np.append(pred_xy, pred_z)
 
     obj_mesh.translate(pred_xyz - obj_bottom_center)  # move obj
+
     # create sphere
     sphere_target = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
     sphere_target.compute_vertex_normals()
@@ -1007,8 +1006,9 @@ def full_pipeline_v2(
     sphere_obj.compute_vertex_normals()
     sphere_obj.paint_uniform_color([0.1, 0.7, 0.1])
     sphere_obj.translate(obj_bottom_center)
-    o3d.visualization.draw_geometries([obj_mesh, pcd_scene, coordinate_frame, sphere_target, sphere_obj])
-    return pred_xyz - obj_bottom_center, obj_rotation
+    if visualize_final_obj:
+        o3d.visualization.draw_geometries([obj_mesh, pcd_scene, coordinate_frame, sphere_target, sphere_obj])
+    return pred_xyz - obj_bottom_center, obj_rotation_deg
 
 
 
@@ -1093,6 +1093,6 @@ if __name__ == "__main__":
         use_gmm=False,
         visualize_affordance=False,
         visualize_diff=False,
-        visualize_final_obj=False,
+        visualize_final_obj=True,
         rendering = False,
     )
