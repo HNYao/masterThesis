@@ -12,7 +12,7 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from groundingdino.util.inference import load_model, load_image, predict, annotate
+from GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
 import cv2
 import numpy as np
 import torch
@@ -29,8 +29,7 @@ from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
-import trimesh
-from sklearn.manifold import TSNE
+
 
 
 def get_heatmap(values, cmap_name="turbo", invert=False):
@@ -506,8 +505,9 @@ def rgb_obj_dect(
     return annotated_frame
 
 
-
 def full_pipeline(
+        model_affordance,
+        model_diffuser,
         rgb_image_file_path,
         depth_image_file_path,
         obj_to_place_path,
@@ -521,7 +521,7 @@ def full_pipeline(
         visualize_diff = False,
         visualize_final_obj = False,
         rendering = False,
-        guidance = AffordanceGuidance_v2(),
+
 ):
     #1 use chatgpt or directly provide target_name and direction_text
     assert (len(target_name) == len(direction_text)> 0) or use_vlm, "Please provide target_name and direction_text"
@@ -537,24 +537,7 @@ def full_pipeline(
 
     #2 load the mapper and diffuser model
     # mapper model
-    model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
-    model_affordance = model_affordance_cls(
-        input_shape=(3, 720, 1280),
-        target_input_shape=(3, 128, 128),
-        intrinsics=INTRINSICS,
-    ).to("cuda")
-    state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v9_20K_meter_retrain_lr_1e-4_0213/ckpt_11.pth", map_location="cpu")
-    model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
-    
-    # diffuser model
-    with open("config/baseline/diffusion.yaml", "r") as file:
-        yaml_data = yaml.safe_load(file)
-    config_diffusion = OmegaConf.create(yaml_data)
-    model_diffuser_cls = PoseDiffusionModel
-    model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
-    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v0_1K_xyr/ckpt_93.pth", map_location="cpu")
-    model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-    model_diffuser.nets["policy"].set_guidance(guidance)
+
 
     #3 use GroundingDINO to detect the target object
     pred_affordance_list = []
@@ -808,18 +791,39 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "dataset/realworld_2103/color/000002.png"
-    depth_image_file_path = "dataset/realworld_2103/depth/000002.png"
+    rgb_image_file_path = "data_and_weights/realworld_2103/color/000002.png"
+    depth_image_file_path = "data_and_weights/realworld_2103/depth/000002.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
     #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
 
+    model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
+    model_affordance = model_affordance_cls(
+        input_shape=(3, 720, 1280),
+        target_input_shape=(3, 128, 128),
+        intrinsics=INTRINSICS,
+    ).to("cuda")
+    state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
+    model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
+    
+    # diffuser model
+    guidance = CompositeGuidance()
+    with open("config/baseline/diffusion.yaml", "r") as file:
+        yaml_data = yaml.safe_load(file)
+    config_diffusion = OmegaConf.create(yaml_data)
+    model_diffuser_cls = PoseDiffusionModel
+    model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
+    state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
+    model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
+    model_diffuser.nets["policy"].set_guidance(guidance)
 
     full_pipeline(
+        model_affordance=model_affordance,
+        model_diffuser=model_diffuser,
         rgb_image_file_path=rgb_image_file_path,
         depth_image_file_path=depth_image_file_path,
-        obj_to_place_path="dataset/obj/mesh/keyboard/keyboard_0001_black/mesh.obj",
+        obj_to_place_path="data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj",
         obj_target_size = [0.8, 0.2, 0.01], # H W D
         intrinsics=INTRINSICS,
         target_name=["Monitor"],
@@ -830,5 +834,4 @@ if __name__ == "__main__":
         visualize_diff=True,
         visualize_final_obj=False,
         rendering = False,
-        guidance=CompositeGuidance(),
     )
