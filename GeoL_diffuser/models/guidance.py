@@ -578,7 +578,7 @@ class NonCollisionGuidance_v2(Guidance):
         #query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, num_hypo, -1 ) # [B, N, H, O]
         #collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1) # (B, N, H)
         query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, -1 , num_hypo,) # [B, N, O, H]
-        collision_loss = F.relu(0.2 - query_tsdf).sum(dim=-2) # (B, N, H)
+        collision_loss = F.relu(0.1 - query_tsdf).sum(dim=-2) # (B, N, H)
 
         #### query tsdf version: [B, N*H, O, 3]
         # query_points = translated_points.view(bsize, -1, num_pcdobj, 3) # [B, N*H, O, 3]

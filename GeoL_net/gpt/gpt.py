@@ -25,7 +25,7 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
     base64_image = encode_image(image_path)
 
     api_key = os.getenv("CHATGPT_API_KEY")
-
+  
 
     headers = {
         "content-type": "application/json",

@@ -787,6 +787,7 @@ def full_pipeline_v2(
         visualize_diff = False,
         visualize_final_obj = False,
         rendering = False,
+        T_camera_plane = None,
 ):
     #1 use chatgpt or directly provide target_name and direction_text
     assert (len(target_name) == len(direction_text)> 0) or use_vlm, "Please provide target_name and direction_text"
@@ -917,6 +918,10 @@ def full_pipeline_v2(
     tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
     tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
     T_plane, plane_model = get_tf_for_scene_rotation(points_no_obj_scene)
+
+    if T_camera_plane is not None:
+        T_plane[:3, :3] = T_camera_plane[:3, :3]   
+
     batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
     batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -1089,7 +1094,7 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
         target_name=["Monitor"],
         direction_text=["Front"],
-        use_vlm=False,
+        use_vlm=True,
         use_gmm=False,
         visualize_affordance=False,
         visualize_diff=False,

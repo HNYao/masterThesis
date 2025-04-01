@@ -140,7 +140,7 @@ def procrustes_analysis(X0,X1): # [N,3]
 def preprocess_stretch_head_image(color, depth, intr, verbose=False, cut_mode="center"):
     
     # Rotate the image, but now we need the relative transformation!
-    new_color = np.rot90(color.copy(), -1)
+    new_color = np.rot90(color.copy(), -1) # [1280, 720]
     new_depth = np.rot90(depth.copy(), -1)
     new_intr = intr.copy()
     fx, fy, cx, cy = intr[0, 0], intr[1, 1], intr[0, 2], intr[1, 2]
@@ -208,14 +208,23 @@ def preprocess_stretch_head_image(color, depth, intr, verbose=False, cut_mode="c
         color_cut = new_color[0 : crop_width - 2 * padding]
         depth_cut = new_depth[0 : crop_width - 2 * padding]
         crop_cx, crop_cy = new_cx + padding, new_cy - padding + padding
+    elif cut_mode == "full":
+        color_cut = cv2.resize(new_color, (720 * 720 // 1280, 720)) # [1280, 720] => [720, 405]
+        depth_cut = cv2.resize(new_depth, (720 * 720 // 1280, 720), interpolation=cv2.INTER_NEAREST) # [1280, 720] => [720, 405]
+        crop_cx, crop_cy = new_cx + padding, new_cy - padding
+        padding = (1280 - 405) // 2
     else:
         raise NotImplementedError
-    crop_color[:, padding : crop_width - padding ] = color_cut
-    crop_depth[:, padding : crop_width - padding ] = depth_cut
+    crop_color[:, padding : padding + color_cut.shape[1] ] = color_cut
+    crop_depth[:, padding : padding + depth_cut.shape[1] ] = depth_cut
     crop_intr[0, 2] = crop_cx
     crop_intr[1, 2] = crop_cy
-    return crop_color, crop_depth, crop_intr, T_head_crop
 
+    if cut_mode == "full":
+        crop_intr[0, 0] =  crop_intr[0, 0] * 720 / 1280
+        crop_intr[1, 1] =  crop_intr[1, 1] * 720 / 1280
+        
+    return crop_color, crop_depth, crop_intr, T_head_crop
 
 def visualize_sphere_o3d(center, color=[1, 0, 0], size=0.03):
     # center
