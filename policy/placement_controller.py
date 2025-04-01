@@ -76,6 +76,10 @@ class HephaisbotPlacementController(ControllerBase):
 
     def inference(self, T_object_hand, obj_mesh, height_offset=0.12, cut_mode="center", verbose=True, debug=False):
         color, depth, intr, T_calib = self._subscribe_image(cut_mode)
+
+        depth = cv2.resize(depth, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_NEAREST)
+        depth = cv2.resize(depth, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+        
         points, scene_ids = DataUtils.backproject(depth, intr, depth<5, False)
         points_scene, scene_ids = DataUtils.backproject(
             depth,
@@ -85,6 +89,7 @@ class HephaisbotPlacementController(ControllerBase):
         )
         colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
         mesh_obj =  copy.deepcopy(obj_mesh)
+        T_base_headcam = self.T_base_headcam @ T_calib
 
         ##### Dummy inference by manual selection ####
         if debug:
@@ -97,6 +102,7 @@ class HephaisbotPlacementController(ControllerBase):
         else:
             color = color[..., ::-1].copy().astype(np.uint8)
             depth = (depth * 1000).astype(np.uint16)
+            T_camera_plane = np.linalg.inv(T_base_headcam)
             place_pos, place_ang = full_pipeline_v2(
                 model_affordance=self.model_affordance,
                 model_diffuser=self.model_diffuser,
@@ -111,14 +117,14 @@ class HephaisbotPlacementController(ControllerBase):
                 use_gmm=False,
                 visualize_affordance=False,
                 visualize_diff=False,
-                visualize_final_obj=True,
+                visualize_final_obj=False,
                 rendering = False,
+                T_camera_plane = T_camera_plane,
             )
 
         ##### Dummy inference by manual selection ####
         dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
         # Solve for T_base_object
-        T_base_headcam = self.T_base_headcam @ T_calib
         T_headcam_object = np.eye(4)
         T_headcam_object[:3, 3] = place_pos
         T_base_object = T_base_headcam @ T_headcam_object
