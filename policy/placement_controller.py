@@ -111,12 +111,12 @@ class HephaisbotPlacementController(ControllerBase):
                 use_gmm=False,
                 visualize_affordance=False,
                 visualize_diff=False,
-                visualize_final_obj=False,
+                visualize_final_obj=True,
                 rendering = False,
             )
 
         ##### Dummy inference by manual selection ####
-        dR_object = SciR.from_euler("Z", place_ang, degrees=True).as_matrix()
+        dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
         # Solve for T_base_object
         T_base_headcam = self.T_base_headcam @ T_calib
         T_headcam_object = np.eye(4)
@@ -144,9 +144,20 @@ class HephaisbotPlacementController(ControllerBase):
                 [0, 0, obj_scale[2], 0],
                 [0,0,0,1]
             ])
+            obj_inverse_matrix = np.array(
+                [
+                    [1, 0, 0],
+                    [0, -1, 0],
+                    [0, 0, -1],
+                ]
+            )
             mesh_obj.paint_uniform_color([0,1,0])
             mesh_obj.compute_vertex_normals()
             mesh_obj.transform(obj_scale_matrix)
+            mesh_obj.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+            mesh_obj.rotate(SciR.from_euler("X", 180, degrees=True).as_matrix())
+            
+            # Transform mesh to the target configuration
             mesh_obj.transform(T_base_object)
             
             # place_pos_in_base = place_pos @ T_base_headcam[:3, :3].T + T_base_headcam[:3, 3]
@@ -184,9 +195,10 @@ if __name__ == "__main__":
     }
     controller_cfg = edict(controller_cfg)
     controller = HephaisbotPlacementController(controller_cfg)
-    obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
-    obj_mesh.compute_vertex_normals()
+
     while True:
+        obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
+        obj_mesh.compute_vertex_normals()
         controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="center")
    
     # controller.run(
