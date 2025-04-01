@@ -697,7 +697,7 @@ class NonCollisionGuidance_v3(Guidance):
         R[..., 1, 1] = cos_theta  # cosθ
         R[..., 2, 2] = 1          # z 轴保持不变
         obj_pc = obj_pc.permute(0, 1, 3, 2, 4)  # (B, H, N, 512, 3)
-        obj_pc = obj_pc @ R  # (B, H, N, 512, 3, 3) @ (B, H, 3, 3) -> (B, H, N, 512, 3)
+        obj_pc = obj_pc @ R.transpose(-1, -2)  # (B, H, N, 512, 3, 3) @ (B, H, 3, 3) -> (B, H, N, 512, 3)
         obj_pc = obj_pc.permute(0, 1,3,2,4)  # (B, N, 512, H, 3)
 
         # visualize the scene [0]
