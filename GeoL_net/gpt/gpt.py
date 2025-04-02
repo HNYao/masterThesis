@@ -152,8 +152,8 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
 
         reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
         print(reponse.json()['choices'][0]['message']['content'])
-    anchor, diraction = extract_response(reponse.json()['choices'][0]['message']['content'])
-    return anchor, diraction
+    anchor, direction = extract_response(reponse.json()['choices'][0]['message']['content'])
+    return anchor, direction
 
 def extract_response(response: str) -> str:
     """
