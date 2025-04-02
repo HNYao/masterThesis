@@ -36,6 +36,14 @@ import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
 import copy
+import random
+def seed_everything(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    
 def preprocess_image_groundingdino(image):
     transform = GDinoT.Compose(
         [
@@ -730,7 +738,7 @@ def full_pipeline_v2(
     vol_bnds[:, 1] = vol_bnds[:, 1].max()
 
     color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
-    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
+    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5, unknown_free=False)
     tsdf.integrate(color_tsdf, depth_image / 1000.0, intrinsics, np.eye(4))
     T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
 
@@ -750,22 +758,24 @@ def full_pipeline_v2(
         visualize_xy_pred_points(pred, data_batch, intrinsics=intrinsics)
 
     # 10 select topk points
-    topk = 40
-    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()[0] # [N, ]
-    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()[0] # [N, ]
-    guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()[0] # [N, ]
-    pred_points = pred['pose_xyR_pred'].cpu().numpy()[0]
+    topk = 10
+    target_shape = pred['pose_xyR_pred'].shape[1] 
+    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
+    pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
     # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
 
     min_colliion_loss = guide_collision_loss.min()
-    guide_composite_loss = guide_affordance_loss
-    guide_composite_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    min_guide_loss_idx = np.argsort(guide_composite_loss)[:topk]
+    # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
+    guide_loss_total = guide_collision_loss + guide_affordance_loss
+    # Select the topk points with the lowest guide loss
+    min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
     pred_points = pred_points[min_guide_loss_idx]
-    guide_loss = guide_composite_loss[min_guide_loss_idx] # [N,]
-    guide_loss_color = get_heatmap(guide_loss[None])[0] # [N, 3]
+    guide_loss_total = guide_loss_total[min_guide_loss_idx] # [N,]
+    guide_loss_color = get_heatmap(guide_loss_total[None])[0] # [N, 3]
     
-    print("min distance loss:", guide_distance_error[min_guide_loss_idx])
+    # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
     print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
     print("pred xyR:", pred_points) 
 
@@ -888,6 +898,7 @@ if __name__ == "__main__":
     obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
     
     # DO the inference
+    seed_everything(42)
     full_pipeline_v2(
         model_detection=model_detection,
         model_affordance=model_affordance,
@@ -900,7 +911,7 @@ if __name__ == "__main__":
         direction_text=["Front"],     #, "Left Front", "Right Front"],
         use_vlm=False,
         use_kmeans=True,
-        visualize_affordance=True,
+        visualize_affordance=False,
         visualize_diff=False,
         visualize_final_obj=True,
         rendering = False,

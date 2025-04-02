@@ -635,7 +635,7 @@ class NonCollisionGuidance_v3(Guidance):
         vol_bnds[:, 1] = vol_bnds[:, 1].max()
 
 
-        #get the first tsdf
+        # #get the first tsdf
         # tsdf = TSDFVolume(vol_bnds.cpu().detach().numpy(), voxel_dim=256, num_margin=5)
         # tsdf.integrate(
         #     color[0].cpu().detach().numpy(), 
@@ -643,6 +643,7 @@ class NonCollisionGuidance_v3(Guidance):
         #     intrinsics[0].cpu().detach().numpy(), 
         #     np.eye(4))
         # mesh = tsdf.get_mesh()
+        # o3d.visualization.draw_geometries([mesh])
         
 
         # scene_pc align to tsdf
@@ -690,7 +691,7 @@ class NonCollisionGuidance_v3(Guidance):
         cos_theta = torch.cos(z_r)
         sin_theta = torch.sin(z_r)
         B, N, O, H, _ = obj_pc.shape
-        R = torch.zeros((B, 1, H, 3, 3), dtype=obj_pc.dtype, device=obj_pc.device)
+        R = torch.zeros((B, N, H, 3, 3), dtype=obj_pc.dtype, device=obj_pc.device)
         R[..., 0, 0] = cos_theta  # cosθ
         R[..., 0, 1] = -sin_theta # -sinθ
         R[..., 1, 0] = sin_theta  # sinθ
