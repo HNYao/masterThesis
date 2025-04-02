@@ -505,279 +505,13 @@ def rgb_obj_dect(
 
     return annotated_frame
 
-
-def full_pipeline(
-        model_affordance,
-        model_diffuser,
-        rgb_image_file_path,
-        depth_image_file_path,
-        obj_to_place_path,
-        obj_target_size,
-        intrinsics,
-        target_name=[],
-        direction_text = [],
-        use_vlm = False,
-        use_gmm = False,
-        visualize_affordance = False,
-        visualize_diff = False,
-        visualize_final_obj = False,
-        rendering = False,
-
-):
-    #1 use chatgpt or directly provide target_name and direction_text
-    assert (len(target_name) == len(direction_text)> 0) or use_vlm, "Please provide target_name and direction_text"
-
-    if use_vlm:
-        target_name, direction_text = chatgpt_condition(
-                    rgb_image_file_path, "object_placement"
-                )
-        print("====> Using VLM to sparse...")
-        target_name = [target_name] 
-        direction_text = [direction_text]
-
-
-    #2 load the mapper and diffuser model
-    # mapper model
-
-
-    #3 use GroundingDINO to detect the target object
-    pred_affordance_list = []
-    for i in range(len(target_name)):
-        annotated_frame = rgb_obj_dect(
-            rgb_image_file_path, target_name[i], "exps/pred_one/RGB_ref.jpg", use_chatgpt=False
-        )
-        color_no_obj = np.array(annotated_frame)
-        depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
-        depth = depth.astype(np.float32) / 1000.0
-        points_no_obj_scene, scene_no_obj_idx = backproject(
-            depth,
-            intrinsics,
-            np.logical_and(depth > 0, depth < 2),
-            NOCS_convention=False,
-        )
-        colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
-        pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)  
-
-
-
-        # 4 dataset to the mapper
-        dataset_mapper = pred_one_case_dataset(
-            pcd_no_obj_scene,
-            rgb_image_file_path,
-            target_name[i],
-            direction_text[i],
-            depth_image_file_path,
-        )
-        data_loader_mapper = DataLoader(dataset_mapper, batch_size=1, shuffle=False)
-
-        #5 mapper model prediction and visualization
-
-        model_affordance.eval()
-        for i, batch in enumerate(data_loader_mapper):
-            for key, val in batch.items():
-                if type(val) == list:
-                    continue
-                batch[key] = val.float().to("cuda")
-            with torch.no_grad():
-                affordance_pred = model_affordance(batch=batch)["affordance"].squeeze(1)
-                affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
-                # normalize the affordance prediction
-
-                # add the affordance prediction to the batch
-                affordance_thershold = 0.00
-                fps_points_scene_from_original = batch["fps_points_scene"][0]
-
-                fps_points_scene_affordance = fps_points_scene_from_original[
-                    affordance_pred_sigmoid[0][:, 0] > affordance_thershold
-                ]
-                fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
-                min_bound_affordance = np.append(
-                    np.min(fps_points_scene_affordance, axis=0), -1
-                )
-                max_bound_affordance = np.append(
-                    np.max(fps_points_scene_affordance, axis=0), 1
-                )
-                # sample 512 points from fps_points_scene_affordance
-                fps_points_scene_affordance = fps_points_scene_affordance[
-                    np.random.choice(
-                        fps_points_scene_affordance.shape[0], 512, replace=True
-                    )
-                ]  # [512, 3]
-                break 
-
-        pred_affordance_list.append(affordance_pred) # make the affordance map smoother
-        #generate_heatmap_pc(batch, affordance_pred, intrinsics, interpolate=False) # visualize single case
-            
-        
-        # merge the affordance prediction to the scene point cloud
-    # merge the affordance prediction: use the GMM or the mean
-    pred_affordance_merge = torch.cat(pred_affordance_list, dim=0)
-    pred_affordance_merge = (pred_affordance_merge ).mean(dim=0, keepdim=True)
-    # normalize the affordance prediction
-    pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min()) 
-    generate_heatmap_pc(batch, pred_affordance_merge, intrinsics, interpolate=False) # visualize single case
-
-    # 7 normalize the prediction for the diffuser
-    pred_affordance_merge = affordance_pred.sigmoid()
-    pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min())
-
-    # 8 prepare the data for the diffuser, especially the object mesh
-    batch['affordance'] = pred_affordance_merge.to("cuda")
-    # obj_mesh = trimesh.load_mesh(obj_to_place_path)
-    # obj_pc = obj_mesh.sample(512)
-    obj_mesh = o3d.io.read_triangle_mesh(obj_to_place_path)
-    obj_mesh.compute_vertex_normals()
-
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-    obj_mesh.transform(obj_scale_matrix)
-    obj_pc = obj_mesh.sample_points_uniformly(512)
-    obj_pc = np.asarray(obj_pc.points)
-
-    #obj_mesh.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
-    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-    #obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-    batch['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
-
-    vol_bnds = np.zeros((3, 2))
-    view_frust_pts = get_view_frustum(depth, intrinsics, np.eye(4))
-    vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
-    vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
-    vol_bnds[:, 0] = vol_bnds[:, 0].min()
-    vol_bnds[:, 1] = vol_bnds[:, 1].max()
-
-    color_tsdf = cv2.cvtColor(color_no_obj, cv2.COLOR_BGR2RGB)
-    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
-    tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
-    T_plane, plane_model = get_tf_for_scene_rotation(points_no_obj_scene)
-    batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
-    batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
-  
-    # 9 predict the xyR 
-    pred = model_diffuser(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=False, guide_clean=True)
-
-    # 10 select topk points
-    topk = 1
-
-    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()
-    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()
-    guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()
-    min_colliion_loss = guide_collision_loss.min()
-    guide_composite_loss = guide_affordance_loss
-    guide_composite_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    min_guide_loss_idx = np.argsort(guide_composite_loss)[0][:topk]
-    pred_points = pred['pose_xyR_pred'][0][min_guide_loss_idx]
-    print("min distance loss:", guide_distance_error[0][min_guide_loss_idx])
-    print("min collision loss:", guide_collision_loss[0][min_guide_loss_idx])
-    print("pred xyR:", pred_points) 
-
-    
-    if visualize_diff:
-        visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS)
-    
-
-    #11 add mesh obj to the scene
-    obj_mesh = o3d.io.read_triangle_mesh(obj_to_place_path)
-    obj_mesh.compute_vertex_normals()
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-    obj_mesh.transform(obj_scale_matrix)
-
-    obj_rotation = 0
-    obj_rotation_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, 0.6, 0.8],
-            [0, -0.8, 0.6],
-        ]
-    )
-    obj_inverse_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-        ]
-    )
-    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
-    #obj_mesh.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
-    #obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-    obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-
-    #obj_mesh.translate([0, -1, 1])
-    #obj_pcd.rotate(obj_rotation_matrix, center=[0, 0, 0])  # rotate obj mesh
-    #obj_pcd.translate([0, -1, 1])
-    obj_max_bound = obj_pcd.get_max_bound()
-    obj_min_bound = obj_pcd.get_min_bound()
-    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
-    #obj_pcd.translate(
-        #pred_points[0].cpu().numpy() - obj_bottom_center
-    #)  # move obj mesh to target point
-
-
-    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-
-    rgb_image = cv2.imread(rgb_image_file_path, cv2.IMREAD_COLOR_BGR)
-    color_scene = np.array(rgb_image)/255.0
-    depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
-    depth = depth.astype(np.float32) / 1000.0
-    points_scene, scene_idx = backproject(
-        depth,
-        intrinsics,
-        np.logical_and(depth > 0, depth < 2),
-        NOCS_convention=False,
-    )
-    colors_scene = color_scene[scene_idx[0], scene_idx[1]]
-    pcd_scene = visualize_points(points_scene, colors_scene) 
-
-    # use the plane model to determine the z
-    pred_xy = pred_points[0][...,:2].cpu().numpy()
-    pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
-    pred_xyz = np.append(pred_xy, pred_z)
-
-    obj_mesh.translate(pred_xyz - obj_bottom_center)  # move obj
-    # create sphere
-    sphere_target = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-    sphere_target.compute_vertex_normals()
-    sphere_target.paint_uniform_color([0.1, 0.1, 0.7])
-    sphere_target.translate(pred_xyz)
-
-    sphere_obj = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-    sphere_obj.compute_vertex_normals()
-    sphere_obj.paint_uniform_color([0.1, 0.7, 0.1])
-    sphere_obj.translate(obj_bottom_center)
-    o3d.visualization.draw_geometries([obj_mesh, pcd_scene, coordinate_frame, sphere_target, sphere_obj])
-
-
+ 
 def full_pipeline_v2(
         model_affordance,
         model_diffuser,
         rgb_image,
         depth_image,
         obj_mesh,
-        obj_target_size,
         intrinsics,
         target_name=[],
         direction_text = [],
@@ -810,10 +544,14 @@ def full_pipeline_v2(
     pred_affordance_list = []
     for i in range(len(target_name)):
         # Save temporary image for GroundingDINO
+
+        # TODO: image in, bounding box out
         annotated_frame = rgb_obj_dect(
             temp_rgb_path, target_name[i], "exps/pred_one/RGB_ref.jpg", use_chatgpt=False
         )
-        
+        # TODO: image in, bounding box out
+
+        # TODO: use the bounding box to crop the image and acquire the object points
         color_no_obj = np.array(annotated_frame)
         depth = depth_image.astype(np.float32) / 1000.0
         depth[depth > 1.5] = 0
@@ -825,7 +563,8 @@ def full_pipeline_v2(
         )
         colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
         pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)  
-        
+        # TODO: use the bounding box to crop the image and acquire the object points
+
         # 4 dataset to the mapper
         dataset_mapper = pred_one_case_dataset(
             pcd_no_obj_scene,
@@ -835,7 +574,8 @@ def full_pipeline_v2(
             temp_depth_path,  # This path is only used for reference in the dataset
         )
         data_loader_mapper = DataLoader(dataset_mapper, batch_size=1, shuffle=False)
-
+        # import pdb; pdb.set_trace()
+        
         #5 mapper model prediction and visualization
         model_affordance.eval()
         for i, batch in enumerate(data_loader_mapper):
@@ -888,19 +628,9 @@ def full_pipeline_v2(
     batch['affordance'] = pred_affordance_merge.to("cuda")
     # obj_mesh = o3d.io.read_triangle_mesh(obj_to_place_path)
     # obj_mesh.compute_vertex_normals()
-
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-    obj_mesh.transform(obj_scale_matrix)
     obj_pc = obj_mesh.sample_points_uniformly(512)
     obj_pc = np.asarray(obj_pc.points)
-
+    
     batch['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -919,8 +649,8 @@ def full_pipeline_v2(
     tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
     T_plane, plane_model = get_tf_for_scene_rotation(points_no_obj_scene)
 
-    if T_camera_plane is not None:
-        T_plane[:3, :3] = T_camera_plane[:3, :3]   
+    # if T_camera_plane is not None:
+    #     T_plane[:3, :3] = T_camera_plane[:3, :3]   
 
     batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
     batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -951,32 +681,13 @@ def full_pipeline_v2(
         visualize_xy_pred_points(pred, batch, intrinsics=intrinsics)
 
     #11 add mesh obj to the scene
-    obj_inverse_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-        ]
-    )
-    obj_mesh.compute_vertex_normals()
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-    obj_mesh.transform(obj_scale_matrix)
-    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-
     obj_rotation = pred['pose_xyR_pred'][0][:, 2][min_guide_loss_idx].cpu().numpy()
     obj_rotation_deg = obj_rotation[0] * 180 / np.pi
     dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
     obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
+
     obj_mesh.rotate(dR_object, center=[0, 0, 0])
     obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-
     obj_max_bound = obj_pcd.get_max_bound()
     obj_min_bound = obj_pcd.get_min_bound()
     obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
@@ -1083,18 +794,36 @@ if __name__ == "__main__":
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
     obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
+    obj_target_size = [0.8, 0.2, 0.01] # H W D
     obj_mesh.compute_vertex_normals()
+    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
+    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
+    obj_scale_matrix = np.array([
+        [obj_scale[0], 0, 0, 0],
+        [0, obj_scale[1], 0, 0],
+        [0, 0, obj_scale[2], 0],
+        [0,0,0,1]
+    ])
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+    obj_mesh.transform(obj_scale_matrix)
+    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    
     full_pipeline_v2(
         model_affordance=model_affordance,
         model_diffuser=model_diffuser,
         rgb_image=rgb_image,
         depth_image=depth_image,
         obj_mesh=obj_mesh,
-        obj_target_size = [0.8, 0.2, 0.01], # H W D
         intrinsics=INTRINSICS,
         target_name=["Monitor"],
         direction_text=["Front"],
-        use_vlm=True,
+        use_vlm=False,
         use_gmm=False,
         visualize_affordance=False,
         visualize_diff=False,

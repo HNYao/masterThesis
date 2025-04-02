@@ -620,8 +620,9 @@ class NonCollisionGuidance_v3(Guidance):
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
         print(x.shape)
-        x = x[..., :2] # only need xy
         z_r = x[..., -1][..., None] # rotation z axis
+        xy = x[..., :2] # only need xy
+
         batchsize, num_samp, num_hypo, _ = x.size()
         guide_losses = dict()
         loss_tot = 0.0
@@ -663,14 +664,13 @@ class NonCollisionGuidance_v3(Guidance):
 
         # descaled_pred
 
-        x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
-        x = (x - vol_bnds.T[0:1][...,:2]) / (vol_bnds.T[1:2][...,:2] - vol_bnds.T[0:1][...,:2]) # (B, N, H, 2)
-        x = x * 2 - 1
-        x_z = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
-        #x[:,:,:,2] = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * x[:,:,:,0] - plane_model_one_tsdf[1] * x[:,:,:,1]) / plane_model_one_tsdf[2]
-        x = torch.cat([x, x_z.unsqueeze(-1)], dim=-1) # (B, N, H, 3) # 0.05 margin
+        xy = self.descale_xy_pose(xy, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
+        xy = (xy - vol_bnds.T[0:1][...,:2]) / (vol_bnds.T[1:2][...,:2] - vol_bnds.T[0:1][...,:2]) # (B, N, H, 2)
+        xy = xy * 2 - 1
+        x_z = (-plane_model_one_tsdf[3] - plane_model_one_tsdf[0] * xy[:,:,:,0] - plane_model_one_tsdf[1] * xy[:,:,:,1]) / plane_model_one_tsdf[2]
+        xy = torch.cat([xy, x_z.unsqueeze(-1)], dim=-1) # (B, N, H, 3) # 0.05 margin
 
-        x = x.unsqueeze(2).expand(-1, -1, num_pcdobj, -1, -1) # (B, N, O, H, 3)
+        xy = xy.unsqueeze(2).expand(-1, -1, num_pcdobj, -1, -1) # (B, N, O, H, 3)
 
         # for the obj aligned to z-axis(positive)
         min_bound = torch.min(obj_pc, dim=2)[0] # (B, N, H, 3)
@@ -710,11 +710,11 @@ class NonCollisionGuidance_v3(Guidance):
         #obj_pc_align_plane = torch.matmul(obj_pc_align_plane, torch.tensor([[1., 0., 0.], [0., -1., 0.], [0.,0.,-1.]]).cuda()) 
 
         
-        bsize, num_samp, _,  num_hypo, _ = x.size() 
+        bsize, num_samp, _,  num_hypo, _ = xy.size() 
         #points_for_place = x.reshape(bsize, -1, 3) # (B, N*H, 3)
         #obj_pc_align_plane = obj_pc_align_plane.unsqueeze(2) # [B, 512, 1, 3]
         #points_for_place = points_for_place.unsqueeze(1) # [B, 1, N*H, 3]
-        translated_points = obj_pc + x - base_point # [B, N, O, H, 3]
+        translated_points = obj_pc + xy - base_point # [B, N, O, H, 3]
         #translated_points = obj_pc_align_plane
 
         # prepare the first object in the first place position for visualization
@@ -822,8 +822,6 @@ class AffordanceGuidance_v2(Guidance):
         loss_tot = 0.0
 
         bsize, num_samp, num_hypo, _ = x.size() 
-
-
         # find the top k affordance
         affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
         affordance_ori = self.normalize_affordance(affordance_ori) # (B, 2048, num_affordance)
