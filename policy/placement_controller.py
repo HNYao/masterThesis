@@ -153,7 +153,7 @@ class HephaisbotPlacementController(ControllerBase):
             img_mask = cv2.erode(img_mask.astype(np.uint8), np.ones((25, 25)))
             depth, _ = predict_depth(self.depth_model, color, intr)
             depth[~img_mask] = 0
-            
+            depth[depth < 0.3] = 0
         points_scene, scene_ids = DataUtils.backproject(
             depth,
             intr,
@@ -161,7 +161,9 @@ class HephaisbotPlacementController(ControllerBase):
             NOCS_convention=False,
         )
         colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
-        mesh_obj =  copy.deepcopy(obj_mesh)
+        obj_mesh_vis =  copy.deepcopy(obj_mesh)
+        obj_mesh_vis.compute_vertex_normals()
+        obj_mesh_vis.rotate(obj_inverse_matrix[:3, :3])
         T_base_headcam = self.T_base_headcam @ T_calib
         
         ##### Dummy inference by manual selection ####
@@ -171,7 +173,7 @@ class HephaisbotPlacementController(ControllerBase):
             )
             place_pos = place_pos_samples.mean(axis=0)
             # place_pos = np.array([-0.072, 0.23, 1])
-            place_ang = 30
+            place_ang = 10
         else:
             color = color[..., ::-1].copy().astype(np.uint8)
             depth = (depth * 1000).astype(np.uint16)
@@ -182,7 +184,6 @@ class HephaisbotPlacementController(ControllerBase):
                 rgb_image=color,
                 depth_image=depth,
                 obj_mesh=obj_mesh,
-                obj_target_size = [0.8, 0.2, 0.01], # H W D
                 intrinsics=intr,
                 target_name=["Monitor"],
                 direction_text=["Front"],
@@ -190,11 +191,10 @@ class HephaisbotPlacementController(ControllerBase):
                 use_gmm=False,
                 visualize_affordance=False,
                 visualize_diff=False,
-                visualize_final_obj=False,
+                visualize_final_obj=True,
                 rendering = False,
                 T_camera_plane = T_camera_plane,
             )
-
         ##### Dummy inference by manual selection ####
         dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
         # Solve for T_base_object
@@ -212,32 +212,32 @@ class HephaisbotPlacementController(ControllerBase):
         T_base_hand = T_base_object @ T_object_hand
 
         if verbose:
-            current_size = mesh_obj.get_axis_aligned_bounding_box().get_extent()
-            obj_target_size = [0.8, 0.2, 0.01]
-            obj_scale = np.array([obj_target_size[0]/ current_size[0], 
-                                  obj_target_size[1]/ current_size[1], 
-                                  obj_target_size[2]/ current_size[2]])
-            obj_scale_matrix = np.array([
-                [obj_scale[0], 0, 0, 0],
-                [0, obj_scale[1], 0, 0],
-                [0, 0, obj_scale[2], 0],
-                [0,0,0,1]
-            ])
-            obj_inverse_matrix = np.array(
-                [
-                    [1, 0, 0],
-                    [0, -1, 0],
-                    [0, 0, -1],
-                ]
-            )
-            mesh_obj.paint_uniform_color([0,1,0])
-            mesh_obj.compute_vertex_normals()
-            mesh_obj.transform(obj_scale_matrix)
-            mesh_obj.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-            mesh_obj.rotate(SciR.from_euler("X", 180, degrees=True).as_matrix())
+            # current_size = mesh_obj.get_axis_aligned_bounding_box().get_extent()
+            # obj_target_size = [0.8, 0.2, 0.01]
+            # obj_scale = np.array([obj_target_size[0]/ current_size[0], 
+            #                       obj_target_size[1]/ current_size[1], 
+            #                       obj_target_size[2]/ current_size[2]])
+            # obj_scale_matrix = np.array([
+            #     [obj_scale[0], 0, 0, 0],
+            #     [0, obj_scale[1], 0, 0],
+            #     [0, 0, obj_scale[2], 0],
+            #     [0,0,0,1]
+            # ])
+            # obj_inverse_matrix = np.array(
+            #     [
+            #         [1, 0, 0],
+            #         [0, -1, 0],
+            #         [0, 0, -1],
+            #     ]
+            # )
+            # mesh_obj.paint_uniform_color([0,1,0])
+            # mesh_obj.compute_vertex_normals()
+            # mesh_obj.transform(obj_scale_matrix)
+            # mesh_obj.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+            # mesh_obj.rotate(SciR.from_euler("X", 180, degrees=True).as_matrix())
             
             # Transform mesh to the target configuration
-            mesh_obj.transform(T_base_object)
+            obj_mesh_vis.transform(T_base_object)
             
             # place_pos_in_base = place_pos @ T_base_headcam[:3, :3].T + T_base_headcam[:3, 3]
             # place_pos_in_base[2] += 0.05 # Compensation
@@ -253,7 +253,7 @@ class HephaisbotPlacementController(ControllerBase):
             axis_cam.transform(T_base_headcam)
             axis_obj.transform(T_base_object)
             axis_hand.transform(T_base_hand)
-            vis = [pcd_scene, vis_place_pos_in_base, axis_base, axis_cam, axis_obj, axis_hand, mesh_obj]
+            vis = [pcd_scene, vis_place_pos_in_base, axis_base, axis_cam, axis_obj, axis_hand, obj_mesh_vis]
             o3d.visualization.draw(vis)
         
         # place_pos_in_base += TRAJ_OFFSET
@@ -275,11 +275,30 @@ if __name__ == "__main__":
     controller_cfg = edict(controller_cfg)
     controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
 
-    while True:
-        obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
-        obj_mesh.compute_vertex_normals()
-        controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="full")
-   
+    # while True:
+    obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
+    obj_target_size = [0.8, 0.2, 0.01] # H W D
+    obj_mesh.compute_vertex_normals()
+    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
+    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
+    obj_scale_matrix = np.array([
+        [obj_scale[0], 0, 0, 0],
+        [0, obj_scale[1], 0, 0],
+        [0, 0, obj_scale[2], 0],
+        [0,0,0,1]
+    ])
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+    obj_mesh.transform(obj_scale_matrix)
+    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    
+    controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="full")
+
     # controller.run(
     #     instruction="pickup thing",
     #     object_name="ball",
