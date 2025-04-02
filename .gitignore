@@ -29,3 +29,4 @@ selected_scene/
 yolov8
 yoloworld
 data_and_weights
+GroundingDINO/*
