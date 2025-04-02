@@ -408,7 +408,7 @@ class NonCollisionGuidance(Guidance):
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
 
         # visualize the obj, scene, coordinate frame, mesh
-        o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
+        # o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, mesh])
         #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
     
 
@@ -541,7 +541,7 @@ class NonCollisionGuidance_v2(Guidance):
 
 
 
-        o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, base_point_sphere])
+        # o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, base_point_sphere])
         #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame, mesh])
         #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame])
         #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame])
@@ -619,7 +619,7 @@ class NonCollisionGuidance_v3(Guidance):
         - x: (B, N, H, 2) the sampled points to use to compute losses
         - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
         """
-        print(x.shape)
+        # print(x.shape)
         z_r = x[..., -1][..., None] # rotation z axis
         xy = x[..., :2] # only need xy
 
@@ -734,8 +734,8 @@ class NonCollisionGuidance_v3(Guidance):
         base_point_sphere.paint_uniform_color([0.1, 0.1, 0.7])
         base_point_sphere.translate(base_point[0, 0, 0, 0, :].cpu().detach().numpy())
 
-        o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, base_point_sphere])
-        o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame])
+        # o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame, base_point_sphere])
+        # o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame])
         # o3d.io.write_point_cloud("Geo_comb/obj_pc.ply", obj_pc_all_data_vis+scene_pc_vis)
         #o3d.visualization.draw_geometries([obj_pc_one_data_vis, scene_pc_vis, coordinate_frame])
         #o3d.visualization.draw_geometries([obj_pc_all_data_vis, scene_pc_vis, coordinate_frame])
