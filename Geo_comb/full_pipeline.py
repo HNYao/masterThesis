@@ -35,7 +35,7 @@ import groundingdino.datasets.transforms as GDinoT
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
-
+import copy
 def preprocess_image_groundingdino(image):
     transform = GDinoT.Compose(
         [
@@ -679,7 +679,10 @@ def full_pipeline_v2(
     # merge the affordance prediction to the scene point cloud
     # merge the affordance prediction: use the GMM or the mean
     pred_affordance_merge = torch.cat(pred_affordance_list, dim=0)
+    pred_affordance_merge_mean = pred_affordance_merge.mean(dim=0, keepdim=True)
+    pred_affordance_merge = torch.cat([pred_affordance_merge_mean, pred_affordance_merge], dim=0)
     pred_affordance_merge, _ = (pred_affordance_merge).max(dim=0, keepdim=True)
+    # pred_affordance_merge = pred_affordance_merge.mean(dim=0, keepdim=True)
     
     # normalize the affordance prediction
     if use_kmeans:
@@ -742,62 +745,70 @@ def full_pipeline_v2(
     data_batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
   
     # 9 predict the xyR 
-    pred = model_diffuser(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=False, guide_clean=True)
+    pred = model_diffuser(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
+    if visualize_diff:
+        visualize_xy_pred_points(pred, data_batch, intrinsics=intrinsics)
 
     # 10 select topk points
-    topk = 1
-    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()
-    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()
-    guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()
+    topk = 40
+    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()[0] # [N, ]
+    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()[0] # [N, ]
+    guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()[0] # [N, ]
+    pred_points = pred['pose_xyR_pred'].cpu().numpy()[0]
+    # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
+
     min_colliion_loss = guide_collision_loss.min()
     guide_composite_loss = guide_affordance_loss
     guide_composite_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    min_guide_loss_idx = np.argsort(guide_composite_loss)[0][:topk]
-    pred_points = pred['pose_xyR_pred'][0][min_guide_loss_idx]
-    print("min distance loss:", guide_distance_error[0][min_guide_loss_idx])
-    print("min collision loss:", guide_collision_loss[0][min_guide_loss_idx])
+    min_guide_loss_idx = np.argsort(guide_composite_loss)[:topk]
+    pred_points = pred_points[min_guide_loss_idx]
+    guide_loss = guide_composite_loss[min_guide_loss_idx] # [N,]
+    guide_loss_color = get_heatmap(guide_loss[None])[0] # [N, 3]
+    
+    print("min distance loss:", guide_distance_error[min_guide_loss_idx])
+    print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
     print("pred xyR:", pred_points) 
+
+    if visualize_final_obj: 
+        #11 add mesh obj to the scene
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+        vis_o3d = [pcd_scene, coordinate_frame]
+        for i in range(len(pred_points)):
+            guide_loss_color_i = guide_loss_color[i]
+            # Create a mesh by copying the vertices and faces of the original mesh
+            obj_mesh_i = o3d.geometry.TriangleMesh()
+            obj_mesh_i.vertices = obj_mesh.vertices
+            obj_mesh_i.triangles = obj_mesh.triangles
+            obj_mesh_i.compute_vertex_normals()
+            
+            obj_mesh_i.paint_uniform_color(guide_loss_color_i)
+            obj_rotation = pred_points[i, 2]
+            obj_rotation_deg = obj_rotation * 180 / np.pi
+            dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
+            obj_pcd = obj_mesh_i.sample_points_uniformly(number_of_points=10000)
+
+            obj_mesh_i.rotate(dR_object, center=[0, 0, 0])
+            obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
+            obj_max_bound = obj_pcd.get_max_bound()
+            obj_min_bound = obj_pcd.get_min_bound()
+            obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+            obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+
+
+            # use the plane model to determine the z
+            pred_xy = pred_points[i,:2]
+            pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
+            pred_xyz = np.append(pred_xy, pred_z)
+
+            obj_mesh_i.translate(pred_xyz - obj_bottom_center)  # move obj
+
+            vis_o3d.append(obj_mesh_i)  
+        o3d.visualization.draw(vis_o3d)
+    
     if use_vlm:
         os.remove(temp_rgb_path)  # Clean up temporary file
         os.remove(temp_depth_path)  # Clean up temporary file
         
-    if visualize_diff:
-        visualize_xy_pred_points(pred, data_batch, intrinsics=intrinsics)
-
-    #11 add mesh obj to the scene
-    obj_rotation = pred['pose_xyR_pred'][0][:, 2][min_guide_loss_idx].cpu().numpy()
-    obj_rotation_deg = obj_rotation[0] * 180 / np.pi
-    dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
-    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
-
-    obj_mesh.rotate(dR_object, center=[0, 0, 0])
-    obj_mesh.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-    obj_max_bound = obj_pcd.get_max_bound()
-    obj_min_bound = obj_pcd.get_min_bound()
-    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
-
-    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-
-    # use the plane model to determine the z
-    pred_xy = pred_points[0][...,:2].cpu().numpy()
-    pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
-    pred_xyz = np.append(pred_xy, pred_z)
-
-    obj_mesh.translate(pred_xyz - obj_bottom_center)  # move obj
-
-    # create sphere
-    sphere_target = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-    sphere_target.compute_vertex_normals()
-    sphere_target.paint_uniform_color([0.1, 0.1, 0.7])
-    sphere_target.translate(pred_xyz)
-
-    sphere_obj = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-    sphere_obj.compute_vertex_normals()
-    sphere_obj.paint_uniform_color([0.1, 0.7, 0.1])
-    sphere_obj.translate(obj_bottom_center)
-    if visualize_final_obj:
-        o3d.visualization.draw_geometries([obj_mesh, pcd_scene, coordinate_frame, sphere_target, sphere_obj])
     return pred_xyz - obj_bottom_center, obj_rotation_deg
 
 
@@ -885,8 +896,8 @@ if __name__ == "__main__":
         depth_image=depth_image,
         obj_mesh=obj_mesh,
         intrinsics=INTRINSICS,
-        target_name=["Monitor", "Monitor", "Monitor"],
-        direction_text=["Front", "Left Front", "Right Front"],
+        target_name=["Monitor"],     #, "Monitor", "Monitor"],
+        direction_text=["Front"],     #, "Left Front", "Right Front"],
         use_vlm=False,
         use_kmeans=True,
         visualize_affordance=True,
