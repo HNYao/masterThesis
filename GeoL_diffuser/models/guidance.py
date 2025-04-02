@@ -622,7 +622,6 @@ class NonCollisionGuidance_v3(Guidance):
         # print(x.shape)
         z_r = x[..., -1][..., None] # rotation z axis
         xy = x[..., :2] # only need xy
-
         batchsize, num_samp, num_hypo, _ = x.size()
         guide_losses = dict()
         loss_tot = 0.0
@@ -687,7 +686,8 @@ class NonCollisionGuidance_v3(Guidance):
 
         # rotation z axis
         z_r = z_r.squeeze(-1)
-        z_r = z_r.clamp(-10 * np.pi / 180, 10 * np.pi  / 180)
+        # z_r = z_r + 20 * np.pi / 180
+        # z_r = z_r.clamp(-10 * np.pi / 180, 10 * np.pi  / 180)
         cos_theta = torch.cos(z_r)
         sin_theta = torch.sin(z_r)
         B, N, O, H, _ = obj_pc.shape

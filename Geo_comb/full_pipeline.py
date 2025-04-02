@@ -517,8 +517,7 @@ def prepare_data_batch(rgb_image,
         box_mask,
         NOCS_convention=False,
     )
-    anchor_position = np.median(points_anchor_scene, axis=0)
-    # Acquire the points of the scene
+    anchor_position = np.median(points_anchor_scene, axis=0) * 0.9
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
     data_batch["mask"] =  ["n/a"]
@@ -796,6 +795,7 @@ def full_pipeline_v2(
             obj_mesh_i.paint_uniform_color(guide_loss_color_i)
             obj_rotation = pred_points[i, 2]
             obj_rotation_deg = obj_rotation * 180 / np.pi
+            # obj_rotation_deg = 20 + obj_rotation_deg
             dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
             obj_pcd = obj_mesh_i.sample_points_uniformly(number_of_points=10000)
 
@@ -879,7 +879,9 @@ if __name__ == "__main__":
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
     obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
-    obj_target_size = [0.8, 0.2, 0.01] # H W D
+    # obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/book/book_0001_blue/mesh.obj")
+
+    obj_target_size = [0.6, 0.2, 0.01] # H W D
     obj_mesh.compute_vertex_normals()
     current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
     obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
