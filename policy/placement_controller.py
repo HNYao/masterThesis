@@ -330,7 +330,7 @@ if __name__ == "__main__":
                          obj_mesh, 
                          target_name=["Mouse", "Monitor", ],
                          direction_text=["Left", "Front", ],
-                         use_vlm=False,
+                         use_vlm=True,
                          use_kmeans=True,
                          visualize_affordance=True,
                          visualize_diff=False,
