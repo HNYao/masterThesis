@@ -163,7 +163,21 @@ class HephaisbotPlacementController(ControllerBase):
         else:
             self.depth_model = None
 
-    def inference(self, T_object_hand, obj_mesh, height_offset=0.12, cut_mode="center", verbose=True, debug=False):
+    def inference(self, 
+                T_object_hand, 
+                obj_mesh, 
+                target_name=["Monitor"],
+                direction_text=["Front"],
+                use_vlm=False,
+                use_kmeans=True,
+                visualize_affordance=True,
+                visualize_diff=False,
+                visualize_final_obj=True,
+                rendering = False,
+                height_offset=0.12, 
+                cut_mode="center", 
+                verbose=True, 
+                debug=False):
         color, depth, intr, T_calib = self._subscribe_image(cut_mode)
         if self.use_monodepth:
             print("Using Metric3D model for depth prediction")
@@ -204,14 +218,14 @@ class HephaisbotPlacementController(ControllerBase):
                 depth_image=depth,
                 obj_mesh=obj_mesh,
                 intrinsics=intr,
-                target_name=["Monitor"],
-                direction_text=["Front"],
-                use_vlm=False,
-                use_kmeans=True,
-                visualize_affordance=True,
-                visualize_diff=False,
-                visualize_final_obj=True,
-                rendering = False,
+                target_name=target_name,
+                direction_text=direction_text,
+                use_vlm=use_vlm,
+                use_kmeans=use_kmeans,
+                visualize_affordance=visualize_affordance,
+                visualize_diff=visualize_diff,
+                visualize_final_obj=visualize_final_obj,
+                rendering = rendering,
             )
             place_pos = pred_xyz_all[np.argmin(pred_cost)]
             place_ang = pred_r_all[np.argmin(pred_cost)]
@@ -312,7 +326,18 @@ if __name__ == "__main__":
     obj_mesh.transform(obj_scale_matrix)
     obj_mesh.rotate(ROTATION_MATRIX_X180, center=[0, 0, 0])  # rotate obj mesh
     
-    controller.inference(T_object_hand, obj_mesh, height_offset=0.05, cut_mode="full")
+    controller.inference(T_object_hand, 
+                         obj_mesh, 
+                         target_name=["Mouse", "Monitor", ],
+                         direction_text=["Left", "Front", ],
+                         use_vlm=False,
+                         use_kmeans=True,
+                         visualize_affordance=True,
+                         visualize_diff=False,
+                         visualize_final_obj=True,
+                         height_offset=0.05, 
+                         cut_mode="full",
+                         rendering=True)
 
     # controller.run(
     #     instruction="pickup thing",

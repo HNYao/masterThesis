@@ -508,8 +508,10 @@ def prepare_data_batch(rgb_image,
     # Acquire the location of the anchor object
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
     x1, y1, x2, y2 = target_box
-    y1 = int((y1 + y2) * 0.6)
-
+    # y1 = int((y1 + y2) * 0.5)
+    cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    plt.imshow(rgb_image)
+    plt.show()
     box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,
@@ -530,7 +532,6 @@ def prepare_data_batch(rgb_image,
     data_batch["fps_points_scene"] = fps_points_scene_from_original
     data_batch["fps_colors_scene"] = fps_colors_scene_from_original
     data_batch["pc_position"] = fps_points_scene_from_original
-    
     if to_tensor:
         data_batch_to_tensor(data_batch)
 
@@ -664,7 +665,7 @@ def full_pipeline_v2(
         with torch.no_grad():
             affordance_pred = model_affordance(batch=data_batch)["affordance"].squeeze(1)
         affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
-        affordance_thershold = 0.0
+        affordance_thershold = -np.inf
         fps_points_scene_from_original = data_batch["fps_points_scene"][0]
 
         fps_points_scene_affordance = fps_points_scene_from_original[
