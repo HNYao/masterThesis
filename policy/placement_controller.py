@@ -38,6 +38,19 @@ from omegaconf import OmegaConf
 import matplotlib.pylab as plt
 import copy 
 
+INTRINSICS_HEAD = np.array([
+    [910.68, 0, 626.58],
+    [0, 911.09, 377.44],
+    [0, 0, 1]
+    ])
+ROTATION_MATRIX_X180 = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+
 def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
     intrinsic = [intr[0, 0], intr[1, 1],
                  intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
@@ -99,11 +112,6 @@ def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
     confidence = confidence.cpu().numpy()
     return pred_depth, confidence
 
-INTRINSICS_HEAD = np.array([
-    [910.68, 0, 626.58],
-    [0, 911.09, 377.44],
-    [0, 0, 1]
-    ])
 
 class HephaisbotPlacementController(ControllerBase):
     def __init__(self, cfg=None, use_monodepth=True, dummy_place=False):
@@ -163,7 +171,7 @@ class HephaisbotPlacementController(ControllerBase):
         colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
         obj_mesh_vis =  copy.deepcopy(obj_mesh)
         obj_mesh_vis.compute_vertex_normals()
-        obj_mesh_vis.rotate(obj_inverse_matrix[:3, :3])
+        obj_mesh_vis.rotate(ROTATION_MATRIX_X180[:3, :3])
         T_base_headcam = self.T_base_headcam @ T_calib
         
         ##### Dummy inference by manual selection ####
@@ -193,7 +201,6 @@ class HephaisbotPlacementController(ControllerBase):
                 visualize_diff=False,
                 visualize_final_obj=True,
                 rendering = False,
-                T_camera_plane = T_camera_plane,
             )
         ##### Dummy inference by manual selection ####
         dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
@@ -287,17 +294,11 @@ if __name__ == "__main__":
         [0, 0, obj_scale[2], 0],
         [0,0,0,1]
     ])
-    obj_inverse_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-        ]
-    )
+
     obj_mesh.transform(obj_scale_matrix)
-    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    obj_mesh.rotate(ROTATION_MATRIX_X180, center=[0, 0, 0])  # rotate obj mesh
     
-    controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="full")
+    controller.inference(T_object_hand, obj_mesh, height_offset=0.05, cut_mode="full")
 
     # controller.run(
     #     instruction="pickup thing",
