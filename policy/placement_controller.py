@@ -18,7 +18,7 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
+from GroundingDINO.groundingdino.util.inference import load_model
 import cv2
 import numpy as np
 import torch
@@ -39,10 +39,11 @@ import matplotlib.pylab as plt
 import copy 
 
 INTRINSICS_HEAD = np.array([
-    [910.68, 0, 626.58],
-    [0, 911.09, 377.44],
-    [0, 0, 1]
-    ])
+            [910.68, 0, 626.58],
+            [0, 911.09, 377.44],
+            [0, 0, 1],
+            ])
+
 ROTATION_MATRIX_X180 = np.array(
         [
             [1, 0, 0],
@@ -125,6 +126,14 @@ class HephaisbotPlacementController(ControllerBase):
         self.dummy_place = dummy_place
         
         if not self.dummy_place:
+            # Detection model
+            model_detection = load_model(
+                "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "GroundingDINO/weights/groundingdino_swint_ogc.pth"
+            )
+            self.model_detection = model_detection.to("cuda")
+            self.model_detection.eval()
+            
+            # affordance model
             model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
             self.model_affordance = model_affordance_cls(
                 input_shape=(3, 720, 1280),
@@ -133,7 +142,7 @@ class HephaisbotPlacementController(ControllerBase):
             ).to("cuda")
             state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
             self.model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
-
+            self.model_affordance.eval()
             
             # diffuser model
             guidance = CompositeGuidance()
@@ -145,7 +154,8 @@ class HephaisbotPlacementController(ControllerBase):
             state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
             self.model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
             self.model_diffuser.nets["policy"].set_guidance(guidance)
-
+            self.model_diffuser.eval()
+            
         if use_monodepth:
             self.depth_model = torch.hub.load(
                 'yvanyin/metric3d', 'metric3d_vit_large', pretrain=True)
@@ -186,7 +196,8 @@ class HephaisbotPlacementController(ControllerBase):
             color = color[..., ::-1].copy().astype(np.uint8)
             depth = (depth * 1000).astype(np.uint16)
             T_camera_plane = np.linalg.inv(T_base_headcam)
-            place_pos, place_ang = full_pipeline_v2(
+            pred_xyz_all, pred_r_all, pred_cost = full_pipeline_v2(
+                model_detection=self.model_detection,
                 model_affordance=self.model_affordance,
                 model_diffuser=self.model_diffuser,
                 rgb_image=color,
@@ -196,12 +207,15 @@ class HephaisbotPlacementController(ControllerBase):
                 target_name=["Monitor"],
                 direction_text=["Front"],
                 use_vlm=False,
-                use_gmm=False,
-                visualize_affordance=False,
+                use_kmeans=True,
+                visualize_affordance=True,
                 visualize_diff=False,
                 visualize_final_obj=True,
                 rendering = False,
             )
+            place_pos = pred_xyz_all[np.argmin(pred_cost)]
+            place_ang = pred_r_all[np.argmin(pred_cost)]
+        
         ##### Dummy inference by manual selection ####
         dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
         # Solve for T_base_object

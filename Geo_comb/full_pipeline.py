@@ -37,6 +37,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
 import copy
 import random
+
 def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -167,7 +168,6 @@ def generate_heatmap_target_point(batch, model_pred, intrinsics=None):
     # merge the image and heatmap of ground truth
 
     return img_pred_list, img_gt_list, batch["file_path"], batch["phrase"]
-
 
 def generate_heatmap_pc(batch, model_pred, intrinsics=None, interpolate=False):
     if intrinsics is None:
@@ -517,7 +517,7 @@ def prepare_data_batch(rgb_image,
         box_mask,
         NOCS_convention=False,
     )
-    anchor_position = np.median(points_anchor_scene, axis=0) * 0.9
+    anchor_position = np.median(points_anchor_scene, axis=0) * 0.8
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
     data_batch["mask"] =  ["n/a"]
@@ -779,11 +779,32 @@ def full_pipeline_v2(
     # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
     print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
     print("pred xyR:", pred_points) 
+    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
+    obj_max_bound = obj_pcd.get_max_bound()
+    obj_min_bound = obj_pcd.get_min_bound()
+    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+
+    pred_xyz_all, pred_r_all = [], []
+    for i in range(len(pred_points)):
+        pred_xy = pred_points[i,:2]
+        pred_r = pred_points[i, 2]
+        pred_r = pred_r * 180 / np.pi
+        pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
+        pred_xyz = np.append(pred_xy, pred_z)
+        pred_xyz = pred_xyz - obj_bottom_center
+        pred_xyz_all.append(pred_xyz)
+        pred_r_all.append(pred_r)
+        
+    pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
+    pred_r_all = np.array(pred_r_all) # [N,]
+    pred_cost = guide_loss_total # [N,]
 
     if visualize_final_obj: 
         #11 add mesh obj to the scene
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
         vis_o3d = [pcd_scene, coordinate_frame]
+
         for i in range(len(pred_points)):
             guide_loss_color_i = guide_loss_color[i]
             # Create a mesh by copying the vertices and faces of the original mesh
@@ -793,26 +814,11 @@ def full_pipeline_v2(
             obj_mesh_i.compute_vertex_normals()
             
             obj_mesh_i.paint_uniform_color(guide_loss_color_i)
-            obj_rotation = pred_points[i, 2]
-            obj_rotation_deg = obj_rotation * 180 / np.pi
-            # obj_rotation_deg = 20 + obj_rotation_deg
-            dR_object = SciR.from_euler("Z", obj_rotation_deg, degrees=True).as_matrix()
-            obj_pcd = obj_mesh_i.sample_points_uniformly(number_of_points=10000)
+            dR_object = SciR.from_euler("Z", pred_r_all[i], degrees=True).as_matrix()
 
             obj_mesh_i.rotate(dR_object, center=[0, 0, 0])
             obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-            obj_max_bound = obj_pcd.get_max_bound()
-            obj_min_bound = obj_pcd.get_min_bound()
-            obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-            obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
-
-
-            # use the plane model to determine the z
-            pred_xy = pred_points[i,:2]
-            pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
-            pred_xyz = np.append(pred_xy, pred_z)
-
-            obj_mesh_i.translate(pred_xyz - obj_bottom_center)  # move obj
+            obj_mesh_i.translate(pred_xyz_all[i])  # move obj
 
             vis_o3d.append(obj_mesh_i)  
         o3d.visualization.draw(vis_o3d)
@@ -821,7 +827,7 @@ def full_pipeline_v2(
         os.remove(temp_rgb_path)  # Clean up temporary file
         os.remove(temp_depth_path)  # Clean up temporary file
         
-    return pred_xyz - obj_bottom_center, obj_rotation_deg
+    return pred_xyz_all, pred_r_all, pred_cost
 
 
 
