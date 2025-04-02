@@ -521,7 +521,7 @@ def full_pipeline_v2(
         visualize_diff = False,
         visualize_final_obj = False,
         rendering = False,
-        T_camera_plane = None,
+        # T_camera_plane = None,
 ):
     #1 use chatgpt or directly provide target_name and direction_text
     assert (len(target_name) == len(direction_text)> 0) or use_vlm, "Please provide target_name and direction_text"
