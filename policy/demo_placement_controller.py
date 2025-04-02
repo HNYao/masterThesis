@@ -9,7 +9,7 @@ import numpy as np
 # import torch
 # import cv2
 from scipy.spatial.transform import Rotation as SciR
-
+import matplotlib.pyplot as plt
 INTRINSICS_HEAD = np.array([
     [910.68, 0, 626.58],
     [0, 911.09, 377.44],
@@ -25,8 +25,9 @@ class DemoPlacementController(ControllerBase):
         super().__init__(cfg=cfg)   
         print("Done with controller initialization!")     
     
-    def inference(self, T_object_hand, height_offset=0.12, cut_mode="center", verbose=True):
+    def inference(self, T_object_hand, height_offset=0.12, cut_mode="full", verbose=True):
         color, depth, intr, T_calib = self._subscribe_image(cut_mode)
+        print(intr)
         points, scene_ids = DataUtils.backproject(depth, intr, depth<5, False)
         points_scene, scene_ids = DataUtils.backproject(
             depth,
@@ -119,3 +120,4 @@ if __name__ == "__main__":
 # scp hello-robot@192.168.1.2:/home/hello-robot/stretch_manip/config_base_cam.json /home/cvai/hanzhi_ws/egoprior-diffuser/policy_server
 # export PYTHONPATH="${PYTHONPATH}:$PWD"
 # export PYTHONPATH="${PYTHONPATH}:/usr/lib/python3/dist-packages"     
+# hostname -I

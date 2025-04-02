@@ -825,7 +825,7 @@ def full_pipeline_v2(
         )
         colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
         pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)  
-
+        
         # 4 dataset to the mapper
         dataset_mapper = pred_one_case_dataset(
             pcd_no_obj_scene,

@@ -49,6 +49,7 @@ class ControllerBase:
 
     def _subscribe_image(self, cut_mode="center"):
         color, depth, timestamp = self.camera_subscriber.recv_image_and_depth()
+        # cv2.imwrite("color_raw.png", color)
         color, depth, intr, T_calib = preprocess_stretch_head_image(color, depth, self.raw_intr, cut_mode=cut_mode)
         # depth[depth > 1.5] == 0
         color = color[..., [2,1,0]].copy()
@@ -85,3 +86,4 @@ class ControllerBase:
         self.action_publisher.pub_keypoints([1], "home")
         self.flag_socket.recv()    
         
+
