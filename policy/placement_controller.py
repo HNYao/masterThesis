@@ -38,6 +38,67 @@ from omegaconf import OmegaConf
 import matplotlib.pylab as plt
 import copy 
 
+def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
+    intrinsic = [intr[0, 0], intr[1, 1],
+                 intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
+    # ajust input size to fit pretrained model
+    # keep ratio resize
+    # input_size = (544, 1216) # for convnext model
+    h, w = rgb_origin.shape[:2]
+    scale = min(input_size[0] / h, input_size[1] / w)
+    rgb = cv2.resize(rgb_origin, (int(w * scale), int(h * scale)),
+                     interpolation=cv2.INTER_LINEAR)
+    # remember to scale intrinsic, hold depth
+    intrinsic = [intrinsic[0] * scale, intrinsic[1] *
+                 scale, intrinsic[2] * scale, intrinsic[3] * scale]
+    # padding to input_size
+    padding = [123.675, 116.28, 103.53]
+    h, w = rgb.shape[:2]
+    pad_h = input_size[0] - h
+    pad_w = input_size[1] - w
+    pad_h_half = pad_h // 2
+    pad_w_half = pad_w // 2
+    rgb = cv2.copyMakeBorder(rgb, pad_h_half, pad_h - pad_h_half,
+                             pad_w_half, pad_w - pad_w_half, cv2.BORDER_CONSTANT, value=padding)
+    pad_info = [pad_h_half, pad_h - pad_h_half, pad_w_half, pad_w - pad_w_half]
+
+    # normalize
+    mean = torch.tensor([123.675, 116.28, 103.53]).float()[:, None, None]
+    std = torch.tensor([58.395, 57.12, 57.375]).float()[:, None, None]
+    rgb = torch.from_numpy(rgb.transpose((2, 0, 1))).float()
+    rgb = torch.div((rgb - mean), std)
+    rgb = rgb[None, :, :, :].cuda()
+
+    ###################### canonical camera space ######################
+    # inference
+    with torch.no_grad():
+        pred_depth, confidence, output_dict = depth_model.inference({
+                                                                    'input': rgb})
+
+    # un pad
+    pred_depth = pred_depth.squeeze()
+    confidence = confidence.squeeze()
+    pred_depth = pred_depth[pad_info[0]: pred_depth.shape[0] -
+                            pad_info[1], pad_info[2]: pred_depth.shape[1] - pad_info[3]]
+    confidence = confidence[pad_info[0]: confidence.shape[0] -
+                            pad_info[1], pad_info[2]: confidence.shape[1] - pad_info[3]]
+
+    # upsample to original size
+    pred_depth = torch.nn.functional.interpolate(
+        pred_depth[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
+    confidence = torch.nn.functional.interpolate(
+        confidence[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
+    ###################### canonical camera space ######################
+
+    # de-canonical transform
+    # 1000.0 is the focal length of canonical camera
+    canonical_to_real_scale = intrinsic[0] / 1000.0
+    pred_depth = pred_depth * canonical_to_real_scale  # now the depth is metric
+    pred_depth = torch.clamp(pred_depth, 0, 5)
+    pred_depth = pred_depth.cpu().numpy()
+    confidence = confidence.cpu().numpy()
+    return pred_depth, confidence
+
 INTRINSICS_HEAD = np.array([
     [910.68, 0, 626.58],
     [0, 911.09, 377.44],
@@ -45,42 +106,54 @@ INTRINSICS_HEAD = np.array([
     ])
 
 class HephaisbotPlacementController(ControllerBase):
-    def __init__(self, cfg=None):
+    def __init__(self, cfg=None, use_monodepth=True, dummy_place=False):
         robot_calib = DataUtils.load_json("./config_base_cam.json")
         T_base_headcam = np.array(robot_calib["T_base_headcam"]).reshape(4,4)
         self.T_base_headcam = T_base_headcam
         self.raw_intr = INTRINSICS_HEAD
         super().__init__(cfg=cfg)   
         print("Done with controller initialization!")     
-    
-        model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
-        self.model_affordance = model_affordance_cls(
-            input_shape=(3, 720, 1280),
-            target_input_shape=(3, 128, 128),
-            intrinsics=INTRINSICS_HEAD,
-        ).to("cuda")
-        state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
-        self.model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
+        self.use_monodepth = use_monodepth
+        self.dummy_place = dummy_place
         
-        # diffuser model
-        guidance = CompositeGuidance()
-        with open("config/baseline/diffusion.yaml", "r") as file:
-            yaml_data = yaml.safe_load(file)
-        config_diffusion = OmegaConf.create(yaml_data)
-        model_diffuser_cls = PoseDiffusionModel
-        self.model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
-        state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
-        self.model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
-        self.model_diffuser.nets["policy"].set_guidance(guidance)
+        if not self.dummy_place:
+            model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
+            self.model_affordance = model_affordance_cls(
+                input_shape=(3, 720, 1280),
+                target_input_shape=(3, 128, 128),
+                intrinsics=INTRINSICS_HEAD,
+            ).to("cuda")
+            state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
+            self.model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
 
+            
+            # diffuser model
+            guidance = CompositeGuidance()
+            with open("config/baseline/diffusion.yaml", "r") as file:
+                yaml_data = yaml.safe_load(file)
+            config_diffusion = OmegaConf.create(yaml_data)
+            model_diffuser_cls = PoseDiffusionModel
+            self.model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
+            state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
+            self.model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
+            self.model_diffuser.nets["policy"].set_guidance(guidance)
+
+        if use_monodepth:
+            self.depth_model = torch.hub.load(
+                'yvanyin/metric3d', 'metric3d_vit_large', pretrain=True)
+            self.depth_model.cuda().eval()
+        else:
+            self.depth_model = None
 
     def inference(self, T_object_hand, obj_mesh, height_offset=0.12, cut_mode="center", verbose=True, debug=False):
         color, depth, intr, T_calib = self._subscribe_image(cut_mode)
-
-        depth = cv2.resize(depth, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_NEAREST)
-        depth = cv2.resize(depth, (0, 0), fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
-        
-        points, scene_ids = DataUtils.backproject(depth, intr, depth<5, False)
+        if self.use_monodepth:
+            print("Using Metric3D model for depth prediction")
+            img_mask = color.sum(-1) > 0
+            img_mask = cv2.erode(img_mask.astype(np.uint8), np.ones((25, 25)))
+            depth, _ = predict_depth(self.depth_model, color, intr)
+            depth[~img_mask] = 0
+            
         points_scene, scene_ids = DataUtils.backproject(
             depth,
             intr,
@@ -90,9 +163,9 @@ class HephaisbotPlacementController(ControllerBase):
         colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
         mesh_obj =  copy.deepcopy(obj_mesh)
         T_base_headcam = self.T_base_headcam @ T_calib
-
+        
         ##### Dummy inference by manual selection ####
-        if debug:
+        if debug and self.dummy_place:
             place_pos_samples = DataUtils.pick_points_in_viewer(
                 points_scene, colors_scene
             )
@@ -110,7 +183,7 @@ class HephaisbotPlacementController(ControllerBase):
                 depth_image=depth,
                 obj_mesh=obj_mesh,
                 obj_target_size = [0.8, 0.2, 0.01], # H W D
-                intrinsics=INTRINSICS_HEAD,
+                intrinsics=intr,
                 target_name=["Monitor"],
                 direction_text=["Front"],
                 use_vlm=False,
@@ -200,12 +273,12 @@ if __name__ == "__main__":
         "config_network": "./network_config.yaml"
     }
     controller_cfg = edict(controller_cfg)
-    controller = HephaisbotPlacementController(controller_cfg)
+    controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
 
     while True:
         obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
         obj_mesh.compute_vertex_normals()
-        controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="center")
+        controller.inference(T_object_hand, obj_mesh, height_offset=0, cut_mode="full")
    
     # controller.run(
     #     instruction="pickup thing",
