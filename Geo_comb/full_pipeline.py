@@ -510,8 +510,8 @@ def prepare_data_batch(rgb_image,
     x1, y1, x2, y2 = target_box
     # y1 = int((y1 + y2) * 0.5)
     cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    plt.imshow(rgb_image)
-    plt.show()
+    # plt.imshow(rgb_image)
+    # plt.show()
     box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,
@@ -920,7 +920,7 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
         target_name=["Monitor"],     #, "Monitor", "Monitor"],
         direction_text=["Front"],     #, "Left Front", "Right Front"],
-        use_vlm=False,
+        use_vlm=True,
         use_kmeans=True,
         visualize_affordance=False,
         visualize_diff=False,
