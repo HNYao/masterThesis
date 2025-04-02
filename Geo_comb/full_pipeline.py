@@ -507,7 +507,10 @@ def prepare_data_batch(rgb_image,
     
     # Acquire the location of the anchor object
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
-    box_mask[target_box[1]:target_box[3], target_box[0]:target_box[2]] = 1
+    x1, y1, x2, y2 = target_box
+    y1 = int((y1 + y2) * 0.6)
+
+    box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,
         intrinsics,
@@ -515,7 +518,6 @@ def prepare_data_batch(rgb_image,
         NOCS_convention=False,
     )
     anchor_position = np.median(points_anchor_scene, axis=0)
-
     # Acquire the points of the scene
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
