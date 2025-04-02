@@ -952,22 +952,122 @@ def catch_specific_color_obj(scene_point, color=[0,0,0]):
 
 
 
+class realworld_dataset(Dataset):
+    def __init__(self, root_dir="dataset/realworld_2103/json"):
+        self.root_dir = root_dir
+       
+        self.files = [os.path.join(root_dir, file) for file in os.listdir(root_dir)]
+    
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, index):
+        intrinsics = np.array([[911.09, 0.0, 657.44],
+                                 [0.0, 910.68, 346.58],
+                                 [0.0, 0.0, 1.0]])
+
+
+        json_file = self.files[index]
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        rgb_image_file_path = data["rgb_image_file_path"]
+        depth_img_file_path = data["depth_image_file_path"]
+        mask_file_path = data["mask_file_path"]
+        ref_objects = data["ref_objects"]
+        for i, ref_obj in enumerate(ref_objects):
+            if ref_obj == "monitor" or ref_obj == "Monitor":
+                ref_objects[i] = "purple screen"
+        directions = data["directions"]
+        obj_to_place = data["obj_to_place"]
+
+        color_image = cv2.imread(rgb_image_file_path).astype(np.float32)
+        depth = cv2.imread(depth_img_file_path, cv2.IMREAD_UNCHANGED).astype(np.float32) / 1000.0
+
+        pts, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth <2))
+        mask_rgb = color_image[idx[0], idx[1]]
+        pcd = visualize_points(pts, mask_rgb/255)
+        T_plane, plane_model = get_tf_for_scene_rotation(np.asarray(pcd.points))
+
+        scene_pcd_tensor = torch.tensor(np.asarray(pcd.points), dtype=torch.float32).unsqueeze(0)
+        scene_color_tensor = torch.tensor(np.asarray(pcd.colors), dtype=torch.float32).unsqueeze(0)
+
+        scene_pcd_tensor = scene_pcd_tensor.to("cuda")
+        scene_color_tensor = scene_color_tensor.to("cuda")
+
+        fps_indices_scene = pointnet2_utils.furthest_point_sample(scene_pcd_tensor.contiguous(), 2048)
+        fps_indices_scene_np = fps_indices_scene.squeeze(0).cpu().numpy()
+        fps_points_scene_from_original = np.asarray(pcd.points)[fps_indices_scene_np]
+        fps_colors_scene_from_original = np.asarray(pcd.colors)[fps_indices_scene_np]
+    
+        vol_bnds = np.zeros((3,2))
+        view_frust_pts = get_view_frustum(depth, intrinsics, np.eye(4))
+        vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
+        vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
+        vol_bnds[:, 0] = vol_bnds[:, 0].min()
+        vol_bnds[:, 1] = vol_bnds[:, 1].max()
+
+
+        color_tsdf = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
+        tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
+        tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
+
+        # find the obj mesh path
+        obj_to_place = os.path.join("dataset/obj/mesh", obj_to_place)
+        obj_mesh = trimesh.load_mesh(obj_to_place)
+
+        o3d.vsualization.draw_geometries([obj_mesh])
+
+
+        obj_mesh = trimesh.load_mesh("dataset/obj/mesh/cup/cup_0001_red/mesh.obj") # NOTE: temporary use the cup mesh 
+        target_size = [0.1, 0.1, 0.1]
+        current_size = obj_mesh.bounds[1] - obj_mesh.bounds[0]
+        scale_x, scale_y, scale_z = [target_size[0]/current_size[0], target_size[1]/current_size[1], target_size[2]/current_size[2]]
+        obj_mesh.apply_scale([scale_x, scale_y, scale_z])
+        obj_points_sampled = obj_mesh.sample(512)
+
+        batch = {
+            "rgb_image_file_path": rgb_image_file_path,
+            "depth_img_file_path": depth_img_file_path,
+            "mask_file_path": mask_file_path,
+            "ref_objects": ref_objects,
+            "directions": directions,
+            "obj_to_place": obj_to_place,
+            "depth": depth,
+            "color_image": color_image,
+            "intrinsics": intrinsics,
+            "fps_points_scene": fps_points_scene_from_original,
+            "fps_colors_scene": fps_colors_scene_from_original,
+            "tsdf_vol": tsdf._tsdf_vol,
+            "vol_bnds": vol_bnds,
+            "T_plane": T_plane,
+            "color_tsdf": color_tsdf,
+            "obj_points": obj_points_sampled,
+            "obj_mesh_path": "dataset/obj/mesh/cup/cup_0001_red/mesh.obj"
+
+        }
+        return batch
+
 
     
 if __name__ == "__main__":
-    dataset = BlendprocDesktopDataset_incompleted_mult_cond()
+    #dataset = BlendprocDesktopDataset_incompleted_mult_cond()
+    dataset = realworld_dataset()
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     print(len(dataset))
     for i, data_batch in enumerate(dataloader):
         print(i, data_batch)
-        img_path = data_batch["image_without_obj_path"][0]
-        image = Image.open(img_path)
-        object_to_place = data_batch["object_name"][0]
-        direction = data_batch["direction"][0]
-        anchor_obj_name = data_batch["anchor_obj_name"][0]
-
-        depth_with_obj_path = data_batch["depth_with_obj_path"][0]
-        depth_with_obj = np.array(cv2.imread(depth_with_obj_path, cv2.IMREAD_UNCHANGED))
-
-
         
+    # print(len(dataset))
+    # for i, data_batch in enumerate(dataloader):
+    #     print(i, data_batch)
+    #     img_path = data_batch["image_without_obj_path"][0]
+    #     image = Image.open(img_path)
+    #     object_to_place = data_batch["object_name"][0]
+    #     direction = data_batch["direction"][0]
+    #     anchor_obj_name = data_batch["anchor_obj_name"][0]
+
+    #     depth_with_obj_path = data_batch["depth_with_obj_path"][0]
+    #     depth_with_obj = np.array(cv2.imread(depth_with_obj_path, cv2.IMREAD_UNCHANGED))
+
+
+

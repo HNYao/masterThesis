@@ -31,6 +31,7 @@ import yaml
 from omegaconf import OmegaConf
 import trimesh
 from sklearn.manifold import TSNE
+from Geo_comb.groundingdino_chatgpt import *
 
 
 def get_heatmap(values, cmap_name="turbo", invert=False):
@@ -559,9 +560,11 @@ def full_pipeline(
     #3 use GroundingDINO to detect the target object
     pred_affordance_list = []
     for i in range(len(target_name)):
-        annotated_frame = rgb_obj_dect(
-            rgb_image_file_path, target_name[i], "exps/pred_one/RGB_ref.jpg", use_chatgpt=False
-        )
+        # annotated_frame = rgb_obj_dect(
+        #     rgb_image_file_path, target_name[i], "exps/pred_one/RGB_ref.jpg", use_chatgpt=False
+        # )
+        annotated_frame = rgb_obj_dect_use_gpt_select(
+            rgb_image_file_path, target_name[i], "exps/pred_one/RGB_ref.jpg")
         color_no_obj = np.array(annotated_frame)
         depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
         depth = depth.astype(np.float32) / 1000.0
@@ -755,7 +758,7 @@ def full_pipeline(
 
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
 
-    rgb_image = cv2.imread(rgb_image_file_path, cv2.IMREAD_COLOR_BGR)
+    rgb_image = cv2.imread(rgb_image_file_path, -1)
     color_scene = np.array(rgb_image)/255.0
     depth = cv2.imread(depth_image_file_path, cv2.IMREAD_UNCHANGED)
     depth = depth.astype(np.float32) / 1000.0
@@ -822,7 +825,7 @@ if __name__ == "__main__":
         obj_to_place_path="dataset/obj/mesh/keyboard/keyboard_0001_black/mesh.obj",
         obj_target_size = [0.8, 0.2, 0.01], # H W D
         intrinsics=INTRINSICS,
-        target_name=["Monitor"],
+        target_name=["purple screen"],
         direction_text=["Front"],
         use_vlm=False,
         use_gmm=False,
