@@ -851,8 +851,8 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "data_and_weights/realworld_2103/color/000002.png"
-    depth_image_file_path = "data_and_weights/realworld_2103/depth/000002.png"
+    rgb_image_file_path = "data_and_weights/realworld_2103/color/000001.png"
+    depth_image_file_path = "data_and_weights/realworld_2103/depth/000001.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
