@@ -544,7 +544,8 @@ def rgb_obj_dect_no_vlm(
             image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
         )
 
-
+        write_box_path = "Geo_comb/annotated_box.jpg"  
+        cv2.imwrite(write_box_path, annotated_frame)      
         annotated_frame[:] = 0
         cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
         write_path = "Geo_comb/annotated.jpg"

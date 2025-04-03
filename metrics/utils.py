@@ -148,6 +148,10 @@ def sample_points_in_bbox(image, bbox: list, n: int = 20):
         numpy.ndarray: Updated image with sampled points in red and other pixels black.
     """
     # Validate the bounding box
+<<<<<<< HEAD
+
+=======
+>>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
     x_min, y_min, x_max, y_max = bbox
     if not (0 <= x_min < x_max <= 1) or not (0 <= y_min < y_max <= 1):
         raise ValueError("Bounding box coordinates should be fractions between 0 and 1.")
@@ -1280,6 +1284,58 @@ def process_success_metrics(
     return is_success, is_direction, is_in_bbox, non_collision
 
 
+def rw_process_success_metrics(
+        image_sampled_point: np.ndarray, 
+        depth_path: str,
+        mask_file_path: str,
+):
+    is_in_mask = rw_process_mask_metrics(
+        image_sampled_point,
+        depth_path,
+        mask_file_path,
+    )
+
+    is_success = [all(x) for x in zip(is_in_mask)]
+    return is_success, is_in_mask
+
+
+
+def rw_process_mask_metrics(
+        image_sampled_point: np.ndarray,
+        depth_path,
+        mask_with_obj_path: str,
+        intrinsics=None,
+    ):
+
+    if intrinsics is None:
+        intrinsics = np.array([[911.09 ,   0.     , 657.44  ],
+                    [  0.     , 910.68, 346.58],
+                    [  0.     ,   0.     ,   1.     ]])
+    mask_pcd = o3d.io.read_point_cloud(mask_with_obj_path)
+
+    depth = np.array(cv2.imread(depth_path, cv2.IMREAD_UNCHANGED))/1000
+    pts, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth<2))
+    color_sampled_point = image_sampled_point[idx[0], idx[1]]
+    pts_sampled_point = visualize_points(pts, color_sampled_point/255)
+
+    colors = np.asarray(pts_sampled_point.colors)
+    points = np.asarray(pts_sampled_point.points)
+    mask_points = np.asarray(mask_pcd.points)
+    mask_colors = np.asarray(mask_pcd.colors)
+
+    is_red = (colors[:, 0] >= 0.9) & (colors[:, 1] <= 0.1) & (colors[:, 2] <= 0.1)
+    sampled_points = points[is_red]
+    sampled_mask_points = mask_points[is_red]
+    sampled_mask_colors = mask_colors[is_red]
+
+    is_mask = []
+    for sampled_mask_color in sampled_mask_colors:
+        if np.all(sampled_mask_color == [1, 0, 0]):
+            is_mask.append(True)
+        else:
+            is_mask.append(False)
+    return is_mask
+
 def process_success_metrics_GeoL_completed(
         affordance_pred, 
         affordance_value,
@@ -1336,6 +1392,82 @@ def process_success_metrics_GeoL_completed(
     is_success = [all(x) for x in zip(is_direction, is_in_bbox, non_collision)]
     return is_success, is_direction, is_in_bbox, non_collision
 
+
+def rw_process_success_metrics_GeoL_completed(
+        pred_points,
+        obj_mesh_path,
+        mask_file_path,
+        **kwargs
+):
+
+    is_in_mask = []
+
+    in_mask = rw_process_mask_metrics_GeoL_completed(
+        pred_points,
+        mask_file_path,
+    )
+    is_in_mask = is_in_mask + in_mask
+
+    print(is_in_mask)
+    # calculate the success rate
+    is_success = [all(x) for x in zip(is_in_mask)]
+    return is_success, is_in_mask
+
+def rw_process_mask_metrics_GeoL_completed(
+        pred_points,
+        mask_file_path,
+):
+    mask_pcd = o3d.io.read_point_cloud(mask_file_path)
+    pred_points = np.asarray(pred_points)
+    # visualize for debugging
+    sampled_sphere = [mask_pcd]
+    in_mask = []
+    for query_point in pred_points:
+        kdtree = o3d.geometry.KDTreeFlann(mask_pcd)
+        _, index, _ = kdtree.search_knn_vector_3d(query_point, 1)
+        nearest_color = np.asarray(mask_pcd.colors)[index[0]]
+        is_red = nearest_color[0] >= 0.9 and nearest_color[1] <= 0.1 and nearest_color[2] <= 0.1
+    
+        in_mask.append(is_red)
+
+    #     sphere = o3d.geometry.TriangleMesh.create_sphere()
+    #     sphere.compute_vertex_normals()
+    #     sphere.scale(0.01, [0,0,0])
+    #     sphere.translate(query_point)
+    #     sampled_sphere.append(sphere)
+    # o3d.visualization.draw_geometries(sampled_sphere)
+    return in_mask
+
+def rw_process_collision_metrics_GeoL_completed(
+        pred_points,
+        pred_xyRs,
+        mesh,
+        rgb_path,
+        depth_path,
+        intrinsics=None,
+
+    ):
+    if intrinsics is None:
+        intrinsics = np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
+                    [  0.     , 607.05212/2, 367.35952/2],
+                    [  0.     ,   0.     ,   1.     ]])
+    depth = np.array(cv2.imread(depth_path, cv2.IMREAD_UNCHANGED))/1000
+    color_rgb = cv2.imread(rgb_path, cv2.COLOR_BGR2RGB)
+    pts, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2))
+
+    color_sampled_point = color_rgb[idx[0], idx[1]]
+    pts_sampled_point = visualize_points(pts, color_sampled_point/255)
+
+    non_collision = []
+    for query_point, xyR in pred_points, pred_xyRs:
+        obj_rotation_degree = xyR[2] * np.pi / 180
+        obj_rotation = np.radians(obj_rotation_degree)
+    
+        o3d.visualization.draw_geometries([mesh, pts_sampled_point])   
+
+
+
+    
 
 def process_success_metrics_GeoL(
         affordance_pred, 

@@ -25,7 +25,7 @@ from GeoL_diffuser.models.utils.fit_plane import *
 from scipy.spatial.distance import cdist
 from matplotlib import cm
 import torchvision.transforms as T
-from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id
+from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id, chatgpt_selected_plan
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
@@ -558,24 +558,12 @@ def detect_object(
         box_threshold=BOX_TRESHOLD,
         text_threshold=TEXT_TRESHOLD,
     )
+
+    phrases = [f"id{id}" for id in range(len(phrases))]
+
     _, h, w = image_input.shape
     boxes_xyxy = boxes * torch.Tensor([w, h, w, h])
     boxes_xyxy = box_convert(boxes=boxes_xyxy, in_fmt="cxcywh", out_fmt="xyxy").numpy()
-    # phrases = [f"{text_prompt} id{id}" for id in range(len(phrases))]
-
-    # h, w, _ = image_source.shape
-    # ori_boxes = boxes * torch.Tensor([w, h, w, h])
-    # ori_boxes = torch.round(ori_boxes)
-
-    # center_x = int(ori_boxes[0][0].item())
-    # center_y = int(ori_boxes[0][1].item())
-    # if out_dir is not None:
-    #     # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
-    #     annotated_frame = annotate(
-    #         image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
-    #     )
-    #     write_path = "Geo_comb/annotated.jpg"
-    #     cv2.imwrite(write_path, annotated_frame)
 
 
     if len(phrases) > 0:
@@ -587,21 +575,69 @@ def detect_object(
         cv2.imwrite(write_path, annotated_frame)
 
         if use_chatgpt:
-            id_list, direction = chatgpt_select_id(write_path)
-            selected_id = int(id_list[0])
+            id_selected_vlm= chatgpt_select_id(write_path, TEXT_PROMPT)
+            selected_id = int(id_selected_vlm)
         else:
             selected_id = 0
+    else: 
+        print("No object detected")
+        return None, None
             
-    # annotated_frame[:] = 0
-    # cv2.circle(annotated_frame, (center_x, center_y), 5, (255, 0, 0), -1)
-    # cv2.imwrite("Geo_comb/annotated_circle.jpg", annotated_frame)
-    # cv2.imshow("annotated_frame", annotated_frame)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
 
     selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
     selected_phrase = phrases[selected_id]
     return selected_box_xyxy, selected_phrase
+
+
+def detect_object_with_vlm(
+    detection_model,
+    image,
+    use_chatgpt=True,
+):
+    """
+    Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
+    """
+
+    TEXT_PROMPT = "monitor, screen, laptop, display, bowl, plate, cup, mug, glass, bottle, container, box, phone, mouse, keyboard, mug"
+    BOX_TRESHOLD = 0.25 # 0.35
+    TEXT_TRESHOLD = 0.25 # 0.25
+
+    image_source, image_input = preprocess_image_groundingdino(image)
+    boxes, logits, phrases = predict(
+        model=detection_model,
+        image=image_input,
+        caption=TEXT_PROMPT,
+        box_threshold=BOX_TRESHOLD,
+        text_threshold=TEXT_TRESHOLD,
+    )
+
+    phrases = [f"id{id}" for id in range(len(phrases))]
+
+    _, h, w = image_input.shape
+    boxes_xyxy = boxes * torch.Tensor([w, h, w, h])
+    boxes_xyxy = box_convert(boxes=boxes_xyxy, in_fmt="cxcywh", out_fmt="xyxy").numpy()
+    if len(phrases) > 0:
+        # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
+        annotated_frame = annotate(
+            image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
+        )
+        write_path = ".tmp/annotated_detection_chatgpt_direct.jpg"
+        cv2.imwrite(write_path, annotated_frame)
+
+        target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
+
+        for i, bbox_id in enumerate(bbox_id_list):
+            bbox_id_list[i] = int(bbox_id)
+        # if use_chatgpt:
+        #     id_selected_vlm= chatgpt_select_id(write_path, TEXT_PROMPT)
+        #     selected_id = int(id_selected_vlm)
+        # else:
+        #     selected_id = 0
+            
+    selected_box_xyxy = [boxes_xyxy[id].astype(np.int32) for id in bbox_id_list]
+    #selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
+
+    return target_obj_list, direction_list, selected_box_xyxy
  
 def full_pipeline_v2(
         model_detection,
@@ -614,6 +650,7 @@ def full_pipeline_v2(
         target_name=[],
         direction_text = [],
         use_vlm = False,
+        detection_with_vlm = True,
         use_kmeans = True,
         visualize_affordance = False,
         visualize_diff = False,
@@ -631,31 +668,43 @@ def full_pipeline_v2(
     colors_scene = rgb_image[scene_idx[0], scene_idx[1]] / 255.0
     pcd_scene = visualize_points(points_scene, colors_scene) 
     
-    if use_vlm:
-        temp_rgb_path = ".tmp/temp_rgb.jpg"
-        temp_depth_path = ".tmp/temp_depth.png"
-        os.makedirs(".tmp", exist_ok=True)
-        cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8)) # BGR
-        cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
 
-        # TODO: multi hypotheses
-        # Save temporary image for VLM processing
-        target_name, direction_text = chatgpt_condition(
-                    temp_rgb_path, "object_placement"
-                )
-        print("====> Using VLM to parse the target object and direction...")
-        target_name = [target_name] 
-        direction_text = [direction_text]
+    #### 2 use_vlm 
+    if use_vlm:
+        if detection_with_vlm:
+        # option1: GroundingDINO -> chatgpt select anchor obj_name, direction, bbox_id -> bbox, else, provided target_name and direction_text -> GroudingDINO -> bbox
+            target_names, direction_texts, selected_boxes = detect_object_with_vlm(model_detection, rgb_image)
+        # import pdb; pdb.set_trace()
+        # option2: chatgpt -> target_name, direction_text, bbox_id_list -> GDino -> bbox, idx -> chatgpt -> id
+        else:
+            temp_rgb_path = ".tmp/temp_rgb.jpg"
+            temp_depth_path = ".tmp/temp_depth.png"
+            os.makedirs(".tmp", exist_ok=True)
+            cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8)) # BGR
+            cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
+
+            # TODO: multi hypotheses
+            # Save temporary image for VLM processing
+            target_names, direction_texts = chatgpt_condition(
+                        temp_rgb_path, "object_placement"
+                    )
+            print("====> Using VLM to parse the target object and direction...")
+        # target_name = [target_name] 
+        # direction_text = [direction_text]
 
     #3 use GroundingDINO to detect the target object
     pred_affordance_list = []
-    for i in range(len(target_name)):
-        selected_box, selected_phrase = detect_object(
-            model_detection, rgb_image, target_name[i], use_chatgpt=False
-        )
+    for i in range(len(target_names)):
+        if not detection_with_vlm:
+            selected_box, selected_phrase = detect_object(
+                model_detection, rgb_image, target_names[i], use_chatgpt=use_vlm
+            )
+        else:
+            selected_box = selected_boxes[i]
+            selected_phrase = target_names[i]
 
         # prepare the data batch
-        data_batch = prepare_data_batch(rgb_image, depth_image, intrinsics, target_name[i], selected_box, direction_text[i], to_tensor=True)
+        data_batch = prepare_data_batch(rgb_image, depth_image, intrinsics, target_names[i], selected_box, direction_texts[i], to_tensor=True)
         for key, val in data_batch.items():
             if not isinstance(val, torch.Tensor):
                 continue
@@ -824,7 +873,7 @@ def full_pipeline_v2(
             vis_o3d.append(obj_mesh_i)  
         o3d.visualization.draw(vis_o3d)
     
-    if use_vlm:
+    if use_vlm and not detection_with_vlm:
         os.remove(temp_rgb_path)  # Clean up temporary file
         os.remove(temp_depth_path)  # Clean up temporary file
         
@@ -851,8 +900,8 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "data_and_weights/realworld_2103/color/000001.png"
-    depth_image_file_path = "data_and_weights/realworld_2103/depth/000001.png"
+    rgb_image_file_path = "data_and_weights/realworld_2103/color/000008.png"
+    depth_image_file_path = "data_and_weights/realworld_2103/depth/000008.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
@@ -922,7 +971,7 @@ if __name__ == "__main__":
         direction_text=["Front"],     #, "Left Front", "Right Front"],
         use_vlm=True,
         use_kmeans=True,
-        visualize_affordance=False,
+        visualize_affordance=True,
         visualize_diff=False,
         visualize_final_obj=True,
         rendering = False,
