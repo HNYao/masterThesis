@@ -18,8 +18,6 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
     image_path: image path or image
     mode: object_placement or scene_understanding
 
-    Return:
-    final_response
     """
 
     base64_image = encode_image(image_path)
@@ -39,26 +37,29 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
       object_placement = input("Object need to be placed: ")
       extra_info = input("Extra information: ")
       payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-4o",
         "messages": [
           {
             "role": "system", 
-            "content": "You are an assistant that helps people place objects on the table.\
-                  You are given a image of the tabletop and an target object to be placed. \
-                    You should determine the anchor object with color description and in which direction the target object should be placed relative to the anchor object.\
-                    "
+            "content": 
+            "You are an assistant that helps people place objects on a table. \
+            You will be given an image of the tabletop and a target object that needs to be placed. \
+            Your task is to identify one or more anchor objects already on the table and describe them clearly. \
+            Then, determine the best placement direction(s) for the target object relative to the anchor object(s). \
+            Use the following directional terms for placement: Left Front, Right Front, Left Behind, Right Behind, Left, Right, Front, or Behind. \
+            If multiple anchor objects are necessary, specify each anchor and its corresponding direction, separating them with commas. Ensure that the placement avoids clutter and maintains logical accessibility based on the scene." 
                     },
           {
           "role": "assistant",
           "content": """
               Here are the examples:
-              Assume the given image contains: white monitor, blue cup, blue phone, red can, black bottle, green book.
+              Assume the given image contains: monitor, cup, hone, red can, black bottle, green book.
                 Please note that anchors should be split by ",".
                 1. Mouse. I am a right-handed. Please answer:
-                    anchor: white monitor
-                    direction: Right Front
+                    anchor: monitor, black bottle
+                    direction: Right Front, Left Front
                 2. Mouse. I am a left-handed. Please answer:
-                    anchor: white monitor 
+                    anchor: monitor 
                     direction: Left Front
                 3. bottle. Please answer:
                     anchor: black bottle
@@ -152,8 +153,144 @@ def chatgpt_condition(image_path: str, mode="object_placement"):
 
         reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
         print(reponse.json()['choices'][0]['message']['content'])
+
     anchor, direction = extract_response(reponse.json()['choices'][0]['message']['content'])
     return anchor, direction
+
+def chatgpt_selected_plan(image_path: str):
+    
+    """
+    ChatGPT condition for object placement or scene understanding
+
+    Params:
+    image_path: image path or image
+    mode: object_placement or scene_understanding
+
+    """
+
+    base64_image = encode_image(image_path)
+
+    api_key = os.getenv("CHATGPT_API_KEY")
+  
+
+    headers = {
+        "content-type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    
+
+    # object placement
+
+    object_placement = input("Object need to be placed: ")
+    extra_info = input("Extra information: ")
+    payload = {
+      "model": "gpt-4o",
+      "messages": [
+        {
+          "role": "system", 
+          "content":
+            "You are an assistant that helps people place objects on a table. \
+            You are given a image of the tabletop with bounding box and the ID provided for each object in the scene, and a target object's category name to be placed. \
+            Your task is to select one or more anchor objects with bounding boxes and IDs in the image, and provide the name of each object within the bounding box.\
+            Only the object with a bounding box and an ID can be selected as the anchor object. Note the ID is in the top left corner of each bounding box.\
+            Then, determine the best placement direction(s) for the target object relative to these anchor object(s). \
+            Use the following directional terms for placement: Left Front, Right Front, Left Behind, Right Behind, Left, Right, Front, or Behind. \
+            If multiple anchor objects are necessary, specify each anchor and its corresponding direction, separating them with commas. \
+            Ensure that the placement follows human common sense and maintains logical accessibility based on the scene.\
+            The format should be as follows:\
+            anchor: <object name 1, object name 2, ...>\n \
+            direction: <direction of target object relative to object name 1, direction of target object relative to object name 2, ...>\n \
+            bbox id: <int(ID of object name 1),  int(ID of object name 2), ...>\n "
+                  },
+        {
+        "role": "assistant",
+        "content": """
+            Here are the examples:
+            Assume the given image contains objects and their bboxes: monitor(bbox id2), blue cup(bbox id0), blue phone(bbox id3), red can(no bbox), black bottle(bbox id 1), green book(no box).
+              Please note that anchors should be split by ",".
+              1. Mouse. I am a right-handed. Please answer:
+                  anchor: monitor, black bottle
+                  direction: Right Front, Left Front
+                  bbox id: 2, 1
+              2. Mouse. I am a left-handed. Please answer:
+                  anchor: monitor 
+                  direction: Left Front
+                  bbox id: 2
+              3. bottle. Please answer:
+                  anchor: black bottle
+                  direction: Left Front
+                  bbox id: 1
+              4. phone. I like playing mobile games and drinking coffee. Please answer:
+                  anchor: blue cup
+                  direction: Right Front
+                  bbox id: 0
+        """
+          },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info} Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}"
+              }
+            }
+          ]
+        }
+      ],
+      "max_tokens": 40
+    }
+    print("object need to be placed: ", object_placement)
+
+    
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    print(response.json()['choices'][0]['message']['content'])
+
+    # refine the response
+    while True:
+        user_input = input("User: ")
+
+        if user_input.lower() == 'okie':
+            break
+        
+        payload['messages'].append({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": response.json()['choices'][0]['message']['content']
+                }
+            ]
+        })
+
+        payload['messages'].append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": user_input
+                }
+            ]
+        })
+
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        print(response.json()['choices'][0]['message']['content'])
+    content = response.json()['choices'][0]['message']['content']
+    content_split = content.split("\n")
+    anchor_reponse = content_split[0].split(":")[1].strip()
+    direction_response = content_split[1].split(":")[1].strip()
+    bbox_id_response = content_split[2].split(":")[1].strip()
+
+    anchor_reponse = [anchor.strip() for anchor in anchor_reponse.split(", ")]
+    direction_response = [direction.strip() for direction in direction_response.split(", ")]
+    bbox_id_response = [bbox_id.strip() for bbox_id in bbox_id_response.split(", ")]
+
+    return anchor_reponse, direction_response, bbox_id_response
 
 def extract_response(response: str) -> str:
     """
@@ -166,9 +303,13 @@ def extract_response(response: str) -> str:
     anchor, direction
     """
     response = response.split("\n")
-    anchor = response[0].split(":")[1].strip()
-    direction = response[1].split(":")[1].strip()
-    return anchor, direction
+    anchor_reponse = response[0].split(":")[1].strip()
+    direction_response = response[1].split(":")[1].strip()
+
+    anchors = [anchor.strip() for anchor in anchor_reponse.split(",")]
+    directions = [direction.strip() for direction in direction_response.split(",")]
+
+    return anchors, directions
 
 def chatgpt_object_detection_bbox(image_path: str, object_name: str):
     """
@@ -331,13 +472,8 @@ def chatgpt_object_placement_bbox_o1(image_path: str, prompts_obj: str, prompts_
     }
     # gpt-4o-mini
     model = "gpt-4o-mini"
-<<<<<<< HEAD
     #model = "gpt-4o"
     #model = 'o1-preview'
-=======
-    model = "gpt-4o"
-    model = 'o1-preview'
->>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
     payload = {
         "model": model, 
         "messages": [
@@ -402,11 +538,7 @@ def visualize_bbox_set(image_path, bbox_list, is_mask=False):
     cv2.imwrite("outputs/img_output/o1.jpg", image)
     
 
-<<<<<<< HEAD
 def chatgpt_select_id(image_path: str, text_prmpt, mode="object_placement"):
-=======
-def chatgpt_select_id(image_path: str, mode="object_placement"):
->>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
     """
     Use chatgpt to select an id 
 
@@ -428,13 +560,12 @@ def chatgpt_select_id(image_path: str, mode="object_placement"):
         "Authorization": f"Bearer {api_key}"
     }
 
-<<<<<<< HEAD
     
 
     # object placement
     if mode == "object_placement":
       payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-4o",
         "messages": [
           {
             "role": "system", 
@@ -477,142 +608,16 @@ def chatgpt_select_id(image_path: str, mode="object_placement"):
         ],
         "max_tokens": 20
       }
-=======
-    
-
-    # object placement
-    if mode == "object_placement":
-      object_placement = input("Object need to be placed: ")
-      extra_info = input("Extra information: ")
-      payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-          {
-            "role": "system", 
-            "content": "You are an assistant that helps people place objects on the table.\
-                  You are given a image of the tabletop and an target object to be placed. \
-                  Please select a reference object among the objects with bounding boxes and labels.\
-                    You should determine the id of the reference and in which direction the target object should be placed relative to the anchor object.\
-                    "
-                    },
-          {
-          "role": "assistant",
-          "content": """
-              Here are the examples:
-              Assume the given image contains: white monitor, blue cup, blue phone, red can, black bottle, green book.
-                Please note that anchors should be split by ",".
-                1. Mouse. I am a right-handed. Please answer:
-                    id: 0
-                    direction: Right Front
-                2. Mouse. I am a left-handed. Please answer:
-                    id: 2 
-                    direction: Left Front
-                3. bottle. Please answer:
-                    id: 1
-                    direction: Left Front
-                4. phone. I like playing mobile games and drinking coffee. Please answer:
-                    id: 2
-                    direction: Right Front
-          """
-            },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "text",
-                "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info} Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n "
-              },
-              {
-                "type": "image_url",
-                "image_url": {
-                  "url": f"data:image/jpeg;base64,{base64_image}"
-                }
-              }
-            ]
-          }
-        ],
-        "max_tokens": 20
-      }
-      print("object need to be placed: ", object_placement)
-
-    elif mode == "scene_understanding":
-    # scene understanding
-      payload =  {
-        "model": "gpt-4o-mini",
-        "messages": [
-          {
-            "role": "system", 
-            "content": "You are an assistant that helps people place objects on the table.\
-                  You are given a image of the tabletop and an target object to be placed. \
-                    You should determine the anchor object with color description and in which direction the target object should be placed relative to the anchor object."
-                    },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "text",
-                "text": "What is on the table? in schema: <color> <object>, <color> <object>, ..."
-              },
-              {
-                "type": "image_url",
-                "image_url": {
-                  "url": f"data:image/jpeg;base64,{base64_image}"
-                }
-              }
-            ]
-          }
-        ],
-        "max_tokens": 300
-      }
 
 
-    
-    reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-    print(reponse.json()['choices'][0]['message']['content'])
-
-    # refine the response
-    while True:
-        user_input = input("User: ")
->>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
-
-        if user_input.lower() == 'okie':
-            break
-        
-        payload['messages'].append({
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "text",
-                    "text": reponse.json()['choices'][0]['message']['content']
-                }
-            ]
-        })
-
-        payload['messages'].append({
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": user_input
-                }
-            ]
-        })
-
-        reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        print(reponse.json()['choices'][0]['message']['content'])
-    anchor, diraction = extract_response(reponse.json()['choices'][0]['message']['content'])
-    import re
-    numbers = re.findall(r'\d+', anchor)
-    
-    return numbers, diraction
-
-<<<<<<< HEAD
     
     reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
     try:
         context = reponse.json()['choices'][0]['message']['content']
+        context = context.split(": ")[1].strip()
     except KeyError:
-        context = "id: 0"
+        #context = "id: 0"
+        context=0
     return context
     # print(reponse.json()['choices'][0]['message']['content'])
 
@@ -649,12 +654,3 @@ def chatgpt_select_id(image_path: str, mode="object_placement"):
     # prompts_direction = 'the left of the eye glasses'
     # bbox_list = chatgpt_object_placement_bbox_o1(image_path, prompts_obj, prompts_direction)
     # visualize_bbox_set(image_path, bbox_list)
-=======
-if __name__ == "__main__":
-    image_path = "dataset/scene_RGBD_mask_v2_kinect_cfg/id18/cup_0004_white/with_obj/test_pbr/000000/rgb/000000.jpg"
-    object_name = "a pair of eye glasses"
-    prompts_obj = "cup"
-    prompts_direction = 'the left of the eye glasses'
-    bbox_list = chatgpt_object_placement_bbox_o1(image_path, prompts_obj, prompts_direction)
-    visualize_bbox_set(image_path, bbox_list)
->>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
