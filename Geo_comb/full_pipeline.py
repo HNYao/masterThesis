@@ -691,7 +691,7 @@ def detect_object_with_vlm(
     """
 
     TEXT_PROMPT = "monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, plate, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
-    BOX_TRESHOLD = 0.25 # 0.35
+    BOX_TRESHOLD = 0.35 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
@@ -763,6 +763,7 @@ def full_pipeline_v2(
     
 
     #### 2 use_vlm 
+    all_bboxes = None
     if use_vlm:
         if fast_vlm_detection:
         # option1: GroundingDINO -> chatgpt select anchor obj_name, direction, bbox_id -> bbox, else, provided target_name and direction_text -> GroudingDINO -> bbox
@@ -781,7 +782,6 @@ def full_pipeline_v2(
                         temp_rgb_path, "object_placement"
                     )
             print("====> Using VLM to parse the target object and direction...")
-            all_bboxes = None
         # target_name = [target_name] 
         # direction_text = [direction_text]
 
@@ -921,13 +921,13 @@ def full_pipeline_v2(
     target_shape = pred['pose_xyR_pred'].shape[1] 
     guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
     pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
     # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
-
-    min_colliion_loss = guide_collision_loss.min()
+    # min_colliion_loss = guide_collision_loss.min()
     # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    guide_loss_total = guide_collision_loss + guide_affordance_loss
+    # guide_loss_total = guide_affordance_loss + guide_collision_loss
     # Select the topk points with the lowest guide loss
     min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
     pred_points = pred_points[min_guide_loss_idx]
@@ -954,10 +954,16 @@ def full_pipeline_v2(
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
+
+    
     pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
     pred_r_all = np.array(pred_r_all) # [N,]
     pred_cost = guide_loss_total # [N,]
 
+    min_point_coord = np.min(points_scene, axis=0) * 1.2  # [3,]
+    max_point_coord = np.max(points_scene, axis=0) * 0.8  # [3,]
+    pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
+    
     if visualize_final_obj: 
         #11 add mesh obj to the scene
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
@@ -1056,10 +1062,10 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
         target_names=["Keyboard"],     #, "Monitor", "Monitor"],
         direction_texts=["Right Front"],     #, "Left Front", "Right Front"],
-        use_vlm=True,
-        fast_vlm_detection=True,
+        use_vlm=False,
+        fast_vlm_detection=False,
         use_kmeans=True,
-        visualize_affordance=True,
+        visualize_affordance=False,
         visualize_diff=False,
         visualize_final_obj=True,
         rendering = False,

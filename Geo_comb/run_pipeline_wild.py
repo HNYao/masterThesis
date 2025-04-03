@@ -31,7 +31,6 @@ from GeoL_diffuser.models.guidance import CompositeGuidance
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
 
-DEPTH_MIN = 0.7
 def load_models(args):
     intrinsics = np.loadtxt(args.intr_path)
     model_detection = load_model(
@@ -75,6 +74,7 @@ def load_models(args):
     return model_detection, model_affordance, model_diffuser, model_depth
 
 def run(args):
+    
     # Load the models
     model_detection, model_affordance, model_diffuser, model_depth = load_models(args)
 
@@ -85,23 +85,32 @@ def run(args):
     obj_mesh = retrieve_obj_mesh(args.mesh_category, target_size=args.target_size)
     if args.use_m3d:
         depth_save_path = args.depth_path.replace(".png", "_m3d.png")
-        if os.path.exists(depth_save_path):
-            depth_image = cv2.imread(depth_save_path, cv2.IMREAD_ANYDEPTH)
-        else:
-            depth_image, _ = predict_depth(model_depth, rgb_image, intr)
-            depth_image = (depth_image * 1000).astype(np.uint16)
-            cv2.imwrite(depth_save_path, depth_image)
+        # if os.path.exists(depth_save_path):
+        #     depth_image_pred = cv2.imread(depth_save_path, cv2.IMREAD_ANYDEPTH)
+        # else:
+        depth_image_pred, _ = predict_depth(model_depth, rgb_image, intr)
+        depth_image_pred = (depth_image_pred * 1000).astype(np.uint16)
+        cv2.imwrite(depth_save_path, depth_image_pred)
     else:
         depth_image = depth_image_raw
     
+    # Fill the holes in the depth image
     if args.use_m3d:
-        depth_image[depth_image < DEPTH_MIN * 1000] = 0
+        depth_image_raw[depth_image_raw == 0] = depth_image_pred[depth_image_raw == 0]
+        depth_image_raw[depth_image_raw > 1500] = 0
+        depth_image_pred[depth_image_pred > 1500] = 0
+    depth_mask = np.zeros_like(depth_image_pred)
+    padding_size = 20
+    depth_mask[padding_size:-padding_size, padding_size:-padding_size] = 1
+    depth_image = depth_image_pred
+    depth_image[depth_image < 500] = 0
+    depth_image = depth_image * depth_mask
     
     # Viualize the point cloud
-    # pc, scene_ids = backproject(depth_image / 1000, intr, depth_image / 1000 > 0)
-    # pc_colors = rgb_image[scene_ids[0], scene_ids[1]][..., [2, 1, 0]] / 255.0
-    # pcd = visualize_points(pc, pc_colors)
-    # o3d.visualization.draw_geometries([pcd])
+    pc, scene_ids = backproject(depth_image / 1000, intr, depth_image / 1000 > 0)
+    pc_colors = rgb_image[scene_ids[0], scene_ids[1]][..., [2, 1, 0]] / 255.0
+    pcd = visualize_points(pc, pc_colors)
+    o3d.visualization.draw_geometries([pcd])
     
     # Do the inference
     seed_everything(42)

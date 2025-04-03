@@ -284,11 +284,13 @@ def chatgpt_selected_plan(image_path: str):
     content = response.json()['choices'][0]['message']['content']
     content.strip("```").strip("plaintext")
 
-    content_split = content.split("\n")
-    anchor_reponse = content_split[0].split(":")[1].strip()
-    direction_response = content_split[1].split(":")[1].strip()
-    bbox_id_response = content_split[2].split(":")[1].strip()
-
+    try:
+        content_split = content.split("\n")
+        anchor_reponse = content_split[0].split(":")[1].strip()
+        direction_response = content_split[1].split(":")[1].strip()
+        bbox_id_response = content_split[2].split(":")[1].strip()
+    except:
+        import pdb; pdb.set_trace()
     anchor_reponse = [anchor.strip() for anchor in anchor_reponse.split(", ")]
     direction_response = [direction.strip() for direction in direction_response.split(", ")]
     bbox_id_response = [bbox_id.strip() for bbox_id in bbox_id_response.split(", ")]

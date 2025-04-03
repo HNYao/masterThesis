@@ -268,6 +268,7 @@ class Diffusion(nn.Module):
 
         # TODO: combine the feats
         aux_info = {
+            "pc_position": data_batch["pc_position"],
             "cond_feat": cond_feat,  
             "non_cond_feat": non_cond_feat,  
             "gt_pose_xyR_min_bound": data_batch["gt_pose_xyR_min_bound"],  # [batch_size, 3] x, y, z
@@ -582,6 +583,19 @@ class Diffusion(nn.Module):
         x_recon = self.predict_start_from_noise(
             x=x, t=t, pred_noise=model_prediction, force_noise=self.predict_epsilon
         )
+        
+        pc_position = aux_info["pc_position"][..., :2] # [B, N, 2]
+        min_point_xy_coord, _ = pc_position.min(dim=1, keepdim=True) # [B, 1, 2]
+        max_point_xy_coord, _ = pc_position.max(dim=1, keepdim=True) # [B, 1, 2]
+        min_point_xy_coord *= 1.2
+        max_point_xy_coord *= 0.8
+        min_point_xy_coord_scale = self.scale_xy_pose(min_point_xy_coord, min_point_xy_coord, max_point_xy_coord).squeeze(1)
+        max_point_xy_coord_scale = self.scale_xy_pose(max_point_xy_coord, min_point_xy_coord, max_point_xy_coord).squeeze(1)
+        min_point_xyz_coord_scale = torch.cat([min_point_xy_coord_scale, 
+                                               -torch.ones_like(min_point_xy_coord_scale[..., :1])], dim=-1)
+        max_point_xyz_coord_scale = torch.cat([max_point_xy_coord_scale, 
+                                               torch.ones_like(max_point_xy_coord_scale[..., :1])], dim=-1)
+        x_recon = torch.clamp(x_recon, min_point_xyz_coord_scale, max_point_xyz_coord_scale)
         x_recon.clamp_(-1, 1)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
@@ -1143,102 +1157,100 @@ class Diffusion_muti_affordance(nn.Module):
         self.current_guidance = guidance
 
 
-    # ------------------------------------------ aux_info ------------------------------------------#
-    def get_aux_info(self, data_batch):
-        cond_fill_value = -1
+    # # ------------------------------------------ aux_info ------------------------------------------#
+    # def get_aux_info(self, data_batch):
+    #     cond_fill_value = -1
 
-        affordance = data_batch[
-            "affordance"
-        ]  # [batch_size, num_points, num_affordance]
-        num_affordance = affordance.shape[-1]
+    #     affordance = data_batch[
+    #         "affordance"
+    #     ]  # [batch_size, num_points, num_affordance]
+    #     num_affordance = affordance.shape[-1]
     
 
+    #     pc_position = data_batch[
+    #         "pc_position"
+    #     ]  # [batch_size, num_points, pc_position_dim=3]
 
 
+    #     #object_name = data_batch["object_name"]  # [batch_size, ]
+    #     #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
 
-        pc_position = data_batch[
-            "pc_position"
-        ]  # [batch_size, num_points, pc_position_dim=3]
-
-
-        #object_name = data_batch["object_name"]  # [batch_size, ]
-        #object_pc_position = data_batch["object_pc_position"]  # [batch_size, obj_points=512, object_pc_position_dim=3]
-
-        #top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
-        #top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions = self.top_position(affordance, pc_position, topk=80)
-        #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
-        top_positions = top_positions[...,:2] # [batch_size, 80, 2]
-        #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
-        top_positions = data_batch["gt_pose_xy"]
-        top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
-        top_positions = top_positions.view(-1, num_affordance, 80*2)
+    #     #top_avg_position = self.top_avg_position(affordance, pc_position, topk=10)
+    #     #top_avg_position = self.scale_xyz_pose(top_avg_position, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+    #     top_positions = self.top_position(affordance, pc_position, topk=80)
+    #     #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
+    #     top_positions = top_positions[...,:2] # [batch_size, 80, 2]
+    #     #top_positions = top_positions.mean(dim=1, keepdim=True).repeat(1, 80, 1)
+    #     top_positions = data_batch["gt_pose_xy"]
+    #     top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
+    #     top_positions = top_positions.view(-1, num_affordance, 80*2)
 
         
-        #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
+    #     #top_avg_position = self.top_affordance_encoder_position_encoder(top_avg_position)
 
-        #affordance_non_cond = torch.randn_like(affordance)
-        #top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
-        #top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
-        #top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=80)
-        #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
-        top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
-        top_positions_non_cond = top_positions_non_cond[...,:2] # [batch_size, 80, 2]
-        top_positions_non_cond = self.scale_xy_pose(top_positions_non_cond, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
+    #     #affordance_non_cond = torch.randn_like(affordance)
+    #     #top_avg_position_non_cond = self.top_avg_position(affordance_non_cond, pc_position, topk=10)
+    #     #top_avg_position_non_cond = self.scale_xyz_pose(top_avg_position_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) 
+    #     #top_positions_non_cond = self.top_position(affordance_non_cond, pc_position, topk=80)
+    #     #top_positions_non_cond = self.scale_xyz_pose(top_positions_non_cond, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"])
+    #     top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
+    #     top_positions_non_cond = top_positions_non_cond[...,:2] # [batch_size, 80, 2]
+    #     top_positions_non_cond = self.scale_xy_pose(top_positions_non_cond, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
 
-        top_positions_non_cond = top_positions_non_cond.reshape(-1, 80*2)
-        #top_positions_non_cond = top_positions
+    #     top_positions_non_cond = top_positions_non_cond.reshape(-1, 80*2)
+    #     #top_positions_non_cond = top_positions
 
-        ######## debug affordance visualization
-        # affordance_non_cond_vis = affordance_non_cond[0]
-        # affordance_vis = affordance[0]
-        # pc_position_vis = pc_position[0]
-        # pc_vis = o3d.geometry.PointCloud()
-        # pc_vis.points = o3d.utility.Vector3dVector(pc_position_vis.detach().cpu().numpy())
-        # pc_colors = np.zeros_like(pc_position_vis.detach().cpu().numpy())
-        # pc_colors[:, 0] = affordance_vis.detach().cpu().numpy().squeeze()
-        # pc_vis.colors = o3d.utility.Vector3dVector(pc_colors)
-        # o3d.visualization.draw_geometries([pc_vis])
+    #     ######## debug affordance visualization
+    #     # affordance_non_cond_vis = affordance_non_cond[0]
+    #     # affordance_vis = affordance[0]
+    #     # pc_position_vis = pc_position[0]
+    #     # pc_vis = o3d.geometry.PointCloud()
+    #     # pc_vis.points = o3d.utility.Vector3dVector(pc_position_vis.detach().cpu().numpy())
+    #     # pc_colors = np.zeros_like(pc_position_vis.detach().cpu().numpy())
+    #     # pc_colors[:, 0] = affordance_vis.detach().cpu().numpy().squeeze()
+    #     # pc_vis.colors = o3d.utility.Vector3dVector(pc_colors)
+    #     # o3d.visualization.draw_geometries([pc_vis])
         
 
-        cond_feat = torch.cat(
-            [   
+    #     cond_feat = torch.cat(
+    #         [   
 
-                #top_avg_position, # [barch_size, 3]
-                top_positions, # [barch_size, num_affo 160]
-                #obj_pc_cond # [barch_size, 16]
+    #             #top_avg_position, # [barch_size, 3]
+    #             top_positions, # [barch_size, num_affo 160]
+    #             #obj_pc_cond # [barch_size, 16]
     
-            ],
-            dim=1,
-        )
-        non_cond_feat = torch.cat(
-            [   
+    #         ],
+    #         dim=1,
+    #     )
+    #     non_cond_feat = torch.cat(
+    #         [   
 
-                #top_avg_position_non_cond, # [barch_size, 3]
-                top_positions_non_cond, # [barch_size, 160]
-                #obj_pc_non_cond # [barch_size, 16]
-            ],
-            dim=1,
-        )
+    #             #top_avg_position_non_cond, # [barch_size, 3]
+    #             top_positions_non_cond, # [barch_size, 160]
+    #             #obj_pc_non_cond # [barch_size, 16]
+    #         ],
+    #         dim=1,
+    #     )
 
-        # TODO: combine the feats
-        aux_info = {
-            "cond_feat": cond_feat,  
-            "non_cond_feat": non_cond_feat,  
-            "gt_pose_4d_min_bound": data_batch["gt_pose_4d_min_bound"],  # [batch_size, 4]
-            "gt_pose_4d_max_bound": data_batch["gt_pose_4d_max_bound"],
-            "gt_pose_xyz_min_bound": data_batch["gt_pose_xyz_min_bound"],  # [batch_size, 3] x, y, z
-            "gt_pose_xyz_max_bound": data_batch["gt_pose_xyz_max_bound"],
-            "gt_pose_xy_min_bound": data_batch["gt_pose_xy_min_bound"],  # [batch_size, 2] x, y
-            "gt_pose_xy_max_bound": data_batch["gt_pose_xy_max_bound"],
-            "pc_position": data_batch["pc_position"],
-            "affordance": data_batch["affordance"],
-            "map_affordance": torch.max(data_batch["affordance"], dim=-1)[0], # [batch_size, 2048, 1] # used for map feature
-            "depth": data_batch["depth"], # for visualization
-            "normal": data_batch["normal"], # for visualization
-        }
+    #     # TODO: combine the feats
+    #     aux_info = {
+    #         "cond_feat": cond_feat,  
+    #         "non_cond_feat": non_cond_feat,
+    #         "scene_pc": data_batch["scene_pc"],  
+    #         "gt_pose_4d_min_bound": data_batch["gt_pose_4d_min_bound"],  # [batch_size, 4]
+    #         "gt_pose_4d_max_bound": data_batch["gt_pose_4d_max_bound"],
+    #         "gt_pose_xyz_min_bound": data_batch["gt_pose_xyz_min_bound"],  # [batch_size, 3] x, y, z
+    #         "gt_pose_xyz_max_bound": data_batch["gt_pose_xyz_max_bound"],
+    #         "gt_pose_xy_min_bound": data_batch["gt_pose_xy_min_bound"],  # [batch_size, 2] x, y
+    #         "gt_pose_xy_max_bound": data_batch["gt_pose_xy_max_bound"],
+    #         "pc_position": data_batch["pc_position"],
+    #         "affordance": data_batch["affordance"],
+    #         "map_affordance": torch.max(data_batch["affordance"], dim=-1)[0], # [batch_size, 2048, 1] # used for map feature
+    #         "depth": data_batch["depth"], # for visualization
+    #         "normal": data_batch["normal"], # for visualization
+    #     }
 
-        return aux_info
+    #     return aux_info
     
     def top_avg_position(self, affordance, pc_position, topk=10):
         """
