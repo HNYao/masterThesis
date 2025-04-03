@@ -100,7 +100,7 @@ def run(args):
         depth_image_raw[depth_image_raw > 1500] = 0
         depth_image_pred[depth_image_pred > 1500] = 0
     depth_mask = np.zeros_like(depth_image_pred)
-    padding_size = 20
+    padding_size = 50
     depth_mask[padding_size:-padding_size, padding_size:-padding_size] = 1
     depth_image = depth_image_pred
     depth_image[depth_image < 500] = 0
@@ -132,6 +132,17 @@ def run(args):
         visualize_final_obj=args.visualize_final_obj,
         rendering=args.rendering,
     )
+
+    # TODO: Save npz files for rendering
+    results = {}
+    results["pred_xyz_all"] = pred_xyz_all
+    results["pred_r_all"] = pred_r_all
+    results["pred_cost"] = pred_cost
+    results["rgb_image"] = rgb_image
+    results["depth_image_raw"] = depth_image_raw
+    results["depth_image"] = depth_image
+    results["intrinsics"] = intr
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -612,7 +612,7 @@ def prepare_data_batch(rgb_image,
         box_mask,
         NOCS_convention=False,
     )
-    anchor_position = np.median(points_anchor_scene, axis=0) * 0.8
+    anchor_position = np.median(points_anchor_scene, axis=0)  
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
     data_batch["mask"] =  ["n/a"]
@@ -690,8 +690,8 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, plate, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
-    BOX_TRESHOLD = 0.35 # 0.35
+    TEXT_PROMPT = "spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
+    BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
@@ -758,7 +758,7 @@ def full_pipeline_v2(
         np.logical_and(depth_image / 1000.0 > 0, depth_image / 1000.0 < 2),
         NOCS_convention=False,
     )
-    colors_scene = rgb_image[scene_idx[0], scene_idx[1]] / 255.0
+    colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2,1,0]] / 255.0
     pcd_scene = visualize_points(points_scene, colors_scene) 
     
 

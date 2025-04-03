@@ -828,7 +828,7 @@ class AffordanceGuidance_v2(Guidance):
         bsize, num_samp, num_hypo, _ = x.size() 
         # find the top k affordance
         if "affordance_fine" in data_batch:
-            affordance_ori = data_batch["affordance_fine"]
+            affordance_ori = data_batch["affordance"] 
         else:
             print("No affordance_fine in data_batch, using affordance")
             affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
@@ -1102,6 +1102,6 @@ class CompositeGuidance(Guidance):
         guide_losses["collision_loss"] = collision_guide_losses["loss"]
 
         #
-        guide_losses["loss"] = guide_losses["affordance_loss"]  * 500 + guide_losses["collision_loss"]
+        guide_losses["loss"] = guide_losses["affordance_loss"]  * 5000 + guide_losses["collision_loss"]
 
         return loss_tot, guide_losses
