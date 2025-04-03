@@ -148,7 +148,10 @@ def sample_points_in_bbox(image, bbox: list, n: int = 20):
         numpy.ndarray: Updated image with sampled points in red and other pixels black.
     """
     # Validate the bounding box
+<<<<<<< HEAD
 
+=======
+>>>>>>> fff7c3325afe215f9642a15ebafdf16911245957
     x_min, y_min, x_max, y_max = bbox
     if not (0 <= x_min < x_max <= 1) or not (0 <= y_min < y_max <= 1):
         raise ValueError("Bounding box coordinates should be fractions between 0 and 1.")
