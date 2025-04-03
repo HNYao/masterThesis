@@ -630,7 +630,7 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "monitor, screen, laptop, display, bowl, plate, cup, mug, glass, bottle, container, box, phone, mouse, keyboard, mug"
+    TEXT_PROMPT = "monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, plate, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
     BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
