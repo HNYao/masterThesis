@@ -37,6 +37,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
 import copy
 import random
+from glob import glob
 
 def seed_everything(seed):
     torch.manual_seed(seed)
@@ -44,7 +45,31 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weights/mesh/"):
+    obj_mesh_files = glob(os.path.join(obj_mesh_dir, obj_category, "*", "mesh.obj"))
+    obj_mesh_file = obj_mesh_files[random.randint(0, len(obj_mesh_files)-1)]
+    print("Selected object mesh file: ", obj_mesh_file)
+    obj_mesh = o3d.io.read_triangle_mesh(obj_mesh_file)
+    obj_mesh.compute_vertex_normals()
     
+    # Compute the bounding box of the mesh, and acquire the diagonal length
+    bounding_box = obj_mesh.get_axis_aligned_bounding_box()
+    diagonal_length = np.linalg.norm(bounding_box.get_max_bound() - bounding_box.get_min_bound())
+    # Compute the scale factor to resize the mesh
+    scale = target_size / diagonal_length
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+    # obj_mesh.transform(obj_scale_matrix)
+    obj_mesh.scale(scale, center=[0, 0, 0])  # scale obj mesh
+    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    return obj_mesh
+
 def preprocess_image_groundingdino(image):
     transform = GDinoT.Compose(
         [
@@ -508,8 +533,16 @@ def prepare_data_batch(rgb_image,
     # Acquire the location of the anchor object
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
     x1, y1, x2, y2 = target_box
-    # y1 = int((y1 + y2) * 0.5)
-    cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    width, height = x2 - x1, y2 - y1
+    if "Left" in direction_text:
+        x2 = int(x1 + width * 0.25)
+    if "Right" in direction_text:
+        x1 = int(x2 - width * 0.25)
+    if "Front" in direction_text:
+        y1 = int(y2 - height * 0.25)
+    if "Behind" in direction_text:
+        y2 = int(y1 + height * 0.25)
+    # cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
     # plt.imshow(rgb_image)
     # plt.show()
     box_mask[y1:y2, x1:x2] = 1
@@ -545,7 +578,6 @@ def detect_object(
     text_prompt,
     use_chatgpt=False,
 ):
-
     TEXT_PROMPT = text_prompt
     BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
@@ -635,9 +667,10 @@ def detect_object_with_vlm(
         #     selected_id = 0
             
     selected_box_xyxy = [boxes_xyxy[id].astype(np.int32) for id in bbox_id_list]
+    boxes_xyxy = [boxes_xyxy[id].astype(np.int32) for id in range(len(boxes_xyxy))]
     #selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
 
-    return target_obj_list, direction_list, selected_box_xyxy
+    return target_obj_list, direction_list, selected_box_xyxy, boxes_xyxy
  
 def full_pipeline_v2(
         model_detection,
@@ -647,10 +680,10 @@ def full_pipeline_v2(
         depth_image,
         obj_mesh,
         intrinsics,
-        target_name=[],
-        direction_text = [],
+        target_names=[],
+        direction_texts = [],
         use_vlm = False,
-        detection_with_vlm = True,
+        fast_vlm_detection = True,
         use_kmeans = True,
         visualize_affordance = False,
         visualize_diff = False,
@@ -658,7 +691,7 @@ def full_pipeline_v2(
         rendering = False,
 ):
     #1 use chatgpt or directly provide target_name and direction_text
-    assert (len(target_name) == len(direction_text)> 0) or use_vlm, "Please provide target_name and direction_text"
+    assert (len(target_names) == len(direction_texts)> 0) or use_vlm, "Please provide target_name and direction_text"
     points_scene, scene_idx = backproject(
         depth_image / 1000.0,
         intrinsics,
@@ -671,9 +704,9 @@ def full_pipeline_v2(
 
     #### 2 use_vlm 
     if use_vlm:
-        if detection_with_vlm:
+        if fast_vlm_detection:
         # option1: GroundingDINO -> chatgpt select anchor obj_name, direction, bbox_id -> bbox, else, provided target_name and direction_text -> GroudingDINO -> bbox
-            target_names, direction_texts, selected_boxes = detect_object_with_vlm(model_detection, rgb_image)
+            target_names, direction_texts, selected_boxes, all_bboxes = detect_object_with_vlm(model_detection, rgb_image)
         # import pdb; pdb.set_trace()
         # option2: chatgpt -> target_name, direction_text, bbox_id_list -> GDino -> bbox, idx -> chatgpt -> id
         else:
@@ -682,27 +715,26 @@ def full_pipeline_v2(
             os.makedirs(".tmp", exist_ok=True)
             cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8)) # BGR
             cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
-
             # TODO: multi hypotheses
             # Save temporary image for VLM processing
             target_names, direction_texts = chatgpt_condition(
                         temp_rgb_path, "object_placement"
                     )
             print("====> Using VLM to parse the target object and direction...")
+            all_bboxes = None
         # target_name = [target_name] 
         # direction_text = [direction_text]
 
     #3 use GroundingDINO to detect the target object
     pred_affordance_list = []
     for i in range(len(target_names)):
-        if not detection_with_vlm:
+        if fast_vlm_detection:
+            selected_box = selected_boxes[i]
+            selected_phrase = target_names[i]
+        else:
             selected_box, selected_phrase = detect_object(
                 model_detection, rgb_image, target_names[i], use_chatgpt=use_vlm
             )
-        else:
-            selected_box = selected_boxes[i]
-            selected_phrase = target_names[i]
-
         # prepare the data batch
         data_batch = prepare_data_batch(rgb_image, depth_image, intrinsics, target_names[i], selected_box, direction_texts[i], to_tensor=True)
         for key, val in data_batch.items():
@@ -734,13 +766,15 @@ def full_pipeline_v2(
             )
         ]  # [512, 3]
         pred_affordance_list.append(affordance_pred) # make the affordance map smoother
-            
+        
     # merge the affordance prediction to the scene point cloud
     # merge the affordance prediction: use the GMM or the mean
     pred_affordance_merge = torch.cat(pred_affordance_list, dim=0)
     pred_affordance_merge_mean = pred_affordance_merge.mean(dim=0, keepdim=True)
     pred_affordance_merge = torch.cat([pred_affordance_merge_mean, pred_affordance_merge], dim=0)
     pred_affordance_merge, _ = (pred_affordance_merge).max(dim=0, keepdim=True)
+    pred_affordance_fine = pred_affordance_merge.clone()
+    data_batch['affordance_fine'] = pred_affordance_fine
     # pred_affordance_merge = pred_affordance_merge.mean(dim=0, keepdim=True)
     
     # normalize the affordance prediction
@@ -752,7 +786,7 @@ def full_pipeline_v2(
         pred_affordance_merge = apply_kmeans_to_affordance(
             fps_points_scene, 
             pred_affordance_np,
-            n_clusters=len(target_name),  # Adjust based on how many distinct regions you want
+            n_clusters=len(target_names),  # Adjust based on how many distinct regions you want
             percentile_threshold=95,  # Adjust based on how strict you want the filtering
             dist_factor=0.5
         )
@@ -760,8 +794,11 @@ def full_pipeline_v2(
     
     pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / \
         (pred_affordance_merge.max() - pred_affordance_merge.min()) 
-
+    pred_affordance_fine = (pred_affordance_fine - pred_affordance_fine.min() ) / \
+        (pred_affordance_fine.max() - pred_affordance_fine.min())
+    
     if visualize_affordance:
+        generate_heatmap_pc(data_batch, pred_affordance_fine, intrinsics, interpolate=False) # visualize single case
         generate_heatmap_pc(data_batch, pred_affordance_merge, intrinsics, interpolate=False) # visualize single case
 
     # 7 normalize the prediction for the diffuser
@@ -781,17 +818,28 @@ def full_pipeline_v2(
     data_batch['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
 
+    # Build the TSDF for collision avoidance guidance
+    if all_bboxes is not None:
+        obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
+        for bg_obj_bbox in all_bboxes:
+            x1, y1, x2, y2 = bg_obj_bbox
+            obj_bbox_mask[y1:y2, x1:x2] = 1
+    else:
+        obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
+    T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
     vol_bnds = np.zeros((3, 2))
     view_frust_pts = get_view_frustum(depth_image / 1000.0, intrinsics, np.eye(4))
     vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
     vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
     vol_bnds[:, 0] = vol_bnds[:, 0].min()
     vol_bnds[:, 1] = vol_bnds[:, 1].max()
-
     color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
     tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5, unknown_free=False)
-    tsdf.integrate(color_tsdf, depth_image / 1000.0, intrinsics, np.eye(4))
-    T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
+    tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, intrinsics, np.eye(4))
+
+    # mesh = tsdf.get_mesh()
+    # mesh.compute_vertex_normals()
+    # o3d.visualization.draw_geometries([mesh])
 
     # if T_camera_plane is not None:
     #     T_plane[:3, :3] = T_camera_plane[:3, :3]   
@@ -873,7 +921,7 @@ def full_pipeline_v2(
             vis_o3d.append(obj_mesh_i)  
         o3d.visualization.draw(vis_o3d)
     
-    if use_vlm and not detection_with_vlm:
+    if use_vlm and not fast_vlm_detection:
         os.remove(temp_rgb_path)  # Clean up temporary file
         os.remove(temp_depth_path)  # Clean up temporary file
         
@@ -934,28 +982,7 @@ if __name__ == "__main__":
     # Load the image and depth image, and object mesh
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
-    obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
-    # obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/book/book_0001_blue/mesh.obj")
-
-    obj_target_size = [0.6, 0.2, 0.01] # H W D
-    obj_mesh.compute_vertex_normals()
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-    obj_inverse_matrix = np.array(
-        [
-            [1, 0, 0],
-            [0, -1, 0],
-            [0, 0, -1],
-        ]
-    )
-    obj_mesh.transform(obj_scale_matrix)
-    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
     
     # DO the inference
     seed_everything(42)
@@ -967,9 +994,10 @@ if __name__ == "__main__":
         depth_image=depth_image,
         obj_mesh=obj_mesh,
         intrinsics=INTRINSICS,
-        target_name=["Monitor"],     #, "Monitor", "Monitor"],
-        direction_text=["Front"],     #, "Left Front", "Right Front"],
+        target_names=["Keyboard"],     #, "Monitor", "Monitor"],
+        direction_texts=["Right Front"],     #, "Left Front", "Right Front"],
         use_vlm=True,
+        fast_vlm_detection=True,
         use_kmeans=True,
         visualize_affordance=True,
         visualize_diff=False,
