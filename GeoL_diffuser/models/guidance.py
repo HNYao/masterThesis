@@ -649,6 +649,9 @@ class NonCollisionGuidance_v3(Guidance):
         scene_pc = data_batch['pc_position']
         scene_pc = (scene_pc - vol_bnds.T[0:1]) / (vol_bnds.T[1:2] - vol_bnds.T[0:1])
         scene_pc = scene_pc * 2 - 1 
+        
+        min_point_coord, _ = scene_pc.min(dim=1, keepdim=True) # [B, 1, 3]
+        max_point_coord, _ = scene_pc.max(dim=1, keepdim=True) # [B, 1, 3]
 
         T_plane = data_batch['T_plane'] # (B, 4, 4)
         T_plane_one = T_plane[0].cpu().detach().numpy()
@@ -663,7 +666,6 @@ class NonCollisionGuidance_v3(Guidance):
         obj_pc = obj_pc.unsqueeze(1).unsqueeze(3).expand(-1, num_samp, -1, num_hypo, -1) # (B, N, O, H, 3)
 
         # descaled_pred
-
         xy = self.descale_xy_pose(xy, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
         xy = (xy - vol_bnds.T[0:1][...,:2]) / (vol_bnds.T[1:2][...,:2] - vol_bnds.T[0:1][...,:2]) # (B, N, H, 2)
         xy = xy * 2 - 1
@@ -671,6 +673,7 @@ class NonCollisionGuidance_v3(Guidance):
         xy = torch.cat([xy, x_z.unsqueeze(-1)], dim=-1) # (B, N, H, 3) # 0.05 margin
 
         xy = xy.unsqueeze(2).expand(-1, -1, num_pcdobj, -1, -1) # (B, N, O, H, 3)
+        # xy = torch.clamp(xy, min_point_coord, max_point_coord)
 
         # for the obj aligned to z-axis(positive)
         min_bound = torch.min(obj_pc, dim=2)[0] # (B, N, H, 3)
@@ -773,7 +776,7 @@ class NonCollisionGuidance_v3(Guidance):
         #query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, num_hypo, -1 ) # [B, N, H, O]
         #collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1) # (B, N, H)
         query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, -1 , num_hypo,) # [B, N, O, H]
-        collision_loss = F.relu(0.2 - query_tsdf).sum(dim=-2) # (B, N, H)
+        collision_loss = F.relu(0.1 - query_tsdf).sum(dim=-2) # (B, N, H)
 
         #### query tsdf version: [B, N*H, O, 3]
         # query_points = translated_points.view(bsize, -1, num_pcdobj, 3) # [B, N*H, O, 3]
@@ -825,7 +828,7 @@ class AffordanceGuidance_v2(Guidance):
         bsize, num_samp, num_hypo, _ = x.size() 
         # find the top k affordance
         if "affordance_fine" in data_batch:
-            affordance_ori = data_batch["affordance_fine"]
+            affordance_ori = data_batch["affordance"] 
         else:
             print("No affordance_fine in data_batch, using affordance")
             affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
@@ -834,6 +837,9 @@ class AffordanceGuidance_v2(Guidance):
         affordance_filtered = affordance_ori.clone()
         affordance_filtered = np.asarray(affordance_filtered.cpu().detach().numpy())
         position = data_batch["pc_position"] # [B, 2048, 3]
+        min_point_coord = position.min(dim=1, keepdim=True) # [B, 1, 3]
+        max_point_coord = position.max(dim=1, keepdim=True) # [B, 1, 3]
+        
         for i in range(affordance_ori.size(-1)):
         # filter out the point affordance on the ground
             plane_model = fit_plane_from_points(np.asarray(position[i].cpu().detach().numpy()))
@@ -869,9 +875,6 @@ class AffordanceGuidance_v2(Guidance):
 
         # visualize the affordance
 
-        
-
-
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(position[0].cpu().detach().numpy())
         pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance[0].cpu().detach().numpy().squeeze(), invert=False))
@@ -884,12 +887,6 @@ class AffordanceGuidance_v2(Guidance):
         # option1: weihgted sampling
         #sampled_position = self.weighted_sampling_with_threshold(position, affordance, sample_k=10, threshold=0.0)
         # option2: top k sampling
-
-
-
-
-
-
 
         # visualize the sampled points
         for ii in range(sampled_position.size(1)):
@@ -914,7 +911,7 @@ class AffordanceGuidance_v2(Guidance):
         affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
         guide_losses["distance_error"] = affordance_loss # (B, N, H)
 
-        affordance_loss = affordance_loss * 500
+        affordance_loss = affordance_loss
         guide_losses['loss'] = affordance_loss
 
         loss_tot += affordance_loss.mean()
@@ -1105,6 +1102,6 @@ class CompositeGuidance(Guidance):
         guide_losses["collision_loss"] = collision_guide_losses["loss"]
 
         #
-        guide_losses["loss"] = guide_losses["affordance_loss"] + guide_losses["collision_loss"]
+        guide_losses["loss"] = guide_losses["affordance_loss"]  * 5000 + guide_losses["collision_loss"]
 
         return loss_tot, guide_losses

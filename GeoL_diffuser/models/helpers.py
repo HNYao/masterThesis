@@ -467,7 +467,7 @@ class TSDFVolume:
             if self.enable_color:
                 color_vol = self._color_vol.numpy() / 255
 
-        _vertices, triangles, _, _ = measure.marching_cubes(-tsdf_vol, 0)
+        _vertices, triangles, _, _ = measure.marching_cubes(tsdf_vol, 0)
         vertices_sample = (_vertices / self._vol_dim[0] - 0.5) * 2
 
         # interpolation to get colors

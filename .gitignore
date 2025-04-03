@@ -30,3 +30,6 @@ yolov8
 yoloworld
 data_and_weights
 GroundingDINO/*
+.tmp/*
+src/*
+Pointnet2_Pytorch/*

@@ -45,6 +45,66 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
+    intrinsic = [intr[0, 0], intr[1, 1],
+                 intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
+    # ajust input size to fit pretrained model
+    # keep ratio resize
+    # input_size = (544, 1216) # for convnext model
+    h, w = rgb_origin.shape[:2]
+    scale = min(input_size[0] / h, input_size[1] / w)
+    rgb = cv2.resize(rgb_origin, (int(w * scale), int(h * scale)),
+                     interpolation=cv2.INTER_LINEAR)
+    # remember to scale intrinsic, hold depth
+    intrinsic = [intrinsic[0] * scale, intrinsic[1] *
+                 scale, intrinsic[2] * scale, intrinsic[3] * scale]
+    # padding to input_size
+    padding = [123.675, 116.28, 103.53]
+    h, w = rgb.shape[:2]
+    pad_h = input_size[0] - h
+    pad_w = input_size[1] - w
+    pad_h_half = pad_h // 2
+    pad_w_half = pad_w // 2
+    rgb = cv2.copyMakeBorder(rgb, pad_h_half, pad_h - pad_h_half,
+                             pad_w_half, pad_w - pad_w_half, cv2.BORDER_CONSTANT, value=padding)
+    pad_info = [pad_h_half, pad_h - pad_h_half, pad_w_half, pad_w - pad_w_half]
+
+    # normalize
+    mean = torch.tensor([123.675, 116.28, 103.53]).float()[:, None, None]
+    std = torch.tensor([58.395, 57.12, 57.375]).float()[:, None, None]
+    rgb = torch.from_numpy(rgb.transpose((2, 0, 1))).float()
+    rgb = torch.div((rgb - mean), std)
+    rgb = rgb[None, :, :, :].cuda()
+
+    ###################### canonical camera space ######################
+    # inference
+    with torch.no_grad():
+        pred_depth, confidence, output_dict = depth_model.inference({
+                                                                    'input': rgb})
+
+    # un pad
+    pred_depth = pred_depth.squeeze()
+    confidence = confidence.squeeze()
+    pred_depth = pred_depth[pad_info[0]: pred_depth.shape[0] -
+                            pad_info[1], pad_info[2]: pred_depth.shape[1] - pad_info[3]]
+    confidence = confidence[pad_info[0]: confidence.shape[0] -
+                            pad_info[1], pad_info[2]: confidence.shape[1] - pad_info[3]]
+
+    # upsample to original size
+    pred_depth = torch.nn.functional.interpolate(
+        pred_depth[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
+    confidence = torch.nn.functional.interpolate(
+        confidence[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
+    ###################### canonical camera space ######################
+
+    # de-canonical transform
+    # 1000.0 is the focal length of canonical camera
+    canonical_to_real_scale = intrinsic[0] / 1000.0
+    pred_depth = pred_depth * canonical_to_real_scale  # now the depth is metric
+    pred_depth = torch.clamp(pred_depth, 0, 5)
+    pred_depth = pred_depth.cpu().numpy()
+    confidence = confidence.cpu().numpy()
+    return pred_depth, confidence
 
 def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weights/mesh/"):
     obj_mesh_files = glob(os.path.join(obj_mesh_dir, obj_category, "*", "mesh.obj"))
@@ -552,7 +612,7 @@ def prepare_data_batch(rgb_image,
         box_mask,
         NOCS_convention=False,
     )
-    anchor_position = np.median(points_anchor_scene, axis=0) * 0.8
+    anchor_position = np.median(points_anchor_scene, axis=0)  
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
     data_batch["mask"] =  ["n/a"]
@@ -630,7 +690,7 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, plate, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
+    TEXT_PROMPT = "spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
     BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
@@ -654,7 +714,7 @@ def detect_object_with_vlm(
             image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
         )
         write_path = ".tmp/annotated_detection_chatgpt_direct.jpg"
-        cv2.imwrite(write_path, annotated_frame)
+        cv2.imwrite(write_path, annotated_frame[:, :, [2, 1, 0]])
 
         target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
 
@@ -698,11 +758,12 @@ def full_pipeline_v2(
         np.logical_and(depth_image / 1000.0 > 0, depth_image / 1000.0 < 2),
         NOCS_convention=False,
     )
-    colors_scene = rgb_image[scene_idx[0], scene_idx[1]] / 255.0
+    colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2,1,0]] / 255.0
     pcd_scene = visualize_points(points_scene, colors_scene) 
     
 
     #### 2 use_vlm 
+    all_bboxes = None
     if use_vlm:
         if fast_vlm_detection:
         # option1: GroundingDINO -> chatgpt select anchor obj_name, direction, bbox_id -> bbox, else, provided target_name and direction_text -> GroudingDINO -> bbox
@@ -721,7 +782,6 @@ def full_pipeline_v2(
                         temp_rgb_path, "object_placement"
                     )
             print("====> Using VLM to parse the target object and direction...")
-            all_bboxes = None
         # target_name = [target_name] 
         # direction_text = [direction_text]
 
@@ -834,7 +894,7 @@ def full_pipeline_v2(
     vol_bnds[:, 0] = vol_bnds[:, 0].min()
     vol_bnds[:, 1] = vol_bnds[:, 1].max()
     color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
-    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5, unknown_free=False)
+    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
     tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, intrinsics, np.eye(4))
 
     # mesh = tsdf.get_mesh()
@@ -861,13 +921,13 @@ def full_pipeline_v2(
     target_shape = pred['pose_xyR_pred'].shape[1] 
     guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
     pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
     # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
-
-    min_colliion_loss = guide_collision_loss.min()
+    # min_colliion_loss = guide_collision_loss.min()
     # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    guide_loss_total = guide_collision_loss + guide_affordance_loss
+    # guide_loss_total = guide_affordance_loss + guide_collision_loss
     # Select the topk points with the lowest guide loss
     min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
     pred_points = pred_points[min_guide_loss_idx]
@@ -894,10 +954,16 @@ def full_pipeline_v2(
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
+
+    
     pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
     pred_r_all = np.array(pred_r_all) # [N,]
     pred_cost = guide_loss_total # [N,]
 
+    min_point_coord = np.min(points_scene, axis=0) * 1.2  # [3,]
+    max_point_coord = np.max(points_scene, axis=0) * 0.8  # [3,]
+    pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
+    
     if visualize_final_obj: 
         #11 add mesh obj to the scene
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
@@ -996,10 +1062,10 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
         target_names=["Keyboard"],     #, "Monitor", "Monitor"],
         direction_texts=["Right Front"],     #, "Left Front", "Right Front"],
-        use_vlm=True,
-        fast_vlm_detection=True,
+        use_vlm=False,
+        fast_vlm_detection=False,
         use_kmeans=True,
-        visualize_affordance=True,
+        visualize_affordance=False,
         visualize_diff=False,
         visualize_final_obj=True,
         rendering = False,
