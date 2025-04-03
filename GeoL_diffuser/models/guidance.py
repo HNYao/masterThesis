@@ -773,7 +773,7 @@ class NonCollisionGuidance_v3(Guidance):
         #query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, num_hypo, -1 ) # [B, N, H, O]
         #collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1) # (B, N, H)
         query_tsdf = query_tsdf.squeeze(-1).squeeze(1).view(bsize, num_samp, -1 , num_hypo,) # [B, N, O, H]
-        collision_loss = F.relu(0.2 - query_tsdf).sum(dim=-2) # (B, N, H)
+        collision_loss = F.relu(0.1 - query_tsdf).sum(dim=-2) # (B, N, H)
 
         #### query tsdf version: [B, N*H, O, 3]
         # query_points = translated_points.view(bsize, -1, num_pcdobj, 3) # [B, N*H, O, 3]
@@ -914,7 +914,7 @@ class AffordanceGuidance_v2(Guidance):
         affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
         guide_losses["distance_error"] = affordance_loss # (B, N, H)
 
-        affordance_loss = affordance_loss * 500
+        affordance_loss = affordance_loss
         guide_losses['loss'] = affordance_loss
 
         loss_tot += affordance_loss.mean()
@@ -1105,6 +1105,6 @@ class CompositeGuidance(Guidance):
         guide_losses["collision_loss"] = collision_guide_losses["loss"]
 
         #
-        guide_losses["loss"] = guide_losses["affordance_loss"] + guide_losses["collision_loss"]
+        guide_losses["loss"] = guide_losses["affordance_loss"]  * 1000 + guide_losses["collision_loss"]
 
         return loss_tot, guide_losses
