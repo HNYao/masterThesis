@@ -149,13 +149,14 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--use_m3d", action="store_true")
     parser.add_argument("--intr_path", type=str, default=".tmp/wild_intr.txt")
     parser.add_argument("--color_path", type=str, default=".tmp/wild_color.png")
     parser.add_argument("--depth_path", type=str, default=".tmp/wild_depth.png")
+    
     parser.add_argument("-c", "--mesh_category",  type=str, default="phone")
     parser.add_argument("-s", "--target_size", type=float, default=0.1)
     parser.add_argument("-v", "--visualize_final_obj", action="store_true")
+    parser.add_argument("--use_m3d", action="store_true")
 
     parser.add_argument("--use_vlm", type=bool, default=True)
     parser.add_argument("--fast_vlm_detection", type=bool, default=True)
