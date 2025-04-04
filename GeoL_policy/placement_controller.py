@@ -1,6 +1,6 @@
 import open3d as o3d
 
-from controller_base import ControllerBase
+from GeoL_policy.controller_base import ControllerBase
 from omegaconf import OmegaConf
 from easydict import EasyDict as edict
 import stretch_utils.data_utils as DataUtils

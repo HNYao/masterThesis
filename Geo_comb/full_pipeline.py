@@ -45,6 +45,7 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+    
 def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
     intrinsic = [intr[0, 0], intr[1, 1],
                  intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
@@ -128,6 +129,17 @@ def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weight
     # obj_mesh.transform(obj_scale_matrix)
     obj_mesh.scale(scale, center=[0, 0, 0])  # scale obj mesh
     obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    
+    # Move the mesh center to the bottom part of the mesh
+    vertices = np.asarray(obj_mesh.vertices)
+    # Find the minimum y-coordinate (bottom point)
+    min_z = np.min(vertices[:, 2])
+    # Create translation vector to move bottom to origin
+    translation = np.array([0, 0, min_z])
+    # Apply translation to move bottom to origin
+    obj_mesh.translate(translation)
+    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    # o3d.visualization.draw([obj_mesh, axis])
     return obj_mesh
 
 def preprocess_image_groundingdino(image):
@@ -602,9 +614,8 @@ def prepare_data_batch(rgb_image,
         y1 = int(y2 - height * 0.25)
     if "Behind" in direction_text:
         y2 = int(y1 + height * 0.25)
-    # cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    # plt.imshow(rgb_image)
-    # plt.show()
+    cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
     box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,
@@ -940,8 +951,8 @@ def full_pipeline_v2(
     obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
     obj_max_bound = obj_pcd.get_max_bound()
     obj_min_bound = obj_pcd.get_min_bound()
-    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+    # obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+    # obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
 
     pred_xyz_all, pred_r_all = [], []
     for i in range(len(pred_points)):
@@ -950,12 +961,10 @@ def full_pipeline_v2(
         pred_r = pred_r * 180 / np.pi
         pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
         pred_xyz = np.append(pred_xy, pred_z)
-        pred_xyz = pred_xyz - obj_bottom_center
+        pred_xyz = pred_xyz #- obj_bottom_center
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
-
-    
     pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
     pred_r_all = np.array(pred_r_all) # [N,]
     pred_cost = guide_loss_total # [N,]
@@ -1048,7 +1057,7 @@ if __name__ == "__main__":
     # Load the image and depth image, and object mesh
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
-    obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
+    obj_mesh = retrieve_obj_mesh("cup", target_size=0.5)
     
     # DO the inference
     seed_everything(42)
