@@ -64,13 +64,15 @@ def main(args):
     T_base_hand = np.eye(4)
     T_base_hand[:3, :3] = T_zrot90[:3, :3] @ TRAJ_ROT_INIT
     T_base_hand[:3, 3] = TRAJ_TRA_INIT
-    breakpoint()
+    if args.verbose:
+        breakpoint()
+    else:
+        time.sleep(2)
     print("Step 0: Rotate the gripper around so that the gripper is not visible")
     publish_action(controller, T_base_hand)
-    time.sleep(2)
+    time.sleep(5)
 
     # Step 1: Parse the scene for the placement configuration
-    breakpoint()
     print(" ====================== Step 1: Parse the scene for the placement configuration ====================== ")
     obj_mesh = retrieve_obj_mesh(mesh_category, target_size=target_size)
     # T_base_object_to_place = controller.inference(T_object_hand, height_offset=0.07, cut_mode="full")
@@ -110,15 +112,28 @@ def main(args):
         T_object_hand = T_xrot @ T_object_hand
     T_base_hand = T_base_object_to_place @ T_object_hand
     T_base_hand[:3, :3] = T_base_hand[:3, :3] @ TRAJ_ROT_INIT
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
+    print(" =================== START RECORDING =================== ")
     print(" ====================== Step 3: Go to the refined placement configuration ====================== ")
-    breakpoint()
+    if args.verbose:
+        breakpoint()
+    else:
+        time.sleep(2)
     traj = publish_action(controller, T_base_hand, GRIPPER_OPENNING)
     time.sleep(2)
 
     # Step 4: Open the gripper
     traj_post = traj.copy()
     traj_post[:, -1] = 1
-    breakpoint()
+    if args.verbose:
+        breakpoint()
+    else:
+        time.sleep(2)
     print(" ====================== Step 4: Open the gripper to release the object  ====================== ")
     traj = controller._publish_trajectory(traj_post)
 
@@ -127,7 +142,10 @@ def main(args):
     print(" ====================== Step 5: Make sure the object is released  ====================== ")
     breakpoint()
     traj = publish_action(controller, T_base_hand)
-    time.sleep(2)
+    if args.verbose:
+        breakpoint()
+    else:
+        time.sleep(2)
 
     # Step 6: Home
     T_base_hand, T_object_hand = np.eye(4), np.eye(4)
@@ -140,7 +158,10 @@ def main(args):
     T_base_hand = T_base_object @ T_object_hand
     T_base_hand[:3, :3] = T_base_hand[:3, :3] @ TRAJ_ROT_INIT
     print("Step 6: Robot home!")
-    breakpoint()
+    if args.verbose:
+        breakpoint()
+    else:
+        time.sleep(2)
     traj = publish_action(controller, T_base_hand)
 
 if __name__ == "__main__":
@@ -149,6 +170,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--target_size", type=float, default=0.1)
     parser.add_argument("-o", "--height_offset", type=float, default=0.05)
     parser.add_argument("-v", "--vert_grasp", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--disable_rotation", action="store_true")
     args = parser.parse_args()
     main(args)
