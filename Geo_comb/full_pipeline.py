@@ -3,7 +3,8 @@
     1. GeoL_net predicts affordance heatmap
     2. GeoL_diffuser predicts 4d pose
 """
-
+import sys
+sys.path.append("thirdpart/GroundingDINO")
 from GeoL_net.core.registry import registry
 import open3d as o3d
 import torch
@@ -12,7 +13,9 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
+from groundingdino.util.inference import load_model, load_image, predict, annotate
+import groundingdino.datasets.transforms as GDinoT
+
 import cv2
 import numpy as np
 import torch
@@ -31,7 +34,6 @@ import yaml
 from omegaconf import OmegaConf
 from scipy.spatial.transform import Rotation as SciR
 from torchvision.ops import box_convert
-import groundingdino.datasets.transforms as GDinoT
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
@@ -45,6 +47,7 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+    
 def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
     intrinsic = [intr[0, 0], intr[1, 1],
                  intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
@@ -128,6 +131,17 @@ def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weight
     # obj_mesh.transform(obj_scale_matrix)
     obj_mesh.scale(scale, center=[0, 0, 0])  # scale obj mesh
     obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    
+    # Move the mesh center to the bottom part of the mesh
+    vertices = np.asarray(obj_mesh.vertices)
+    # Find the minimum y-coordinate (bottom point)
+    min_z = np.min(vertices[:, 2])
+    # Create translation vector to move bottom to origin
+    translation = np.array([0, 0, min_z])
+    # Apply translation to move bottom to origin
+    obj_mesh.translate(translation)
+    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    # o3d.visualization.draw([obj_mesh, axis])
     return obj_mesh
 
 def preprocess_image_groundingdino(image):
@@ -991,8 +1005,8 @@ def full_pipeline_v2(
     obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
     obj_max_bound = obj_pcd.get_max_bound()
     obj_min_bound = obj_pcd.get_min_bound()
-    obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-    obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+    # obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+    # obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
 
     pred_xyz_all, pred_r_all = [], []
     for i in range(len(pred_points)):
@@ -1001,12 +1015,10 @@ def full_pipeline_v2(
         pred_r = pred_r * 180 / np.pi
         pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
         pred_xyz = np.append(pred_xy, pred_z)
-        pred_xyz = pred_xyz - obj_bottom_center
+        pred_xyz = pred_xyz #- obj_bottom_center
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
-
-    
     pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
     pred_r_all = np.array(pred_r_all) # [N,]
     pred_cost = guide_loss_total # [N,]
@@ -1072,7 +1084,8 @@ if __name__ == "__main__":
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
     #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
     model_detection = load_model(
-        "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "GroundingDINO/weights/groundingdino_swint_ogc.pth"
+        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
+        "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
     )
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
     model_affordance = model_affordance_cls(
@@ -1099,7 +1112,7 @@ if __name__ == "__main__":
     # Load the image and depth image, and object mesh
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
-    obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
+    obj_mesh = retrieve_obj_mesh("cup", target_size=0.5)
     
     # DO the inference
     seed_everything(42)
