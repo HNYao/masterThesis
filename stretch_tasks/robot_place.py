@@ -120,10 +120,7 @@ def main(args):
     print(" =================== START RECORDING =================== ")
     print(" =================== START RECORDING =================== ")
     print(" ====================== Step 3: Go to the refined placement configuration ====================== ")
-    if args.verbose:
-        breakpoint()
-    else:
-        time.sleep(2)
+    breakpoint()
     traj = publish_action(controller, T_base_hand, GRIPPER_OPENNING)
     time.sleep(2)
 
