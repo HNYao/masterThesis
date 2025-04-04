@@ -47,10 +47,14 @@ class ControllerBase:
             self.cfg_network.flag_port
         )
 
-    def _subscribe_image(self, cut_mode="center"):
+    def _subscribe_image(self, cut_mode="center", preprocess=True):
         color, depth, timestamp = self.camera_subscriber.recv_image_and_depth()
         # cv2.imwrite("color_raw.png", color)
-        color, depth, intr, T_calib = preprocess_stretch_head_image(color, depth, self.raw_intr, cut_mode=cut_mode)
+        if preprocess:
+            color, depth, intr, T_calib = preprocess_stretch_head_image(color, depth, self.raw_intr, cut_mode=cut_mode)
+        else:
+            intr = self.raw_intr
+            T_calib = np.eye(4)
         # depth[depth > 1.5] == 0
         color = color[..., [2,1,0]].copy()
         return color, depth, intr, T_calib

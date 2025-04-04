@@ -67,10 +67,9 @@ def main(args):
     if args.verbose:
         breakpoint()
     else:
-        time.sleep(2)
-    print("Step 0: Rotate the gripper around so that the gripper is not visible")
+        time.sleep(5)
+    print(" ====================== Step 0: Rotate the gripper around so that the gripper is not visible ======================")
     publish_action(controller, T_base_hand)
-    time.sleep(5)
 
     # Step 1: Parse the scene for the placement configuration
     print(" ====================== Step 1: Parse the scene for the placement configuration ====================== ")
@@ -99,15 +98,16 @@ def main(args):
     T_base_object[:3, 3] = TRAJ_TRA_INIT + TRAJ_OFFSET
     T_base_hand = T_base_object @ T_object_hand
     T_base_hand[:3, :3] = T_base_hand[:3, :3] @ TRAJ_ROT_INIT
-    breakpoint()
+    Y_MIN, Y_MAX = -0.7, T_base_hand[1, 3]
+    time.sleep(2)
     traj = publish_action(controller, T_base_hand)
     time.sleep(2)
     breakpoint()
     print(" ====================== Step 2: Grasp the object ======================")
     controller._publish_gripper([GRIPPER_OPENNING])
-    breakpoint()
 
     # Step 3: Go to the placement configuration
+    T_base_object_to_place[1, 3] = np.clip(T_base_object_to_place[1, 3], a_min=Y_MIN, a_max=Y_MAX)
     if vert_grasp:
         T_object_hand = T_xrot @ T_object_hand
     T_base_hand = T_base_object_to_place @ T_object_hand
@@ -137,7 +137,7 @@ def main(args):
     # Step 5: Slowly release the object
     T_base_hand[:3, 3] += np.array([0, 0.2, 0.0])
     print(" ====================== Step 5: Make sure the object is released  ====================== ")
-    breakpoint()
+    time.sleep(2)
     traj = publish_action(controller, T_base_hand)
     if args.verbose:
         breakpoint()

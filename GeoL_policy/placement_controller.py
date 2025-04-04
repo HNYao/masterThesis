@@ -113,9 +113,10 @@ class HephaisbotPlacementController(ControllerBase):
                 debug=False):
         sub_count = 0
         while True:
-            color, depth, intr, T_calib = self._subscribe_image(cut_mode)
+            _, _, _, _ = self._subscribe_image(cut_mode, preprocess=False)
             sub_count += 1
-            if sub_count == 50:
+            if sub_count == 100:
+                color, depth, intr, T_calib = self._subscribe_image(cut_mode, preprocess=True)
                 cv2.imwrite(".tmp/tmp_color.png", color[..., [2,1,0]])
                 if not self.use_monodepth:
                     cv2.imwrite(".tmp/tmp_depth.png", (depth * 1000).astype(np.uint16))
