@@ -4,17 +4,13 @@ from controller_base import ControllerBase
 from omegaconf import OmegaConf
 from easydict import EasyDict as edict
 import stretch_utils.data_utils as DataUtils
-# import time
 import numpy as np
-# import torch
-# import cv2
 from scipy.spatial.transform import Rotation as SciR
-from Geo_comb.full_pipeline import full_pipeline_v2
+from Geo_comb.full_pipeline import full_pipeline_v2, predict_depth, retrieve_obj_mesh 
 from GeoL_net.core.registry import registry
 import open3d as o3d
 import torch
 from PIL import Image
-from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -25,14 +21,8 @@ import torch
 import json
 import os
 from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
-from GeoL_net.models.modules import ProjectColorOntoImage_v3, ProjectColorOntoImage
-from GeoL_diffuser.models.guidance import *
-from GeoL_diffuser.models.utils.fit_plane import *
-from scipy.spatial.distance import cdist
-from matplotlib import cm
-import torchvision.transforms as T
-from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
+from GeoL_diffuser.models.guidance import CompositeGuidance
 import yaml
 from omegaconf import OmegaConf
 import matplotlib.pylab as plt
@@ -51,69 +41,7 @@ ROTATION_MATRIX_X180 = np.array(
             [0, 0, -1],
         ]
     )
-
-def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
-    intrinsic = [intr[0, 0], intr[1, 1],
-                 intr[0, 2], intr[1, 2]]  # fx, fy, cx, cy
-    # ajust input size to fit pretrained model
-    # keep ratio resize
-    # input_size = (544, 1216) # for convnext model
-    h, w = rgb_origin.shape[:2]
-    scale = min(input_size[0] / h, input_size[1] / w)
-    rgb = cv2.resize(rgb_origin, (int(w * scale), int(h * scale)),
-                     interpolation=cv2.INTER_LINEAR)
-    # remember to scale intrinsic, hold depth
-    intrinsic = [intrinsic[0] * scale, intrinsic[1] *
-                 scale, intrinsic[2] * scale, intrinsic[3] * scale]
-    # padding to input_size
-    padding = [123.675, 116.28, 103.53]
-    h, w = rgb.shape[:2]
-    pad_h = input_size[0] - h
-    pad_w = input_size[1] - w
-    pad_h_half = pad_h // 2
-    pad_w_half = pad_w // 2
-    rgb = cv2.copyMakeBorder(rgb, pad_h_half, pad_h - pad_h_half,
-                             pad_w_half, pad_w - pad_w_half, cv2.BORDER_CONSTANT, value=padding)
-    pad_info = [pad_h_half, pad_h - pad_h_half, pad_w_half, pad_w - pad_w_half]
-
-    # normalize
-    mean = torch.tensor([123.675, 116.28, 103.53]).float()[:, None, None]
-    std = torch.tensor([58.395, 57.12, 57.375]).float()[:, None, None]
-    rgb = torch.from_numpy(rgb.transpose((2, 0, 1))).float()
-    rgb = torch.div((rgb - mean), std)
-    rgb = rgb[None, :, :, :].cuda()
-
-    ###################### canonical camera space ######################
-    # inference
-    with torch.no_grad():
-        pred_depth, confidence, output_dict = depth_model.inference({
-                                                                    'input': rgb})
-
-    # un pad
-    pred_depth = pred_depth.squeeze()
-    confidence = confidence.squeeze()
-    pred_depth = pred_depth[pad_info[0]: pred_depth.shape[0] -
-                            pad_info[1], pad_info[2]: pred_depth.shape[1] - pad_info[3]]
-    confidence = confidence[pad_info[0]: confidence.shape[0] -
-                            pad_info[1], pad_info[2]: confidence.shape[1] - pad_info[3]]
-
-    # upsample to original size
-    pred_depth = torch.nn.functional.interpolate(
-        pred_depth[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
-    confidence = torch.nn.functional.interpolate(
-        confidence[None, None, :, :], rgb_origin.shape[:2], mode='nearest').squeeze()
-    ###################### canonical camera space ######################
-
-    # de-canonical transform
-    # 1000.0 is the focal length of canonical camera
-    canonical_to_real_scale = intrinsic[0] / 1000.0
-    pred_depth = pred_depth * canonical_to_real_scale  # now the depth is metric
-    pred_depth = torch.clamp(pred_depth, 0, 5)
-    pred_depth = pred_depth.cpu().numpy()
-    confidence = confidence.cpu().numpy()
-    return pred_depth, confidence
-
-
+ 
 class HephaisbotPlacementController(ControllerBase):
     def __init__(self, cfg=None, use_monodepth=True, dummy_place=False):
         robot_calib = DataUtils.load_json("./config_base_cam.json")
@@ -166,11 +94,12 @@ class HephaisbotPlacementController(ControllerBase):
     def inference(self, 
                 T_object_hand, 
                 obj_mesh, 
-                target_name=["Monitor"],
-                direction_text=["Front"],
+                target_names=["Monitor"],
+                direction_texts=["Front"],
                 use_vlm=False,
+                fast_vlm_detection=False,
                 use_kmeans=True,
-                visualize_affordance=True,
+                visualize_affordance=False,
                 visualize_diff=False,
                 visualize_final_obj=True,
                 rendering = False,
@@ -181,11 +110,18 @@ class HephaisbotPlacementController(ControllerBase):
         color, depth, intr, T_calib = self._subscribe_image(cut_mode)
         if self.use_monodepth:
             print("Using Metric3D model for depth prediction")
-            img_mask = color.sum(-1) > 0
-            img_mask = cv2.erode(img_mask.astype(np.uint8), np.ones((25, 25)))
+            if cut_mode == "full":
+                offset = 25
+                padding = (1280 - 405) // 2
+                img_mask = np.zeros_like(color[..., 0])
+                img_mask[:, padding + offset: padding + 405 - offset] = 1
+            else:
+                img_mask = np.ones_like(color[..., 0])
+            # color = (color * img_mask[..., None]).astype(np.uint8)
             depth, _ = predict_depth(self.depth_model, color, intr)
-            depth[~img_mask] = 0
-            depth[depth < 0.3] = 0
+            depth = depth * img_mask
+            depth[depth < 0.5] = 0
+            
         points_scene, scene_ids = DataUtils.backproject(
             depth,
             intr,
@@ -204,9 +140,10 @@ class HephaisbotPlacementController(ControllerBase):
                 points_scene, colors_scene
             )
             place_pos = place_pos_samples.mean(axis=0)
-            # place_pos = np.array([-0.072, 0.23, 1])
             place_ang = 10
         else:
+            # pcd_scene = visualize_points(points_scene, colors_scene)
+            # o3d.visualization.draw([pcd_scene])
             color = color[..., ::-1].copy().astype(np.uint8)
             depth = (depth * 1000).astype(np.uint16)
             T_camera_plane = np.linalg.inv(T_base_headcam)
@@ -218,9 +155,10 @@ class HephaisbotPlacementController(ControllerBase):
                 depth_image=depth,
                 obj_mesh=obj_mesh,
                 intrinsics=intr,
-                target_name=target_name,
-                direction_text=direction_text,
+                target_names=target_names,
+                direction_texts=direction_texts,
                 use_vlm=use_vlm,
+                fast_vlm_detection=fast_vlm_detection,
                 use_kmeans=use_kmeans,
                 visualize_affordance=visualize_affordance,
                 visualize_diff=visualize_diff,
@@ -311,43 +249,22 @@ if __name__ == "__main__":
     controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
 
     # while True:
-    obj_mesh = o3d.io.read_triangle_mesh("data_and_weights/mesh/keyboard/keyboard_0001_black/mesh.obj")
-    obj_target_size = [0.8, 0.2, 0.01] # H W D
-    obj_mesh.compute_vertex_normals()
-    current_size = obj_mesh.get_axis_aligned_bounding_box().get_extent()
-    obj_scale = np.array([obj_target_size[0]/ current_size[0], obj_target_size[1]/ current_size[1], obj_target_size[2]/ current_size[2]])
-    obj_scale_matrix = np.array([
-        [obj_scale[0], 0, 0, 0],
-        [0, obj_scale[1], 0, 0],
-        [0, 0, obj_scale[2], 0],
-        [0,0,0,1]
-    ])
-
-    obj_mesh.transform(obj_scale_matrix)
-    obj_mesh.rotate(ROTATION_MATRIX_X180, center=[0, 0, 0])  # rotate obj mesh
-    
+    obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
     controller.inference(T_object_hand, 
                          obj_mesh, 
-                         target_name=["Mouse", "Monitor", ],
-                         direction_text=["Left", "Front", ],
+                         target_names=["Keyboard", ],
+                         direction_texts=["Right", ],
                          use_vlm=True,
                          use_kmeans=True,
-                         visualize_affordance=True,
+                         fast_vlm_detection=True,
+                         visualize_affordance=False,
                          visualize_diff=False,
                          visualize_final_obj=True,
                          height_offset=0.05, 
                          cut_mode="full",
                          rendering=True)
 
-    # controller.run(
-    #     instruction="pickup thing",
-    #     object_name="ball",
-    #     click_contact=True,
-    #     verbose=True,
-    #     save_name="demo_ball",
-    #     traj_scale=0.5
-    # )
-    # controller._publish_trajectory(np.zeros([81,3]))
+ 
 # scp hello-robot@192.168.1.2:/home/hello-robot/stretch_manip/config_base_cam.json /home/cvai/hanzhi_ws/egoprior-diffuser/policy_server
 # export PYTHONPATH="${PYTHONPATH}:$PWD"
 # export PYTHONPATH="${PYTHONPATH}:/usr/lib/python3/dist-packages"     

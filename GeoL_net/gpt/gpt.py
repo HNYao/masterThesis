@@ -195,7 +195,7 @@ def chatgpt_selected_plan(image_path: str):
             You are also given the category name of a **target object** that needs to be placed. \n\
             Task: Your goal is to determine the best placement for the target object using existing objects in the scene as **anchor objects** (i.e., reference objects). Think step by Step! \
             **Guidelines**:\
-            1. Selecting Anchor Objects: Choose one or more anchor objects from the image. Only objects with a bounding box and an assigned ID can be selected as anchors. For each anchor, provide its name and ID. \n \
+            1. Selecting Anchor Objects: Choose one or more anchor objects from the image. Only objects with a bounding box and an assigned ID can be selected as anchors. For each anchor, recognizes its category and provide this category name and associated ID. \n \
             2. Determining Placement Direction: Specify the best placement direction(s) for the target object relative to each chosen anchor. Use the following directional terms: Left Front, Right Front, Left Behind,  \n \
               Right Behind, Left, Right, Front, Behind. If multiple anchor objects are needed, list each anchor alongside its corresponding placement direction. \n \
             3.  Ensuring Logical Placement: Placement should follow human common sense and maintain accessibility in the scene, also notice the physical plausibility. \n \
