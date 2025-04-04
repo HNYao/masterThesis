@@ -562,6 +562,17 @@ def apply_kmeans_to_affordance(points, affordance_values, n_clusters=3,
     assert len(affordance_values_new) == len(points)
     return affordance_values_new
     
+def generate_affordance_direct(
+        data_batch
+):
+    anchor_position = data_batch["anchor_position"]
+    points_scene = data_batch["pc_position"]
+    distance = torch.norm(points_scene - anchor_position, dim=-1)
+    affordance_value = torch.clamp(1 - (distance / 0.2) **0.9, min=-10, max=10)
+    affordance_value =  affordance_value.view(1, 2048, 1)
+
+    return affordance_value 
+
 
 
 def prepare_data_batch(rgb_image, 
@@ -617,9 +628,14 @@ def prepare_data_batch(rgb_image,
         scale = 0.8
     if "Behind" in direction_text:
         y2 = int(y1 + height * 0.25)
-        scale = 1.2
+    if "On" in direction_text:
+        y1 = int(y1 + height * 0.4)
+        x1 = int(x1 + width * 0.4)
+        y2 = int(y2 - height * 0.4)
+        x2 = int(x2 - width * 0.4)
     cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
+    plt.imshow(rgb_image)
+    plt.show()
     box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,
@@ -654,8 +670,8 @@ def detect_object(
     use_chatgpt=False,
 ):
     TEXT_PROMPT = text_prompt
-    BOX_TRESHOLD = 0.25 # 0.35
-    TEXT_TRESHOLD = 0.25 # 0.25
+    BOX_TRESHOLD = 0.20 # 0.35
+    TEXT_TRESHOLD = 0.20 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
     boxes, logits, phrases = predict(
@@ -705,8 +721,9 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
-    BOX_TRESHOLD = 0.25 # 0.35
+    TEXT_PROMPT = "plate, spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
+    #TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
+    BOX_TRESHOLD = 0.15 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
@@ -718,11 +735,21 @@ def detect_object_with_vlm(
         text_threshold=TEXT_TRESHOLD,
     )
 
-    phrases = [f"id{id}" for id in range(len(phrases))]
+    #phrases = [f"id{id}" for id in range(len(phrases))]
 
     _, h, w = image_input.shape
     boxes_xyxy = boxes * torch.Tensor([w, h, w, h])
     boxes_xyxy = box_convert(boxes=boxes_xyxy, in_fmt="cxcywh", out_fmt="xyxy").numpy()
+    
+    # filter out the bboex whose area is larger than 80% of the whole image
+    image_area = w * h
+    boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
+    area_mask = boxes_area < image_area * 0.8
+    boxes_xyxy = boxes_xyxy[area_mask]
+    boxes = boxes[area_mask]
+    logits = logits[area_mask]
+    phrases = [f"id{id}" for id in range(boxes_xyxy.shape[0])]
+    
     if len(phrases) > 0:
         # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
         annotated_frame = annotate(
@@ -740,9 +767,20 @@ def detect_object_with_vlm(
         #     selected_id = int(id_selected_vlm)
         # else:
         #     selected_id = 0
-            
+    
+   
+
     selected_box_xyxy = [boxes_xyxy[id].astype(np.int32) for id in bbox_id_list]
-    boxes_xyxy = [boxes_xyxy[id].astype(np.int32) for id in range(len(boxes_xyxy))]
+    boxes_xyxy = [boxes_xyxy[id].astype(np.int32) for id in range(len(boxes_xyxy))] # all boxes
+
+
+    # get the boxes of object with the "On" direction and delete it from the boxes_xyxy
+    if "On" in direction_list:
+        boxes_with_on = [boxes_xyxy[id].astype(np.int32) for id, direction in zip(bbox_id_list, direction_list) if direction == "On"]
+        boxes_xyxy = [item for item in boxes_xyxy if not any(np.array_equal(item, box) for box in boxes_with_on)]
+
+
+    
     #selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
 
     return target_obj_list, direction_list, selected_box_xyxy, boxes_xyxy
@@ -811,16 +849,23 @@ def full_pipeline_v2(
             selected_box, selected_phrase = detect_object(
                 model_detection, rgb_image, target_names[i], use_chatgpt=use_vlm
             )
+        
+
+
         # prepare the data batch
         data_batch = prepare_data_batch(rgb_image, depth_image, intrinsics, target_names[i], selected_box, direction_texts[i], to_tensor=True)
         for key, val in data_batch.items():
             if not isinstance(val, torch.Tensor):
                 continue
             data_batch[key] = val.float().to("cuda")[None]
-            
-        # 
-        with torch.no_grad():
-            affordance_pred = model_affordance(batch=data_batch)["affordance"].squeeze(1)
+        
+        # implement the "On" direction
+        if direction_texts[i] == "On":
+            affordance_pred = generate_affordance_direct(data_batch)
+        
+        else:
+            with torch.no_grad():
+                affordance_pred = model_affordance(batch=data_batch)["affordance"].squeeze(1)
         affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
         affordance_thershold = -np.inf
         fps_points_scene_from_original = data_batch["fps_points_scene"][0]
@@ -935,9 +980,12 @@ def full_pipeline_v2(
     # 10 select topk points
     topk = 10
     target_shape = pred['pose_xyR_pred'].shape[1] 
+
+
     guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
     guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+        
     # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
     pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
     # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
@@ -1025,8 +1073,8 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "data_and_weights/realworld_2103/color/000008.png"
-    depth_image_file_path = "data_and_weights/realworld_2103/depth/000008.png"
+    rgb_image_file_path = "data_and_weights/realworld_2103/color/000082.png"
+    depth_image_file_path = "data_and_weights/realworld_2103/depth/000082.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
@@ -1072,10 +1120,10 @@ if __name__ == "__main__":
         depth_image=depth_image,
         obj_mesh=obj_mesh,
         intrinsics=INTRINSICS,
-        target_names=["Keyboard"],     #, "Monitor", "Monitor"],
-        direction_texts=["Right Front"],     #, "Left Front", "Right Front"],
-        use_vlm=False,
-        fast_vlm_detection=False,
+        target_names=["white plate in the middle"],     #, "Monitor", "Monitor"],
+        direction_texts=["On"],     #, "Left Front", "Right Front"],
+        use_vlm=True,
+        fast_vlm_detection=True,
         use_kmeans=True,
         visualize_affordance=False,
         visualize_diff=False,
