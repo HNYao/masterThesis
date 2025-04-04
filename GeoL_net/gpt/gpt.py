@@ -169,6 +169,7 @@ def chatgpt_selected_plan(image_path: str):
     """
 
     base64_image = encode_image(image_path)
+    base64_image_example = encode_image("/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/gpt/example_case.jpg")
 
     api_key = os.getenv("CHATGPT_API_KEY")
   
@@ -196,7 +197,7 @@ def chatgpt_selected_plan(image_path: str):
             Task: Your goal is to determine the best placement for the target object using existing objects in the scene as **anchor objects** (i.e., reference objects). Think step by Step! \
             **Guidelines**:\
             1. Selecting Anchor Objects: Choose one or more anchor objects from the image. Only objects with a bounding box and an assigned ID can be selected as anchors. For each anchor, provide its name and ID. \n \
-            2. Determining Placement Direction: Specify the best placement direction(s) for the target object relative to each chosen anchor. Use the following directional terms: Left Front, Right Front, Left Behind,  \n \
+            2. Determining Placement Direction: Specify the best placement direction(s) for the target object relative to each chosen anchor. Use the following directional terms: Left Front, Right Front, Left Behind, On \n \
               Right Behind, Left, Right, Front, Behind. If multiple anchor objects are needed, list each anchor alongside its corresponding placement direction. \n \
             3.  Ensuring Logical Placement: Placement should follow human common sense and maintain accessibility in the scene, also notice the physical plausibility. \n \
             **Output Format**:\
@@ -204,30 +205,90 @@ def chatgpt_selected_plan(image_path: str):
             direction: <direction of target object relative to object name 1, direction of target object relative to object name 2, ...>\n \
             bbox id: <int(ID of object name 1),  int(ID of object name 2), ...>\n "
                   },
+        {"role": "user",
+         "content": [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image_example}"
+                }
+            },
+            {
+                "type": "text",
+                "text": f"Base on the image, where should I put a mouse reasonably without collision and overlap with other objects? Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\nbbox id: <id of the bounding box>\n "
+            }
+
+          ]
+            
+        },
         {
-        "role": "assistant",
-        "content": """
-            Here are the examples:
-            Assume the given image contains objects and their bboxes: monitor(bbox id2), blue cup(bbox id0), blue phone(bbox id3), red can(no bbox), black bottle(bbox id 1), green book(no box).
-              Please note that anchors should be split by ",".
-              1. Mouse. I am a right-handed. Please answer:
-                  anchor: monitor, black bottle
-                  direction: Right Front, Left Front
-                  bbox id: 2, 1
-              2. Mouse. I am a left-handed. Please answer:
-                  anchor: monitor 
-                  direction: Left Front
-                  bbox id: 2
-              3. bottle. Please answer:
-                  anchor: black bottle
-                  direction: Left Front
-                  bbox id: 1
-              4. phone. I like playing mobile games and drinking coffee. Please answer:
-                  anchor: blue cup
-                  direction: Right Front
-                  bbox id: 0
-        """
-          },
+          "role": "assistant",
+          "content":"""There is already a monitor, a keyboard, a laptop, a white cup and a power strip on the table. \
+            The monitor has a bounding box with ID 0, so it can be sleected as a potential anchor object. \
+            The keyboard has a bounding box with ID 1, so it can be sleected as a potential anchor object. \
+            The power strip has a bounding box with ID 2, so it can be sleected as a potential anchor object. \
+            The cup has a bounding box with ID 3, so it can be sleected as a potential anchor object. \
+            The laptop does not have a bounding box, so it can not be selected as anchor object forever. \
+            The user want to put a mouse on the table. \
+            The mouse is always used with the minitor and keyboard, so the keyboard and monitor are the anchor objects. \
+            The mouse is usually used with the keyboard.\
+            The user does not provide any extra information, so we can assumen user is right-handed. \
+            The mouse should be placed on the Right of the keyboard. \
+            so the final response is: anchor: keyboard\ndirection: Right\nbbox id: 1
+          """
+        },
+
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": f"Base on the image, where should I put a bottle reasonably without collision and overlap with other objects?  Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\nbbox id: <id of the bounding box>\n "
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content":"""There is already a monitor, a keyboard, a laptop, a white cup and a power strip on the table. \
+            The monitor has a bounding box with ID 0, so it can be sleected as a potential anchor object. \
+            The keyboard has a bounding box with ID 1, so it can be sleected as a potential anchor object. \
+            The power strip has a bounding box with ID 2, so it can be sleected as a potential anchor object. \
+            The cup has a bounding box with ID 3, so it can be sleected as a potential anchor object. \
+            The laptop does not have a bounding box, so it can not be selected as anchor object forever. \
+            The user want to put a bottle on the table. \
+            The bottle is usually used with the cup.\
+            The user does not provide any extra information.\
+            The bottle should be placed on the Left Front of the cup. \
+            so the final response is: anchor: cup\ndirection: Left Front\nbbox id: 3
+          """
+        },
+        
+        # {
+        # "role": "assistant",
+        # "content": """
+        #     Here are the examples:
+
+        #     Assume the given image contains objects and their bboxes: monitor(bbox id2), blue cup(bbox id0), blue phone(bbox id3), red box(bbox id4), black bottle(bbox id 1), green book(no box).
+        #       Please note that anchors should be split by ",".
+        #       1. The user input is: Mouse.  
+        #       Mouse. I am a right-handed. Please answer:
+        #           anchor: monitor, black bottle
+        #           direction: Right Front, Left Front
+        #           bbox id: 2, 1
+        #       2. Mouse. I am a left-handed. Please answer:
+        #           anchor: monitor 
+        #           direction: Left Front
+        #           bbox id: 2
+        #       3. Ball. Please answer:
+        #           anchor: red box
+        #           direction: On
+        #           bbox id: 4
+        #       4. phone. I like playing mobile games and drinking coffee. Please answer:
+        #           anchor: blue cup
+        #           direction: Right Front
+        #           bbox id: 0
+        # """
+        #   },
         {
           "role": "user",
           "content": [
