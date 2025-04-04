@@ -28,6 +28,7 @@ import yaml
 from omegaconf import OmegaConf
 import matplotlib.pylab as plt
 import copy 
+import time
 
 INTRINSICS_HEAD = np.array([
             [910.68, 0, 626.58],
@@ -110,7 +111,15 @@ class HephaisbotPlacementController(ControllerBase):
                 cut_mode="center", 
                 verbose=True, 
                 debug=False):
-        color, depth, intr, T_calib = self._subscribe_image(cut_mode)
+        sub_count = 0
+        while True:
+            color, depth, intr, T_calib = self._subscribe_image(cut_mode)
+            sub_count += 1
+            if sub_count == 50:
+                cv2.imwrite(".tmp/tmp_color.png", color[..., [2,1,0]])
+                if not self.use_monodepth:
+                    cv2.imwrite(".tmp/tmp_depth.png", (depth * 1000).astype(np.uint16))
+                break
         if self.use_monodepth:
             print("Using Metric3D model for depth prediction")
             if cut_mode == "full":
@@ -124,7 +133,9 @@ class HephaisbotPlacementController(ControllerBase):
             depth, _ = predict_depth(self.depth_model, color, intr)
             depth = depth * img_mask
             depth[depth < 0.5] = 0
-            
+            cv2.imwrite(".tmp/tmp_depth.png", (depth * 1000).astype(np.uint16))
+        print("===============> Successfully subscribed to image!")
+
         points_scene, scene_ids = DataUtils.backproject(
             depth,
             intr,
@@ -136,7 +147,8 @@ class HephaisbotPlacementController(ControllerBase):
         obj_mesh_vis.compute_vertex_normals()
         obj_mesh_vis.rotate(ROTATION_MATRIX_X180[:3, :3])
         T_base_headcam = self.T_base_headcam @ T_calib
-        
+        # pcd_scene = DataUtils.visualize_points(points_scene, colors_scene)
+        # o3d.visualization.draw([pcd_scene])
         ##### Dummy inference by manual selection ####
         if debug and self.dummy_place:
             place_pos_samples = DataUtils.pick_points_in_viewer(
@@ -189,35 +201,8 @@ class HephaisbotPlacementController(ControllerBase):
         T_base_hand = T_base_object @ T_object_hand
 
         if verbose:
-            # current_size = mesh_obj.get_axis_aligned_bounding_box().get_extent()
-            # obj_target_size = [0.8, 0.2, 0.01]
-            # obj_scale = np.array([obj_target_size[0]/ current_size[0], 
-            #                       obj_target_size[1]/ current_size[1], 
-            #                       obj_target_size[2]/ current_size[2]])
-            # obj_scale_matrix = np.array([
-            #     [obj_scale[0], 0, 0, 0],
-            #     [0, obj_scale[1], 0, 0],
-            #     [0, 0, obj_scale[2], 0],
-            #     [0,0,0,1]
-            # ])
-            # obj_inverse_matrix = np.array(
-            #     [
-            #         [1, 0, 0],
-            #         [0, -1, 0],
-            #         [0, 0, -1],
-            #     ]
-            # )
-            # mesh_obj.paint_uniform_color([0,1,0])
-            # mesh_obj.compute_vertex_normals()
-            # mesh_obj.transform(obj_scale_matrix)
-            # mesh_obj.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
-            # mesh_obj.rotate(SciR.from_euler("X", 180, degrees=True).as_matrix())
-            
-            # Transform mesh to the target configuration
             obj_mesh_vis.transform(T_base_object)
-            
-            # place_pos_in_base = place_pos @ T_base_headcam[:3, :3].T + T_base_headcam[:3, 3]
-            # place_pos_in_base[2] += 0.05 # Compensation
+
             print("... Visualize the inference results ...")
             points_scene_in_base = points_scene @ T_base_headcam[:3, :3].T + T_base_headcam[:3, 3]
             pcd_scene = DataUtils.visualize_points(points_scene_in_base, colors_scene)

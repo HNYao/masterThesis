@@ -4,7 +4,7 @@ remote_address: 192.168.1.4 # remote
 # host_address: 127.0.0.2 # robot
 # remote_address: 127.0.0.2 # robot
 camera_port: 32922
-action_port: 8089
-trajectory_port: 30922
+action_port: 18089
+trajectory_port: 1912
 flag_port: 2828
 xarm_ip: 192.168.1.216

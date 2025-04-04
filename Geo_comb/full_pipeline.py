@@ -633,9 +633,9 @@ def prepare_data_batch(rgb_image,
         x1 = int(x1 + width * 0.4)
         y2 = int(y2 - height * 0.4)
         x2 = int(x2 - width * 0.4)
-    cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    plt.imshow(rgb_image)
-    plt.show()
+    # cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    # plt.imshow(rgb_image)
+    # plt.show()
     box_mask[y1:y2, x1:x2] = 1
     points_anchor_scene, _ = backproject(
         depth_image,

@@ -14,13 +14,13 @@ import argparse
 TRAJ_ROT_INIT = np.array([-np.pi/2, 0, -np.pi])
 TRAJ_ROT_INIT = SciR.from_euler("xyz", TRAJ_ROT_INIT, degrees=False).as_matrix()
 TRAJ_OFFSET = np.array([0, -0.28, 0.03])
-TRAJ_TRA_INIT = np.array([0.0, -0.393, 1.0]) - TRAJ_OFFSET
+TRAJ_TRA_INIT = np.array([0.0, -0.393, 0.8]) - TRAJ_OFFSET
 GRIPPER_OPENNING = 0.3
 
 # Pre-defined transformations
 yrot_90 = SciR.from_euler("y", 80, degrees=True).as_matrix()
 xrot_10 = SciR.from_euler("x", -20, degrees=True).as_matrix()
-zrot_90 = SciR.from_euler("z", 90, degrees=True).as_matrix()
+zrot_90 = SciR.from_euler("z", 100, degrees=True).as_matrix()
 zrot_180 = SciR.from_euler("z", 180, degrees=True).as_matrix()
 T_yrot, T_xrot, T_zrot90, T_zrot180 = np.eye(4), np.eye(4), np.eye(4), np.eye(4)
 T_yrot[:3, :3] = yrot_90
@@ -33,7 +33,7 @@ controller_cfg = {
     "config_network": "./stretch_config/network_config.yaml"
 }
 controller_cfg = edict(controller_cfg)
-controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
+controller = HephaisbotPlacementController(controller_cfg, use_monodepth=False)
 time.sleep(2)
 print(" ====================== Done with controller initialization! ====================== ")
 def publish_action(controller, T_base_hand, openning=1):
@@ -74,7 +74,8 @@ def main(args):
     print(" ====================== Step 1: Parse the scene for the placement configuration ====================== ")
     obj_mesh = retrieve_obj_mesh(mesh_category, target_size=target_size)
     # T_base_object_to_place = controller.inference(T_object_hand, height_offset=0.07, cut_mode="full")
-    T_base_object_to_place = controller.inference(T_object_hand, 
+    T_base_object_to_place = controller.inference(
+                            T_object_hand, 
                             obj_mesh, 
                             target_names=["Monitor", ],
                             direction_texts=["Right Front", ],
@@ -84,7 +85,7 @@ def main(args):
                             visualize_affordance=False,
                             visualize_diff=False,
                             visualize_final_obj=True,
-                            height_offset=height_offset, 
+                            height_offset=args.height_offset, 
                             disable_rotation=disable_rotation,
                             cut_mode="full",
                             rendering=True,
@@ -146,8 +147,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--mesh_category",  type=str, default="phone")
     parser.add_argument("-s", "--target_size", type=float, default=0.1)
-    parser.add_argument("-h", "--height_offset", type=float, default=0.05)
-
+    parser.add_argument("-o", "--height_offset", type=float, default=0.05)
     parser.add_argument("-v", "--vert_grasp", action="store_true")
     parser.add_argument("--disable_rotation", action="store_true")
     args = parser.parse_args()
