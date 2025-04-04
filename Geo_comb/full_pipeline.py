@@ -720,11 +720,16 @@ def detect_object_with_vlm(
     """
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
+    # Kitchen scene
+    # TEXT_PROMPT = "plate, bowl, cup, spoon, fork, knife, wine, vase, caffee machine, phone, telephone, fruit, vegetable, apple, banana, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
+    # BOX_TRESHOLD = 0.15 # 0.35
+    # TEXT_TRESHOLD = 0.25 # 0.25
 
-    TEXT_PROMPT = "plate, spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
-    #TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
-    BOX_TRESHOLD = 0.15 # 0.35
+    # working desk scene
+    TEXT_PROMPT = "monitor, screen, laptop, display, mouse, keyboard, cup, bottle, glass, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper"
+    BOX_TRESHOLD = 0.25 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
+
 
     image_source, image_input = preprocess_image_groundingdino(image)
     boxes, logits, phrases = predict(
