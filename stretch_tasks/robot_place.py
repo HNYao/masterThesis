@@ -70,7 +70,7 @@ time.sleep(2)
 
 # Step 1: Parse the scene for the placement configuration
 breakpoint()
-print("Step 1: Parse the scene for the placement configuration")
+print(" ====================== Step 1: Parse the scene for the placement configuration ====================== ")
 obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
 T_base_object_to_place = controller.inference(T_object_hand, height_offset=0.07, cut_mode="full")
 # T_base_object_to_place = controller.inference(T_object_hand, 
@@ -98,7 +98,7 @@ breakpoint()
 traj = publish_action(controller, T_base_hand)
 time.sleep(2)
 breakpoint()
-print("Step 2: Grasp the object")
+print(" ====================== Step 2: Grasp the object ======================")
 controller._publish_gripper([GRIPPER_OPENNING])
 breakpoint()
 
@@ -107,7 +107,7 @@ if VERT_GRASP:
     T_object_hand = T_xrot @ T_object_hand
 T_base_hand = T_base_object_to_place @ T_object_hand
 T_base_hand[:3, :3] = T_base_hand[:3, :3] @ TRAJ_ROT_INIT
-print("Step 3: Go to the refined placement configuration")
+print(" ====================== Step 3: Go to the refined placement configuration ====================== ")
 breakpoint()
 traj = publish_action(controller, T_base_hand, GRIPPER_OPENNING)
 time.sleep(2)
@@ -116,12 +116,12 @@ time.sleep(2)
 traj_post = traj.copy()
 traj_post[:, -1] = 1
 breakpoint()
-print("Step 4: Open the gripper to release the object")
+print(" ====================== Step 4: Open the gripper to release the object  ====================== ")
 traj = controller._publish_trajectory(traj_post)
 
 # Step 5: Slowly release the object
 T_base_hand[:3, 3] += np.array([0, 0.2, 0.0])
-print("Step 5: Make sure the object is released")
+print(" ====================== Step 5: Make sure the object is released  ====================== ")
 breakpoint()
 traj = publish_action(controller, T_base_hand)
 time.sleep(2)
