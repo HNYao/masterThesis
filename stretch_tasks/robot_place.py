@@ -14,7 +14,7 @@ import argparse
 TRAJ_ROT_INIT = np.array([-np.pi/2, 0, -np.pi])
 TRAJ_ROT_INIT = SciR.from_euler("xyz", TRAJ_ROT_INIT, degrees=False).as_matrix()
 TRAJ_OFFSET = np.array([0, -0.28, 0.03])
-TRAJ_TRA_INIT = np.array([0.0, -0.393, 0.8]) - TRAJ_OFFSET
+TRAJ_TRA_INIT = np.array([0.0, -0.393, 1.0]) - TRAJ_OFFSET
 GRIPPER_OPENNING = 0.3
 
 # Pre-defined transformations
@@ -28,6 +28,14 @@ T_xrot[:3, :3] = xrot_10
 T_zrot90[:3, :3] = zrot_90
 T_zrot180[:3, :3] = zrot_180
 
+# Initialize the controller
+controller_cfg = {
+    "config_network": "./stretch_config/network_config.yaml"
+}
+controller_cfg = edict(controller_cfg)
+controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
+time.sleep(2)
+print(" ====================== Done with controller initialization! ====================== ")
 def publish_action(controller, T_base_hand, openning=1):
     traj_rot = SciR.from_matrix(T_base_hand[:3, :3]).as_euler("xyz", False)
     traj_grip = np.ones([1]).astype(np.int32) * openning # [1]
@@ -38,22 +46,12 @@ def publish_action(controller, T_base_hand, openning=1):
     time.sleep(0.2)
     return traj
 
-
-# Initialize the controller
 def main(args):
-
     vert_grasp = args.vert_grasp
     mesh_category = args.mesh_category
     target_size = args.target_size
     disable_rotation = args.disable_rotation
     
-    controller_cfg = {
-        "config_network": "./stretch_config/network_config.yaml"
-    }
-    controller_cfg = edict(controller_cfg)
-    # controller = DemoPlacementController(controller_cfg)
-    controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
-
     # Compute the initial T_object_hand configuration
     T_base_hand, T_object_hand = np.eye(4), np.eye(4)
     T_object_hand[:3, :3] = zrot_180 @ T_object_hand[:3, :3]
@@ -86,7 +84,7 @@ def main(args):
                             visualize_affordance=False,
                             visualize_diff=False,
                             visualize_final_obj=True,
-                            height_offset=0.05, 
+                            height_offset=height_offset, 
                             disable_rotation=disable_rotation,
                             cut_mode="full",
                             rendering=True,
@@ -148,6 +146,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--mesh_category",  type=str, default="phone")
     parser.add_argument("-s", "--target_size", type=float, default=0.1)
+    parser.add_argument("-h", "--height_offset", type=float, default=0.05)
+
     parser.add_argument("-v", "--vert_grasp", action="store_true")
     parser.add_argument("--disable_rotation", action="store_true")
     args = parser.parse_args()

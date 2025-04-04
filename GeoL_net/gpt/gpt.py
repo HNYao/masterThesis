@@ -169,7 +169,7 @@ def chatgpt_selected_plan(image_path: str):
     """
 
     base64_image = encode_image(image_path)
-    base64_image_example = encode_image("/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/gpt/example_case.jpg")
+    base64_image_example = encode_image("./GeoL_net/gpt/example_case.jpg")
 
     api_key = os.getenv("CHATGPT_API_KEY")
   
