@@ -14,12 +14,12 @@ import argparse
 TRAJ_ROT_INIT = np.array([-np.pi/2, 0, -np.pi])
 TRAJ_ROT_INIT = SciR.from_euler("xyz", TRAJ_ROT_INIT, degrees=False).as_matrix()
 TRAJ_OFFSET = np.array([0, -0.28, 0.03])
-TRAJ_TRA_INIT = np.array([0.0, -0.393, 0.8]) - TRAJ_OFFSET
-GRIPPER_OPENNING = 0.3
+TRAJ_TRA_INIT = np.array([0.0, -0.393, 0.9]) - TRAJ_OFFSET
+GRIPPER_OPENNING = 0.2
 
 # Pre-defined transformations
 yrot_90 = SciR.from_euler("y", 80, degrees=True).as_matrix()
-xrot_10 = SciR.from_euler("x", -20, degrees=True).as_matrix()
+xrot_10 = SciR.from_euler("x", -15, degrees=True).as_matrix()
 zrot_90 = SciR.from_euler("z", 100, degrees=True).as_matrix()
 zrot_180 = SciR.from_euler("z", 180, degrees=True).as_matrix()
 T_yrot, T_xrot, T_zrot90, T_zrot180 = np.eye(4), np.eye(4), np.eye(4), np.eye(4)
@@ -139,10 +139,7 @@ def main(args):
     print(" ====================== Step 5: Make sure the object is released  ====================== ")
     time.sleep(2)
     traj = publish_action(controller, T_base_hand)
-    if args.verbose:
-        breakpoint()
-    else:
-        time.sleep(2)
+    breakpoint()
 
     # Step 6: Home
     T_base_hand, T_object_hand = np.eye(4), np.eye(4)

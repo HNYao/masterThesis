@@ -723,7 +723,11 @@ def detect_object_with_vlm(
 
     TEXT_PROMPT = "plate, spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
     #TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
-    BOX_TRESHOLD = 0.15 # 0.35
+    # TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
+    # TEXT_PROMPT = "plate, cookie" #, fork, spoon, knife, wine, napkin, box, paper, food"
+   
+   
+    BOX_TRESHOLD = 0.3 # 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
