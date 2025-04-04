@@ -607,14 +607,17 @@ def prepare_data_batch(rgb_image,
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
     x1, y1, x2, y2 = target_box
     width, height = x2 - x1, y2 - y1
+    scale = 1.0
     if "Left" in direction_text:
         x2 = int(x1 + width * 0.25)
     if "Right" in direction_text:
         x1 = int(x2 - width * 0.25)
     if "Front" in direction_text:
         y1 = int(y2 - height * 0.25)
+        scale = 0.8
     if "Behind" in direction_text:
         y2 = int(y1 + height * 0.25)
+        scale = 1.2
     cv2.rectangle(rgb_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
     box_mask[y1:y2, x1:x2] = 1
@@ -624,7 +627,7 @@ def prepare_data_batch(rgb_image,
         box_mask,
         NOCS_convention=False,
     )
-    anchor_position = np.median(points_anchor_scene, axis=0)  
+    anchor_position = np.median(points_anchor_scene, axis=0) * scale
     data_batch["phrase"] =  ["n/a"]
     data_batch["file_path"] = ["n/a"]
     data_batch["mask"] =  ["n/a"]

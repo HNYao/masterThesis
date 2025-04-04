@@ -245,13 +245,13 @@ if __name__ == "__main__":
     T_object_hand[:3, :3] = yrot_90 @ zrot_180 @ T_object_hand[:3, :3]
     T_object_hand[:3, 3] = TRAJ_OFFSET
     controller_cfg = {
-        "config_network": "./network_config.yaml"
+        "config_network": "./stretch_config/network_config.yaml"
     }
     controller_cfg = edict(controller_cfg)
     controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
 
     # while True:
-    obj_mesh = retrieve_obj_mesh("phone", target_size=0.1)
+    obj_mesh = retrieve_obj_mesh("keyboard", target_size=0.1)
     controller.inference(T_object_hand, 
                          obj_mesh, 
                          target_names=["Keyboard", ],
@@ -259,7 +259,7 @@ if __name__ == "__main__":
                          use_vlm=True,
                          use_kmeans=True,
                          fast_vlm_detection=True,
-                         visualize_affordance=False,
+                         visualize_affordance=True,
                          visualize_diff=False,
                          visualize_final_obj=True,
                          height_offset=0.05, 
