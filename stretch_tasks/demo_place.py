@@ -45,7 +45,7 @@ T_zrot180[:3, :3] = zrot_180
 
 # Initialize the controller
 controller_cfg = {
-"config_network": "./network_config.yaml"
+"config_network": "./stretch_config/network_config.yaml"
 }
 controller_cfg = edict(controller_cfg)
 controller = DemoPlacementController(controller_cfg)

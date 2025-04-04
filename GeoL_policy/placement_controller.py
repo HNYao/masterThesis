@@ -1,5 +1,6 @@
 import open3d as o3d
-
+import sys
+sys.path.append("thirdpart/GroundingDINO")
 from GeoL_policy.controller_base import ControllerBase
 from omegaconf import OmegaConf
 from easydict import EasyDict as edict
@@ -14,7 +15,7 @@ from PIL import Image
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from GroundingDINO.groundingdino.util.inference import load_model
+from groundingdino.util.inference import load_model # 
 import cv2
 import numpy as np
 import torch
@@ -44,7 +45,7 @@ ROTATION_MATRIX_X180 = np.array(
  
 class HephaisbotPlacementController(ControllerBase):
     def __init__(self, cfg=None, use_monodepth=True, dummy_place=False):
-        robot_calib = DataUtils.load_json("./config_base_cam.json")
+        robot_calib = DataUtils.load_json("./stretch_config/config_base_cam.json")
         T_base_headcam = np.array(robot_calib["T_base_headcam"]).reshape(4,4)
         self.T_base_headcam = T_base_headcam
         self.raw_intr = INTRINSICS_HEAD
@@ -56,7 +57,8 @@ class HephaisbotPlacementController(ControllerBase):
         if not self.dummy_place:
             # Detection model
             model_detection = load_model(
-                "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "GroundingDINO/weights/groundingdino_swint_ogc.pth"
+                "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
+                "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
             )
             self.model_detection = model_detection.to("cuda")
             self.model_detection.eval()

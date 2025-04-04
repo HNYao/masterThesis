@@ -3,7 +3,8 @@
     1. GeoL_net predicts affordance heatmap
     2. GeoL_diffuser predicts 4d pose
 """
-
+import sys
+sys.path.append("thirdpart/GroundingDINO")
 from GeoL_net.core.registry import registry
 import open3d as o3d
 import torch
@@ -12,7 +13,9 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
+from groundingdino.util.inference import load_model, load_image, predict, annotate
+import groundingdino.datasets.transforms as GDinoT
+
 import cv2
 import numpy as np
 import torch
@@ -31,7 +34,6 @@ import yaml
 from omegaconf import OmegaConf
 from scipy.spatial.transform import Rotation as SciR
 from torchvision.ops import box_convert
-import groundingdino.datasets.transforms as GDinoT
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
@@ -1030,7 +1032,8 @@ if __name__ == "__main__":
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
     #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
     model_detection = load_model(
-        "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "GroundingDINO/weights/groundingdino_swint_ogc.pth"
+        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
+        "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
     )
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
     model_affordance = model_affordance_cls(

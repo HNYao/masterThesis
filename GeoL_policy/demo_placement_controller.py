@@ -1,5 +1,6 @@
 import open3d as o3d
-
+import sys
+sys.path.append("thirdpart/GroundingDINO")
 from GeoL_policy.controller_base import ControllerBase
 from omegaconf import OmegaConf
 from easydict import EasyDict as edict
@@ -18,7 +19,7 @@ INTRINSICS_HEAD = np.array([
 
 class DemoPlacementController(ControllerBase):
     def __init__(self, cfg=None):
-        robot_calib = DataUtils.load_json("./config_base_cam.json")
+        robot_calib = DataUtils.load_json("./stretch_config/config_base_cam.json")
         T_base_headcam = np.array(robot_calib["T_base_headcam"]).reshape(4,4)
         self.T_base_headcam = T_base_headcam
         self.raw_intr = INTRINSICS_HEAD

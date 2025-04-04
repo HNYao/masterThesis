@@ -1,4 +1,6 @@
 import open3d as o3d
+import sys
+sys.path.append("thirdpart/GroundingDINO")
 from omegaconf import OmegaConf
 from easydict import EasyDict as edict
 import stretch_utils.data_utils as DataUtils
@@ -16,7 +18,7 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from GroundingDINO.groundingdino.util.inference import load_model
+from groundingdino.util.inference import load_model
 import cv2
 import numpy as np
 import torch
@@ -34,8 +36,8 @@ from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
 def load_models(args):
     intrinsics = np.loadtxt(args.intr_path)
     model_detection = load_model(
-        "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
-        "GroundingDINO/weights/groundingdino_swint_ogc.pth"
+        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
+        "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
     )
     model_detection = model_detection.to("cuda")
     model_detection.eval()
