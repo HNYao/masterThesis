@@ -45,6 +45,8 @@ def main(args):
     vert_grasp = args.vert_grasp
     mesh_category = args.mesh_category
     target_size = args.target_size
+    disable_rotation = args.disable_rotation
+    
     controller_cfg = {
         "config_network": "./stretch_config/network_config.yaml"
     }
@@ -85,6 +87,7 @@ def main(args):
                             visualize_diff=False,
                             visualize_final_obj=True,
                             height_offset=0.05, 
+                            disable_rotation=disable_rotation,
                             cut_mode="full",
                             rendering=True,
                             verbose=True,
@@ -146,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--mesh_category",  type=str, default="phone")
     parser.add_argument("-s", "--target_size", type=float, default=0.1)
     parser.add_argument("-v", "--vert_grasp", action="store_true")
+    parser.add_argument("--disable_rotation", action="store_true")
     args = parser.parse_args()
     main(args)
 

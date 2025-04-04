@@ -760,6 +760,7 @@ def full_pipeline_v2(
         use_vlm = False,
         fast_vlm_detection = True,
         use_kmeans = True,
+        disable_rotation = False,
         visualize_affordance = False,
         visualize_diff = False,
         visualize_final_obj = False,
@@ -952,12 +953,7 @@ def full_pipeline_v2(
     # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
     print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
     print("pred xyR:", pred_points) 
-    obj_pcd = obj_mesh.sample_points_uniformly(number_of_points=10000)
-    obj_max_bound = obj_pcd.get_max_bound()
-    obj_min_bound = obj_pcd.get_min_bound()
-    # obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
-    # obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
-
+  
     pred_xyz_all, pred_r_all = [], []
     for i in range(len(pred_points)):
         pred_xy = pred_points[i,:2]
@@ -965,7 +961,9 @@ def full_pipeline_v2(
         pred_r = pred_r * 180 / np.pi
         pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
         pred_xyz = np.append(pred_xy, pred_z)
-        pred_xyz = pred_xyz #- obj_bottom_center
+        if disable_rotation:
+            pred_r = 0
+        pred_xyz = pred_xyz  
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         

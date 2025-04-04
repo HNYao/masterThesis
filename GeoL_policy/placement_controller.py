@@ -101,6 +101,7 @@ class HephaisbotPlacementController(ControllerBase):
                 use_vlm=False,
                 fast_vlm_detection=False,
                 use_kmeans=True,
+                disable_rotation=False,
                 visualize_affordance=False,
                 visualize_diff=False,
                 visualize_final_obj=True,
@@ -162,6 +163,7 @@ class HephaisbotPlacementController(ControllerBase):
                 use_vlm=use_vlm,
                 fast_vlm_detection=fast_vlm_detection,
                 use_kmeans=use_kmeans,
+                disable_rotation=disable_rotation,
                 visualize_affordance=visualize_affordance,
                 visualize_diff=visualize_diff,
                 visualize_final_obj=visualize_final_obj,
@@ -251,7 +253,7 @@ if __name__ == "__main__":
     controller = HephaisbotPlacementController(controller_cfg, use_monodepth=True)
 
     # while True:
-    obj_mesh = retrieve_obj_mesh("keyboard", target_size=0.1)
+    obj_mesh = retrieve_obj_mesh("keyboard", target_size=0.4)
     controller.inference(T_object_hand, 
                          obj_mesh, 
                          target_names=["Keyboard", ],
@@ -264,7 +266,8 @@ if __name__ == "__main__":
                          visualize_final_obj=True,
                          height_offset=0.05, 
                          cut_mode="full",
-                         rendering=True)
+                         rendering=True,
+                         disable_rotation=True)
 
  
 # scp hello-robot@192.168.1.2:/home/hello-robot/stretch_manip/config_base_cam.json /home/cvai/hanzhi_ws/egoprior-diffuser/policy_server
