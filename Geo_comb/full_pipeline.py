@@ -13,9 +13,8 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from groundingdino.util.inference import load_model, load_image, predict, annotate
-import groundingdino.datasets.transforms as GDinoT
-
+from groundingdino.util.inference import load_model, load_image, predict, annotate # type: ignore
+import groundingdino.datasets.transforms as GDinoT # type: ignore
 import cv2
 import numpy as np
 import torch
