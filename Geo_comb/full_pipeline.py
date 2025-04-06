@@ -141,7 +141,7 @@ def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weight
     obj_mesh.translate(translation)
     # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
     # o3d.visualization.draw([obj_mesh, axis])
-    return obj_mesh
+    return obj_mesh, obj_mesh_file
 
 def preprocess_image_groundingdino(image):
     transform = GDinoT.Compose(
@@ -721,13 +721,13 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "plate, spoon, fork, knife, wine, plate, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner, vase, caffee machine, phone, telephone, book, pencil, pen, paper, fruit, vegetable, apple, banaan, tomato, patato, orange, bottle, cup, bowl, glass, container, box, jar, can, knife, spoon, tea pot, wine, juice, milk, water"
+    TEXT_PROMPT = "knife, fork, spoon"
     #TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
     # TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
     # TEXT_PROMPT = "plate, cookie" #, fork, spoon, knife, wine, napkin, box, paper, food"
    
    
-    BOX_TRESHOLD = 0.3 # 0.35
+    BOX_TRESHOLD = 0.25# 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)

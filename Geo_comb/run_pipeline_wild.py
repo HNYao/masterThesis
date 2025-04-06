@@ -85,7 +85,7 @@ def run(args):
     rgb_image = cv2.imread(args.color_path)
     depth_image_raw = cv2.imread(args.depth_path, cv2.IMREAD_ANYDEPTH)
     intr = np.loadtxt(args.intr_path)
-    obj_mesh = retrieve_obj_mesh(args.mesh_category, target_size=args.target_size)
+    obj_mesh, obj_mesh_file = retrieve_obj_mesh(args.mesh_category, target_size=args.target_size)
     if args.use_m3d:
         depth_save_path = args.depth_path.replace(".png", "_m3d.png")
         # if os.path.exists(depth_save_path):
@@ -145,6 +145,14 @@ def run(args):
     results["depth_image_raw"] = depth_image_raw
     results["depth_image"] = depth_image
     results["intrinsics"] = intr
+    results["mesh_category"] = args.mesh_category
+    results["target_size"] = args.target_size
+    results["obj_mesh_file"] = obj_mesh_file
+
+    
+    if args.save_npz_file_name is not None:
+        np.savez(os.path.join("qualitative_demo/qualitative_npz", args.save_npz_file_name+".npz"), **results)
+        print(f"Saved npz file to {os.path.join('qualitative_demo/qualitative_npz', args.save_npz_file_name+'.npz')}")
     
 
 if __name__ == "__main__":
@@ -168,6 +176,7 @@ if __name__ == "__main__":
     parser.add_argument("--visualize_affordance", action="store_true")
     parser.add_argument("--visualize_diff", action="store_true")
     parser.add_argument("--rendering", action="store_true")
+    parser.add_argument("--save_npz_file_name", type=str, default=None)
     args = parser.parse_args()
 
     run(args)
