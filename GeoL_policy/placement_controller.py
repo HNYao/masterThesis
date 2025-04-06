@@ -143,6 +143,7 @@ class HephaisbotPlacementController(ControllerBase):
             depth < 1.5,
             NOCS_convention=False,
         )
+        # depth[depth >  1] = 0
         colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
         obj_mesh_vis =  copy.deepcopy(obj_mesh)
         obj_mesh_vis.compute_vertex_normals()
