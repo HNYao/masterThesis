@@ -1,8 +1,6 @@
 import os
 import numpy as np
 import open3d as o3d
-from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
-from GeoL_diffuser.models.utils.fit_plane import *
 import matplotlib.cm as cm
 from scipy.spatial.transform import Rotation as SciR
 import blendertoolbox as bt
@@ -16,6 +14,105 @@ OBJ_COLOR_RED = [250.0 / 255, 114.0 / 255, 104.0 / 255, 0.5]
 MESH_COLOR = bt.colorObj(OBJ_COLOR_RED, 0.5, 1.0, 1.0, 0.0, 2.0)
 POINT_COLOR = bt.colorObj([], 0.5, 1.0, 1.0, 0.0, 0.2)
 SCENE_POINT_SIZE = 0.005
+
+def get_tf_for_scene_rotation(points, axis="z"):
+    """
+    Get the transformation matrix for rotating the scene to align with the plane normal.
+
+    Args:
+        points (np.ndarray): The points of the scene.
+        axis (str): The axis to align with the plane normal.
+    
+    Returns:
+        T_plane: The transformation matrix.
+        plane_model: The plane model.
+
+    """
+
+    points_filtered = points
+    plane_model = fit_plane_from_points(points_filtered)
+    pcd_filtered = o3d.geometry.PointCloud()
+    pcd_filtered.points = o3d.utility.Vector3dVector(points_filtered)
+
+
+    plane_dir = -plane_model[:3]
+    plane_dir = plane_dir / np.linalg.norm(plane_dir)
+    T_plane = np.eye(4)
+    if axis == "y":
+        T_plane[:3, 1] = -plane_dir
+        T_plane[:3, 1] /= np.linalg.norm(T_plane[:3, 1])
+        T_plane[:3, 2] = -np.cross([1, 0, 0], plane_dir)
+        T_plane[:3, 2] /= np.linalg.norm(T_plane[:3, 2])
+        T_plane[:3, 0] = np.cross(T_plane[:3, 1], T_plane[:3, 2])
+    elif axis == "z":
+        T_plane[:3, 2] = -plane_dir 
+        T_plane[:3, 2] /= np.linalg.norm(T_plane[:3, 2]) 
+        T_plane[:3, 0] = -np.cross([0, 1, 0], plane_dir) 
+        T_plane[:3, 0] /= np.linalg.norm(T_plane[:3, 0])
+        T_plane[:3, 1] = np.cross(T_plane[:3, 2], T_plane[:3, 0])
+
+    return T_plane, plane_model
+
+def fit_plane_from_points(points, threshold=0.01, ransac_n=3, num_iterations=2000):
+    """
+    Fit a plane from the points.
+
+    Args:
+        points (np.ndarray): The points.
+        threshold (float): The threshold for RANSAC.
+        ransac_n (int): The number of points to sample for RANSAC.
+        num_iterations (int): The number of iterations for RANSAC.
+    
+    Returns:
+        plane_model: The plane model.
+    
+    """
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    plane_model, inliers = o3d.geometry.PointCloud.segment_plane(
+    pcd,
+    distance_threshold=threshold,
+    ransac_n=ransac_n,
+    num_iterations=num_iterations,
+    )
+    return plane_model
+
+def backproject(depth, intrinsics, instance_mask, NOCS_convention=False):
+    """
+        depth: np.array, [H,W]
+        intrinsics: np.array, [3, 3]
+        instance_mask: np.array, [H, W]; (np.logical_and(depth>0, depth<2))
+    """
+    intrinsics_inv = np.linalg.inv(intrinsics)
+    non_zero_mask = depth > 0
+    final_instance_mask = np.logical_and(instance_mask, non_zero_mask)
+
+    idxs = np.where(final_instance_mask)
+    grid = np.array([idxs[1], idxs[0]])
+
+    length = grid.shape[1]
+    ones = np.ones([1, length])
+    uv_grid = np.concatenate((grid, ones), axis=0)  # [3, num_pixel]
+
+    xyz = intrinsics_inv @ uv_grid  # [3, num_pixel]
+    xyz = np.transpose(xyz)  # [num_pixel, 3]
+
+    z = depth[idxs[0], idxs[1]]
+
+    # print(np.amax(z), np.amin(z))
+    pts = xyz * z[:, np.newaxis] / xyz[:, -1:]
+    if NOCS_convention:
+        pts[:, 1] = -pts[:, 1]
+        pts[:, 2] = -pts[:, 2]
+
+    return pts, idxs
+
+def visualize_points(points, colors=None):
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    if colors is not None:
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+    return pcd
 
 
 def get_obj_mesh(obj_mesh_file_path, target_size=1):
@@ -66,7 +163,7 @@ def visualize_npz(args):
     pred_xyz_all = data["pred_xyz_all"]
     pred_r_all  = data["pred_r_all"]
     pred_cost = data["pred_cost"]
-    rgb_image = data["rgb_image"]
+    rgb_image = data["rgb_image"][...,[2, 1, 0]] # [H, W, 3]
     depth_image_raw = data["depth_image_raw"]
     depth_image = data["depth_image"] # in mm
     intr = data["intrinsics"]
@@ -126,7 +223,7 @@ def visualize_npz(args):
 
 
         # Prepare the blender project file
-        project_fpath = "selected_scene/project.blend"
+        project_fpath = "qualitative_demo/blender_file/project.blend"
         print("... Initialize new project file and set camera parameters")
         initialize_renderer()
         bt.setLight_sun(light_rotation, light_strength, 1)
@@ -135,14 +232,51 @@ def visualize_npz(args):
         cam = bt.setCamera_from_UI(cam_location, cam_rotation, focalLength=focal_length)  
 
         scene_mesh = bt.readNumpyPoints(
-            np.asarrray(scene_pcd.points), (0, 0, 0), (0, 0, 0), (1, 1, 1)
+            np.asarray(scene_pcd.points), (0, 0, 0), (0, 0, 0), (1, 1, 1)
         )
         scene_mesh = bt.setPointColors(scene_mesh, np.asarray(scene_pcd.colors))
         # bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
         setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
         scene_mesh.name = "SceneGeo"
-        
-        o3d.visualization.draw([scene_mesh])
+        for i in range(len(pred_xyz_all)):
+            guide_loss_color_i = guide_loss_color[i]
+            # Create a mesh by copying the vertices and faces of the original mesh
+            obj_mesh_i = o3d.geometry.TriangleMesh()
+            obj_mesh_i.vertices = obj_mesh.vertices
+            obj_mesh_i.triangles = obj_mesh.triangles
+            obj_mesh_i.compute_vertex_normals()
+
+            obj_mesh_i.paint_uniform_color(guide_loss_color_i)
+            dR_object = SciR.from_euler("Z", pred_r_all[i], degrees=True).as_matrix()
+
+            obj_mesh_i.rotate(dR_object, center=[0, 0, 0])
+            obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])
+            obj_mesh_i.translate(pred_xyz_all[i])  # move obj
+            
+            # Prepare the object mesh
+            o3d.io.write_triangle_mesh("visual_tool/obj.ply", obj_mesh_i)  # Save the mesh ..
+            mesh = bt.readMesh("visual_tool/obj.ply", (0, 0, 0), (0, 0, 0), (1, 1, 1))
+            bpy.ops.object.shade_smooth()
+            # bt.setMat_plastic(mesh, MESH_COLOR)
+
+            color = list(guide_loss_color_i) + [1.0] 
+            # C1 = bt.colorObj(bt.coralRed, 0.5, 1.0, 1.0, 0.0, 0.5)
+            # C2 = bt.colorObj(bt.caltechOrange, 0.5, 1.0, 1.0, 0.0, 0.0)
+            C1 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.5)
+            C2 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.0)
+            bt.setMat_carPaint(mesh, C1, C2)
+            os.remove("visual_tool/obj.ply")  # .. and remove it
+        ################################ BLENDER RENDERING ################################
+
+        # Tweak the ground rotation
+        # bpy.data.objects["Plane"].rotation_euler[1] = np.pi / 2
+        # bpy.data.objects["Plane"].rotation_euler[2] = np.pi / 2
+
+        # Do the rendering
+        bpy.ops.wm.save_as_mainfile(filepath=project_fpath)
+        render_fpath = os.path.join("qualitative_demo/qualitative_render/render.png")
+        bt.renderImage(render_fpath, cam)
+        print("... Rendered image saved at: ", render_fpath)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -150,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--npz_path",
         type=str,
-        default="qualitative_demo/qualitative_npz/mouse_righthanded.npz",
+        default="qualitative_demo/qualitative_npz/cake_plate.npz",
     )
     parser.add_argument(
         "--overwrite_project",
@@ -158,15 +292,15 @@ if __name__ == "__main__":
         help="overwrite the project file",
     )
     parser.add_argument(
-        "--cam_location", type=float, nargs=3, default=[0.0, 0.79, -0.94]
+        "--cam_location", type=float, nargs=3, default=[0.0, 0.074, -0.85]
     )
-    parser.add_argument("--cam_rotation", type=float, nargs=3, default=[-140.0, 0, 0])
+    parser.add_argument("--cam_rotation", type=float, nargs=3, default=[-180.0, 0, 0])
     parser.add_argument("--ground_location", type=float, nargs=3, default=[0, 0, 4.5])
     parser.add_argument(
         "--light_rotation", type=float, nargs=3, default=[-18, 200, -50]
     )
     parser.add_argument("--light_strength", type=float, default=5)
-    parser.add_argument("--focal_length", type=float, default=30)
+    parser.add_argument("--focal_length", type=float, default=55)
     parser.add_argument("--visual_direct", type=bool, default=True)
     parser.add_argument("--blender_render", type=bool, default=True)
     
