@@ -68,7 +68,7 @@ class Diffusion(nn.Module):
         self.model = TemporalMapUnet(
             horizon=self.horizon,
             transition_dim=self.model_state_dim, # 2 + 1
-            cond_dim=176, # 160 + 16
+            cond_dim=240+16, # 240 + 16
             output_dim=self.output_dim,
             dim=self.base_dim,  # time_dim
             dim_mults=(2, 4, 8),
@@ -184,6 +184,7 @@ class Diffusion(nn.Module):
 
 
         top_positions = self.top_position(affordance, pc_position, topk=80) # for testing
+        top_positions[...,2] = 0
         top_positions_descaled = top_positions #for testing
         #top_positions = torch.cat([top_positions, top_positions], dim=-1) # [batch_size, 80, 4]
 
@@ -193,11 +194,11 @@ class Diffusion(nn.Module):
         #top_positions = data_batch["gt_pose_xyz"] # for training
 
         top_positions_for_vis = top_positions
-        top_positions = top_positions[...,:2] # [batch_size, 80, 2] 
-
-        top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
+        #top_positions = top_positions[...,:2] # [batch_size, 80, 2] 
+        top_positions = self.scale_xyR_pose(top_positions, data_batch["gt_pose_xyR_min_bound"], data_batch["gt_pose_xyR_max_bound"])
+        #top_positions = self.scale_xy_pose(top_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
         #top_positions = torch.ones_like(top_positions) * 0.5
-        top_positions = top_positions.reshape(-1, 80*2)
+        top_positions = top_positions.reshape(-1, 80*3)
 
         #top_positions_non_cond = data_batch["gt_pose_xyz_for_non_cond"]
         top_positions_non_cond = top_positions_for_vis + (torch.randn_like(top_positions_for_vis) - 0.5)*2 *1
