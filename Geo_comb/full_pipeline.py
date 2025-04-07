@@ -730,6 +730,7 @@ def detect_object_with_vlm(
     BOX_TRESHOLD = 0.25# 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
+
     image_source, image_input = preprocess_image_groundingdino(image)
     boxes, logits, phrases = predict(
         model=detection_model,

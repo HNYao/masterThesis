@@ -20,6 +20,8 @@ POINT_COLOR = bt.colorObj([], 0.5, 1.0, 1.0, 0.0, 0.2)
 SCENE_POINT_SIZE = 0.005
 
 
+
+
 def initialize_renderer(height=720, width=1280, exposure=1, numSamples=64):
     bt.blenderInit(width, height, numSamples, exposure, True)
     bpy.data.scenes[0].view_layers[0]["cycles"]["use_denoising"] = 1

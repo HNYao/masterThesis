@@ -84,6 +84,7 @@ def run(args):
     # Read the images
     rgb_image = cv2.imread(args.color_path)
     depth_image_raw = cv2.imread(args.depth_path, cv2.IMREAD_ANYDEPTH)
+    depth_image_completed = depth_image_raw.copy() # for visualization
     intr = np.loadtxt(args.intr_path)
     obj_mesh, obj_mesh_file = retrieve_obj_mesh(args.mesh_category, target_size=args.target_size)
     if args.use_m3d:
@@ -143,6 +144,7 @@ def run(args):
     results["pred_cost"] = pred_cost
     results["rgb_image"] = rgb_image
     results["depth_image_raw"] = depth_image_raw
+    results["depth_image_completed"] = depth_image_completed
     results["depth_image"] = depth_image
     results["intrinsics"] = intr
     results["mesh_category"] = args.mesh_category
