@@ -235,8 +235,8 @@ def visualize_npz(args):
             np.asarray(scene_pcd.points), (0, 0, 0), (0, 0, 0), (1, 1, 1)
         )
         scene_mesh = bt.setPointColors(scene_mesh, np.asarray(scene_pcd.colors))
-        # bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
-        setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
+        bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE) # TODO: try this mode
+        #setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
         scene_mesh.name = "SceneGeo"
         for i in range(len(pred_xyz_all)):
             guide_loss_color_i = guide_loss_color[i]
@@ -259,10 +259,10 @@ def visualize_npz(args):
             bpy.ops.object.shade_smooth()
             # bt.setMat_plastic(mesh, MESH_COLOR)
 
-            color = list(guide_loss_color_i) + [1.0] 
+            color = list(guide_loss_color_i) + [0.0] 
             # C1 = bt.colorObj(bt.coralRed, 0.5, 1.0, 1.0, 0.0, 0.5)
             # C2 = bt.colorObj(bt.caltechOrange, 0.5, 1.0, 1.0, 0.0, 0.0)
-            C1 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.5)
+            C1 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0)
             C2 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.0)
             bt.setMat_carPaint(mesh, C1, C2)
             os.remove("visual_tool/obj.ply")  # .. and remove it
