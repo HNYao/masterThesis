@@ -814,7 +814,7 @@ def full_pipeline_v2(
     points_scene, scene_idx = backproject(
         depth_image / 1000.0,
         intrinsics,
-        np.logical_and(depth_image / 1000.0 > 0, depth_image / 1000.0 < 2),
+        np.logical_and(depth_image / 1000.0 > 0, depth_image / 1000.0 < 3),
         NOCS_convention=False,
     )
     colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2,1,0]] / 255.0
@@ -827,8 +827,70 @@ def full_pipeline_v2(
     pcd_table_rotated.points = o3d.utility.Vector3dVector(
         np.asarray(pcd_scene.points) @ tf_table[:3, :3] + tf_table[:3, 3]
     )
+    # get the plane model of the rotated table
+    _, table_plane_model_rotated = get_tf_for_scene_rotation(np.asarray(pcd_table_rotated.points), axis="z")
+    # delete the points in pcd_table_rotated whose z is larger than the plane model
+    table_plane_height = - table_plane_model_rotated[3]/table_plane_model_rotated[2]
+    
+    pcd_table_rotated.points = o3d.utility.Vector3dVector(
+        np.asarray(pcd_table_rotated.points)[np.logical_and(np.asarray(pcd_table_rotated.points)[:, 2] > table_plane_height, np.asarray(pcd_table_rotated.points)[:, 2] < table_plane_height + 0.05)]
+    )
+    
+    # rotate the table back
+    pcd_table = copy.deepcopy(pcd_table_rotated)
+    pcd_table.points = o3d.utility.Vector3dVector(
+        (np.asarray(pcd_table.points) - tf_table[:3, 3])@ np.linalg.inv(tf_table[:3, :3])
+    )
+    
+    # use pca to get the orientation of the table and visualize the eigen vector
+    pcd_table_mean, pcd_table_cov = pcd_table.compute_mean_and_covariance()
+    eig_val, eig_vec = np.linalg.eig(pcd_table_cov)
+    order = np.argsort(eig_val)[::-1]
+    eig_val = eig_val[order]
+    eig_vec = eig_vec[:, order]
+    # visualize the eigen vector
+    axes = o3d.geometry.LineSet()
+    points = [
+        pcd_table_mean,
+        pcd_table_mean + 0.5 * eig_vec[:, 0],
+        pcd_table_mean + 0.5 * eig_vec[:, 1],
+        pcd_table_mean + 0.5 * eig_vec[:, 2]
+    ]
+    axes.points = o3d.utility.Vector3dVector(points)
+    axes.lines = o3d.utility.Vector2iVector([[0, 1], [0, 2], [0, 3]])
+    axes.colors = o3d.utility.Vector3dVector([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-    o3d.visualization.draw_geometries([pcd_scene, pcd_table_rotated, coordinate_frame])
+    o3d.visualization.draw_geometries([pcd_scene, pcd_table, axes, coordinate_frame])
+    
+    # create a coordinate frame based on the eigen vector and move it to the origin of the vector
+    coordinate_frame_pca = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    coordinate_frame_pca.rotate(eig_vec, center=[0, 0, 0])
+    coordinate_frame_pca.translate(pcd_table_mean - [0, 0, 0.05])
+    o3d.visualization.draw_geometries([pcd_scene, axes, coordinate_frame, coordinate_frame_pca])
+    
+    
+    print("axis_x:", eig_vec[:, 0])
+    print("axis_y:", eig_vec[:, 1])
+    print("axis_z:", eig_vec[:, 2])
+    
+    # map the axis x of the coordinate frame_pca to the axis x of the coordinate frame 
+    table_frame_y_on_world_xy = eig_vec[:, 1]
+    table_frame_y_on_world_xy[1] = 0
+    
+    print("table_frame_y_on_world_xy:", table_frame_y_on_world_xy)
+    
+    # get the angle between the table_frame_y_on_world_xy and the coordinate frame_pca
+    angle = np.dot([0, 0, 1], table_frame_y_on_world_xy) / (np.linalg.norm(table_frame_y_on_world_xy) * np.linalg.norm([0, 0, 1]))
+    print("angle:", angle)
+    
+    # # use the obb: but failed to get the right orientation
+    # obb_rotated = pcd_table_rotated.get_oriented_bounding_box()
+    # obb_rotated.color = [1, 0, 0]
+    # coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    # coordinate_frame_obb = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    # coordinate_frame_obb.rotate(obb_rotated.R, center=[0, 0, 0])
+    # coordinate_frame_obb.translate(obb_rotated.center)
+    # o3d.visualization.draw_geometries([pcd_scene, pcd_table_rotated, obb_rotated, coordinate_frame, coordinate_frame_obb])
 
     #### 2 use_vlm 
     all_bboxes = None

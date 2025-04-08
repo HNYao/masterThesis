@@ -184,7 +184,7 @@ class Diffusion(nn.Module):
 
 
         top_positions = self.top_position(affordance, pc_position, topk=80) # for testing
-        top_positions[...,2] = 0
+        top_positions[...,2] = -0.95
         top_positions_descaled = top_positions #for testing
         #top_positions = torch.cat([top_positions, top_positions], dim=-1) # [batch_size, 80, 4]
 
