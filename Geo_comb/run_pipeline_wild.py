@@ -33,6 +33,7 @@ import argparse
 from GeoL_diffuser.models.guidance import CompositeGuidance
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 from GeoL_net.dataset_gen.RGBD2PC import backproject, visualize_points
+from GeoL_diffuser.models.utils.fit_plane import *
 
 def load_models(args):
     intrinsics = np.loadtxt(args.intr_path)
@@ -110,11 +111,6 @@ def run(args):
     depth_image[depth_image < 500] = 0
     depth_image = depth_image * depth_mask
     
-    # Viualize the point cloud
-    pc, scene_ids = backproject(depth_image / 1000, intr, depth_image / 1000 > 0)
-    pc_colors = rgb_image[scene_ids[0], scene_ids[1]][..., [2, 1, 0]] / 255.0
-    pcd = visualize_points(pc, pc_colors)
-    o3d.visualization.draw_geometries([pcd])
     
     # Do the inference
     seed_everything(42)

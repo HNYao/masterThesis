@@ -263,32 +263,6 @@ def chatgpt_selected_plan(image_path: str):
           """
         },
         
-        # {
-        # "role": "assistant",
-        # "content": """
-        #     Here are the examples:
-
-        #     Assume the given image contains objects and their bboxes: monitor(bbox id2), blue cup(bbox id0), blue phone(bbox id3), red box(bbox id4), black bottle(bbox id 1), green book(no box).
-        #       Please note that anchors should be split by ",".
-        #       1. The user input is: Mouse.  
-        #       Mouse. I am a right-handed. Please answer:
-        #           anchor: monitor, black bottle
-        #           direction: Right Front, Left Front
-        #           bbox id: 2, 1
-        #       2. Mouse. I am a left-handed. Please answer:
-        #           anchor: monitor 
-        #           direction: Left Front
-        #           bbox id: 2
-        #       3. Ball. Please answer:
-        #           anchor: red box
-        #           direction: On
-        #           bbox id: 4
-        #       4. phone. I like playing mobile games and drinking coffee. Please answer:
-        #           anchor: blue cup
-        #           direction: Right Front
-        #           bbox id: 0
-        # """
-        #   },
         {
           "role": "user",
           "content": [
@@ -304,6 +278,208 @@ def chatgpt_selected_plan(image_path: str):
             }
           ]
         }
+      ],
+      "max_tokens": 40
+    }
+    print("object need to be placed: ", object_placement)
+
+    
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    print(response.json()['choices'][0]['message']['content'])
+
+    # refine the response
+    while True:
+        user_input = input("User: ")
+
+        if user_input.lower() == 'okie':
+            break
+        
+        payload['messages'].append({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": response.json()['choices'][0]['message']['content']
+                }
+            ]
+        })
+
+        payload['messages'].append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": user_input
+                }
+            ]
+        })
+
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        print(response.json()['choices'][0]['message']['content'])
+    content = response.json()['choices'][0]['message']['content']
+    content.strip("```").strip("plaintext")
+
+    try:
+        content_split = content.split("\n")
+        anchor_reponse = content_split[0].split(":")[1].strip()
+        direction_response = content_split[1].split(":")[1].strip()
+        bbox_id_response = content_split[2].split(":")[1].strip()
+    except:
+        import pdb; pdb.set_trace()
+    anchor_reponse = [anchor.strip() for anchor in anchor_reponse.split(", ")]
+    direction_response = [direction.strip() for direction in direction_response.split(", ")]
+    bbox_id_response = [bbox_id.strip() for bbox_id in bbox_id_response.split(", ")]
+
+    return anchor_reponse, direction_response, bbox_id_response
+
+
+
+def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = None):
+    
+    """
+    ChatGPT condition for object placement or scene understanding
+
+    Params:
+    image_path: image path or image
+    mode: object_placement or scene_understanding
+
+    """
+
+    base64_image = encode_image(image_path)
+    base64_image_example = encode_image("./GeoL_net/gpt/example_case.jpg")
+    base_64_image_given_case = encode_image(image_given_case)
+
+    api_key = os.getenv("CHATGPT_API_KEY")
+  
+
+    headers = {
+        "content-type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    
+
+    # object placement
+
+    object_placement = input("Object need to be placed: ")
+    extra_info = input("Extra information: ")
+    payload = {
+      "model": "gpt-4o",
+      "messages": [
+        {
+          "role": "system", 
+          "content":
+            "You are an AI assistant that helps place objects for people.\
+            **Input**: You are provided with an image of a tabletop scene. The image contains multiple objects, each enclosed within a bounding box with a unique ID displayed in the top-left corner.\
+            You are also given the category name of a **target object** that needs to be placed. \n\
+            You are also gieven an example image which guidances you where to place the object. You should place the object as the example image.\
+            Task: Your goal is to determine the best placement for the target object using existing objects in the scene as **anchor objects** (i.e., reference objects). Think step by Step! \
+            **Guidelines**:\
+            1. Selecting Anchor Objects: Choose one or more anchor objects from the image. Only objects with a bounding box and an assigned ID can be selected as anchors. For each anchor, provide its name and ID. \n \
+            2. Determining Placement Direction: Specify the best placement direction(s) for the target object relative to each chosen anchor. Use the following directional terms: Left Front, Right Front, Left Behind, On \n \
+              Right Behind, Left, Right, Front, Behind. If multiple anchor objects are needed, list each anchor alongside its corresponding placement direction. \n \
+            3.  Ensuring Logical Placement: Placement should follow human common sense and maintain accessibility in the scene, also notice the physical plausibility. \n \
+            **Output Format**:\
+            anchor: <object name 1, object name 2, ...>\n \
+            direction: <direction of target object relative to object name 1, direction of target object relative to object name 2, ...>\n \
+            bbox id: <int(ID of object name 1),  int(ID of object name 2), ...>\n "
+                  },
+        {"role": "user",
+         "content": [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image_example}"
+                }
+            },
+            {
+                "type": "text",
+                "text": f"Base on the image, where should I put a mouse reasonably without collision and overlap with other objects? Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\nbbox id: <id of the bounding box>\n "
+            }
+
+          ]
+            
+        },
+        {
+          "role": "assistant",
+          "content":"""There is already a monitor, a keyboard, a laptop, a white cup and a power strip on the table. \
+            The monitor has a bounding box with ID 0, so it can be sleected as a potential anchor object. \
+            The keyboard has a bounding box with ID 1, so it can be sleected as a potential anchor object. \
+            The power strip has a bounding box with ID 2, so it can be sleected as a potential anchor object. \
+            The cup has a bounding box with ID 3, so it can be sleected as a potential anchor object. \
+            The laptop does not have a bounding box, so it can not be selected as anchor object forever. \
+            The user want to put a mouse on the table. \
+            The mouse is always used with the minitor and keyboard, so the keyboard and monitor are the anchor objects. \
+            The mouse is usually used with the keyboard.\
+            The user does not provide any extra information, so we can assumen user is right-handed. \
+            The mouse should be placed on the Right of the keyboard. \
+            so the final response is: anchor: keyboard\ndirection: Right\nbbox id: 1
+          """
+        },
+
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": f"Base on the image, where should I put a bottle reasonably without collision and overlap with other objects?  Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\nbbox id: <id of the bounding box>\n "
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content":"""There is already a monitor, a keyboard, a laptop, a white cup and a power strip on the table. \
+            The monitor has a bounding box with ID 0, so it can be sleected as a potential anchor object. \
+            The keyboard has a bounding box with ID 1, so it can be sleected as a potential anchor object. \
+            The power strip has a bounding box with ID 2, so it can be sleected as a potential anchor object. \
+            The cup has a bounding box with ID 3, so it can be sleected as a potential anchor object. \
+            The laptop does not have a bounding box, so it can not be selected as anchor object forever. \
+            The user want to put a bottle on the table. \
+            The bottle is usually used with the cup.\
+            The user does not provide any extra information.\
+            The bottle should be placed on the Left Front of the cup. \
+            so the final response is: anchor: cup\ndirection: Left Front\nbbox id: 3
+          """
+        },
+        
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info}. Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "image_url",
+              "image_url": {
+                  "url": f"data:image/jpeg;base64,{base_64_image_given_case}"
+                }
+            },
+            {
+                "type": "text",
+                "text": f"This is the example case, please follow the example case to place the object."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": {
+              "type": "text",
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: follow the expample case to place the object. Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+            },
+        },
+
       ],
       "max_tokens": 40
     }
