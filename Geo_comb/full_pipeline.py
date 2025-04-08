@@ -821,6 +821,15 @@ def full_pipeline_v2(
     pcd_scene = visualize_points(points_scene, colors_scene) 
     
 
+    # get the table orientation
+    tf_table, table_plane_model = get_tf_for_scene_rotation(np.asarray(pcd_scene.points), axis="z")
+    pcd_table_rotated = copy.deepcopy(pcd_scene)
+    pcd_table_rotated.points = o3d.utility.Vector3dVector(
+        np.asarray(pcd_scene.points) @ tf_table[:3, :3] + tf_table[:3, 3]
+    )
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    o3d.visualization.draw_geometries([pcd_scene, pcd_table_rotated, coordinate_frame])
+
     #### 2 use_vlm 
     all_bboxes = None
     if use_vlm:
@@ -1105,7 +1114,7 @@ if __name__ == "__main__":
     config_diffusion = OmegaConf.create(yaml_data)
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
-    state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
+    state_diffusion_dict = torch.load("outputs/checkpoints/GeoL_diffuser_v0_1K_scene_xyr/ckpt_31.pth", map_location="cpu")
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     model_diffuser.nets["policy"].set_guidance(guidance)
     model_diffuser.eval()

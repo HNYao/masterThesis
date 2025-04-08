@@ -49,6 +49,40 @@ def GeoL_completed_metrics(
         pretrained_diffusion=None,
         process_metric_func=None, 
 ):
+    guidance = CompositeGuidance()
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+
+    INTRINSICS = np.array([[607.09912/2 , 0. , 636.85083/2 ], [0., 607.05212/2, 367.35952/2], [0.0, 0.0, 1.0]])
+    model_affordance = GeoL_net_v9(
+        input_shape=(3, 480, 640),
+        target_input_shape=(3, 128, 128),
+        intrinsics=INTRINSICS
+    )
+    model_diffusion.nets['policy'].set_guidance(guidance)
+
+    model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
+    model_diffusion.load_state_dict(state_diffusion_dict["ckpt_dict"])
+    model_diffusion.nets['policy'].set_guidance(guidance)
+    model_affordance.eval()
+    model_affordance.cuda()
+    model_diffusion.eval()
+    model_diffusion.cuda()
+
+    is_success_result = []
+    is_in_mask_result = []
+    non_collision_result = []
+    test_sum = 0
+    
+    for data_batch in dataloader:
+        rgb_img_path = data_batch["image_without_obj_path"][0]
+        
+
+    
+
+
+    
+
+
     # initialize the dataset
     num_sample = sample_datasize
     indices = torch.arange(num_sample)
