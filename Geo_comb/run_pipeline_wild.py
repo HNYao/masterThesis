@@ -50,7 +50,7 @@ def load_models(args):
         target_input_shape=(3, 128, 128),
         intrinsics=intrinsics,
     ).to("cuda")
-    state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
+    state_affordance_dict = torch.load("data_and_weights/affordance_weights/ckpt_11.pth", map_location="cpu")
     model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
     model_affordance.eval()
     
@@ -61,7 +61,7 @@ def load_models(args):
     config_diffusion = OmegaConf.create(yaml_data)
     model_diffuser_cls = PoseDiffusionModel
     model_diffuser = model_diffuser_cls(config_diffusion.model).to("cuda")
-    state_diffusion_dict = torch.load("data_and_weights/ckpt_93.pth", map_location="cpu")
+    state_diffusion_dict = torch.load("data_and_weights/diffusion_weights/ckpt_31.pth", map_location="cpu")
     model_diffuser.load_state_dict(state_diffusion_dict["ckpt_dict"])
     model_diffuser.nets["policy"].set_guidance(guidance)
     model_diffuser.eval()

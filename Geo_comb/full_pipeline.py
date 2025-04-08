@@ -820,7 +820,17 @@ def full_pipeline_v2(
     colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2,1,0]] / 255.0
     pcd_scene = visualize_points(points_scene, colors_scene) 
     
-
+    # get the coordinate of the points_scene plane and visualize it
+    # visualize the plane coordinate
+    # obb = pcd_scene.get_oriented_bounding_box()
+    # obb.color = [1, 0, 0]
+    # vis_o3d = [pcd_scene, obb]
+    
+    # abb = pcd_scene.get_axis_aligned_bounding_box()
+    # abb.color = [0, 1, 0]
+    # vis_o3d.append(abb)
+    # o3d.visualization.draw_geometries(vis_o3d)
+        
     #### 2 use_vlm 
     all_bboxes = None
     if use_vlm:

@@ -21,6 +21,7 @@ from metrics.utils import *
 from Geo_comb.pred_one_case_completed import rgb_obj_dect, rgb_obj_dect_no_vlm
 from Geo_comb.groundingdino_chatgpt import rgb_obj_dect_use_gpt_select
 import yaml
+from Geo_comb.full_pipeline import prepare_data_batch
 
 
 
@@ -413,19 +414,214 @@ def GeoL_completed_metrics_mult_cond(
         
         #4 get the data
         rgb_img_path = data_batch["rgb_image_file_path"][0]
-
-        rgb_image = Image.open(rgb_img_path).convert("RGB")
-        rgb_image = np.array(rgb_image).astype(float)
-        rgb_image = np.transpose(rgb_image, (2, 0, 1))  # Change to (C, H, W) format for PyTorch
+        rgb_image = cv2.imread(rgb_img_path)
+        #rgb_image = np.array(rgb_image).astype(float)
+        #rgb_image = np.transpose(rgb_image, (2, 0, 1))  # Change to (C, H, W) format for PyTorch
         object_to_place = data_batch["obj_to_place"][0]
         direction_list = data_batch["directions"]
         anchor_obj_name_list = data_batch["ref_objects"]
         #anchor_obj_position_list = data_batch["anchor_obj_positions"][0]
         depth_file_path = data_batch["depth_img_file_path"][0]
+        depth_image = cv2.imread(depth_file_path, cv2.IMREAD_UNCHANGED)
+        depth_image[depth_image<2000] = 0
         mask_file_path = data_batch["mask_file_path"][0]
         vol_bnds = data_batch["vol_bnds"][0]
         tsdf_vol = data_batch["tsdf_vol"][0]
         T_plane = data_batch["T_plane"][0]
+        
+        points_scene, scene_idx = backproject(depth_image, INTRINSICS, np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2), NOCS_convention=False)
+        colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2, 1, 0]] / 255.0
+        pcd_scene = visualize_points(points_scene, colors_scene)
+
+        # TODO: use the anchor object name to get the anchor object position
+        all_bboxes = None
+        temp_rgb_path = ".tmp/temp_rgb.jpg"
+        temp_depth_path = ".tmp/temp_depth.png"
+        os.makedirs(".tmp", exist_ok=True)
+        cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8)) # BGR
+        cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
+        # TODO: multi hypotheses
+        # Save temporary image for VLM processing
+        target_names, direction_texts = chatgpt_condition(
+                    temp_rgb_path, "object_placement"
+                )
+        pred_affordance_list = []
+        for i in range(len(target_names)):
+            anchor_obj_name = target_names[i]
+            direction = direction_texts[i]
+            anchor_obj_position = anchor_obj_position_list[i]
+            data_batch_prepared = prepare_data_batch(rgb_image, depth_image, INTRINSICS, anchor_obj_name, anchor_obj_position, direction, to_tensor=True)
+                
+            for key, val in data_batch_prepared.items():
+                if not isinstance(val, torch.Tensor):
+                    continue
+                data_batch_prepared[key] = val.float().to("cuda")[None]
+            
+            else:
+                with torch.no_grad():
+                    affordance_pred = model_affordance(batch=data_batch_prepared)["affordance"].squeeze(1)
+            affordance_pred_sigmoid = affordance_pred.sigmoid().cpu().numpy()
+            affordance_thershold = -np.inf
+            fps_points_scene_from_original = data_batch_prepared["fps_points_scene"][0]
+            fps_points_scene_affordance = fps_points_scene_from_original[
+                affordance_pred_sigmoid[0][:, 0] > affordance_thershold
+            ]
+            fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
+            min_bound_affordance = np.append(
+                np.min(fps_points_scene_affordance, axis=0), -1
+            )
+            max_bound_affordance = np.append(
+                np.max(fps_points_scene_affordance, axis=0), 1
+            )
+            # sample 512 points from fps_points_scene_affordance
+            fps_points_scene_affordance = fps_points_scene_affordance[
+                np.random.choice(
+                    fps_points_scene_affordance.shape[0], 512, replace=True
+                )
+            ]
+            pred_affordance_list.append(affordance_pred)
+        
+        
+        pred_affordance_merge = torch.cat(pred_affordance_list, dim=0)
+        pred_affordance_merge_mean = pred_affordance_merge.mean(dim=0, keepdim=True)
+        pred_affordance_merge = torch.cat([pred_affordance_merge_mean, pred_affordance_merge], dim=0)
+        pred_affordance_merge, _ = (pred_affordance_merge).max(dim=0, keepdim=True)
+        pred_affordance_fine = pred_affordance_merge.clone()
+        data_batch_prepared['affordance_fine'] = pred_affordance_fine
+        
+        if use_kmeans:
+            # get the max affordance point and the sample points
+            pred_affordance_np = pred_affordance_merge.cpu().numpy()[0, : ,0] # [B, N, 1]
+            fps_points_scene = data_batch_prepared["fps_points_scene"].cpu().numpy()[0] # [N, 3]
+            # Filter points
+            pred_affordance_merge = apply_kmeans_to_affordance(
+                fps_points_scene, 
+                pred_affordance_np,
+                n_clusters=len(target_names),  # Adjust based on how many distinct regions you want
+                percentile_threshold=95,  # Adjust based on how strict you want the filtering
+                dist_factor=0.5
+            )
+            pred_affordance_merge = torch.from_numpy(pred_affordance_merge).float().cuda()[None, :, None]
+        
+        pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min()) 
+        pred_affordance_fine = (pred_affordance_fine - pred_affordance_fine.min() ) / (pred_affordance_fine.max() - pred_affordance_fine.min())
+        
+        if visualize_affordance:
+            generate_heatmap_pc(data_batch_prepared, pred_affordance_fine, INTRINSICS, interpolate=False) # visualize single case
+            generate_heatmap_pc(data_batch_prepared, pred_affordance_merge, INTRINSICS, interpolate=False) # visualize single case
+        
+        pred_affordance_merge = affordance_pred.sigmoid()
+        pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min())
+        
+        data_batch_prepared['affordance'] = pred_affordance_merge.to("cuda")
+        
+        obj_pc = obj_mesh.sample_points_uniformly(512)
+        obj_pc = np.asarray(obj_pc.points)
+        
+        data_batch_prepared['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch_prepared['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch_prepared['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch_prepared['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch_prepared['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+        
+        # Build the TSDF for collision avoidance guidance
+        if all_bboxes is not None:
+            obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
+            for bg_obj_bbox in all_bboxes:
+                x1, y1, x2, y2 = bg_obj_bbox
+                obj_bbox_mask[y1:y2, x1:x2] = 1
+        else:
+            obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
+        T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
+        vol_bnds = np.zeros((3, 2))
+        view_frust_pts = get_view_frustum(depth_image / 1000.0, INTRINSICS, np.eye(4))
+        vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
+        vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
+        vol_bnds[:, 0] = vol_bnds[:, 0].min()
+        vol_bnds[:, 1] = vol_bnds[:, 1].max()
+        color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
+        tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, INTRINSICS, np.eye(4))
+
+        # mesh = tsdf.get_mesh()
+        # mesh.compute_vertex_normals()
+        # o3d.visualization.draw_geometries([mesh])
+        
+        data_batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['intrinsics'] = torch.tensor(INTRINSICS, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['intrinsics'] = torch.tensor(INTRINSICS, dtype=torch.float32).unsqueeze(0).to("cuda")
+  
+        pred = model_diffuser(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
+    if visualize_diff:
+        visualize_xy_pred_points(pred, data_batch, intrinsics=intrinsics)
+
+    # 10 select topk points
+    topk = 10
+    target_shape = pred['pose_xyR_pred'].shape[1] 
+
+
+    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+    guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+        
+    # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
+    pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
+    # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
+    # min_colliion_loss = guide_collision_loss.min()
+    # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
+    # guide_loss_total = guide_affordance_loss + guide_collision_loss
+    # Select the topk points with the lowest guide loss
+    min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
+    pred_points = pred_points[min_guide_loss_idx]
+    guide_loss_total = guide_loss_total[min_guide_loss_idx] # [N,]
+    guide_loss_color = get_heatmap(guide_loss_total[None])[0] # [N, 3]
+    
+    # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
+    print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
+    print("pred xyR:", pred_points) 
+  
+    pred_xyz_all, pred_r_all = [], []
+    for i in range(len(pred_points)):
+        pred_xy = pred_points[i,:2]
+        pred_r = pred_points[i, 2]
+        pred_r = pred_r * 180 / np.pi
+        pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
+        pred_xyz = np.append(pred_xy, pred_z)
+
+        pred_xyz = pred_xyz  
+        pred_xyz_all.append(pred_xyz)
+        pred_r_all.append(pred_r)
+        
+    pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
+    pred_r_all = np.array(pred_r_all) # [N,]
+    pred_cost = guide_loss_total # [N,]
+
+    min_point_coord = np.min(points_scene, axis=0) * 1.2  # [3,]
+    max_point_coord = np.max(points_scene, axis=0) * 0.8  # [3,]
+    pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
+    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
         print(mask_file_path)
 
