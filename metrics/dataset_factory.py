@@ -1007,15 +1007,15 @@ class realworld_dataset(Dataset):
         vol_bnds[:, 1] = vol_bnds[:, 1].max()
 
 
-        color_tsdf = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
-        tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
-        tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
+        #color_tsdf = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
+        #tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=5)
+        #tsdf.integrate(color_tsdf, depth, intrinsics, np.eye(4))
 
         # find the obj mesh path
-        obj_to_place = os.path.join("dataset/obj/mesh", obj_to_place)
-        obj_mesh = trimesh.load_mesh(obj_to_place)
+        #obj_to_place = os.path.join("dataset/obj/mesh", obj_to_place)
+        #obj_mesh = trimesh.load_mesh(obj_to_place)
 
-        o3d.vsualization.draw_geometries([obj_mesh])
+        #o3d.vsualization.draw_geometries([obj_mesh])
 
 
         obj_mesh = trimesh.load_mesh("dataset/obj/mesh/cup/cup_0001_red/mesh.obj") # NOTE: temporary use the cup mesh 
@@ -1037,10 +1037,10 @@ class realworld_dataset(Dataset):
             "intrinsics": intrinsics,
             "fps_points_scene": fps_points_scene_from_original,
             "fps_colors_scene": fps_colors_scene_from_original,
-            "tsdf_vol": tsdf._tsdf_vol,
+            #"tsdf_vol": tsdf._tsdf_vol,
             "vol_bnds": vol_bnds,
             "T_plane": T_plane,
-            "color_tsdf": color_tsdf,
+            #"color_tsdf": color_tsdf,
             "obj_points": obj_points_sampled,
             "obj_mesh_path": "dataset/obj/mesh/cup/cup_0001_red/mesh.obj"
 

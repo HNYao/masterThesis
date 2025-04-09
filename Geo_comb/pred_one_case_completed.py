@@ -12,7 +12,7 @@ from pointnet2_ops import pointnet2_utils
 import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from groundingdino.util.inference import load_model, load_image, predict, annotate
+from thirdpart.GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
 import cv2
 import numpy as np
 import torch

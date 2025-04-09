@@ -2,12 +2,14 @@ import torch
 import numpy as np
 import random
 import os
-
+from glob import glob
 from PIL import Image
 from torch.utils.data import DataLoader, Subset, random_split
 from omegaconf import DictConfig, OmegaConf
 import cv2
-
+import sys
+sys.path.append("thirdpart/GroundingDINO")
+import groundingdino.datasets.transforms as GDinoT # type: ignore
 from thirdpart.seeingunseen.seeing_unseen.core.base import BaseTrainer
 from thirdpart.seeingunseen.seeing_unseen.core.registry import registry
 import torch.multiprocessing as mp
@@ -21,8 +23,9 @@ from metrics.utils import *
 from Geo_comb.pred_one_case_completed import rgb_obj_dect, rgb_obj_dect_no_vlm
 from Geo_comb.groundingdino_chatgpt import rgb_obj_dect_use_gpt_select
 import yaml
-from Geo_comb.full_pipeline import prepare_data_batch
-
+from Geo_comb.full_pipeline import prepare_data_batch, detect_object, detect_object_with_vlm
+from groundingdino.util.inference import load_model, load_image, predict, annotate # type: ignore
+from torchvision.ops import box_convert
 
 
 
@@ -408,6 +411,7 @@ def GeoL_completed_metrics_mult_cond(
         pretrained_affordance=None,
         pretrained_diffusion=None,
         process_metric_func=None, 
+        use_kmeans=True,
 ):
     #1 initialize the dataset
     num_sample = sample_datasize
@@ -417,6 +421,10 @@ def GeoL_completed_metrics_mult_cond(
     
     #2 initialize the model
     INTRINSICS = np.array([[911.09 , 0. , 657.44 ], [0., 910.68, 346.58], [0.0, 0.0, 1.0]])
+    model_detection = load_model(
+        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
+        "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
+    )
     model_affordance = GeoL_net_v9(
         input_shape=(3, 480, 640),
         target_input_shape=(3, 128, 128),
@@ -449,42 +457,57 @@ def GeoL_completed_metrics_mult_cond(
         #4 get the data
         rgb_img_path = data_batch["rgb_image_file_path"][0]
         rgb_image = cv2.imread(rgb_img_path)
-        #rgb_image = np.array(rgb_image).astype(float)
-        #rgb_image = np.transpose(rgb_image, (2, 0, 1))  # Change to (C, H, W) format for PyTorch
-        object_to_place = data_batch["obj_to_place"][0]
         direction_list = data_batch["directions"]
         anchor_obj_name_list = data_batch["ref_objects"]
-        #anchor_obj_position_list = data_batch["anchor_obj_positions"][0]
         depth_file_path = data_batch["depth_img_file_path"][0]
         depth_image = cv2.imread(depth_file_path, cv2.IMREAD_UNCHANGED)
         depth_image[depth_image<2000] = 0
         mask_file_path = data_batch["mask_file_path"][0]
         vol_bnds = data_batch["vol_bnds"][0]
-        tsdf_vol = data_batch["tsdf_vol"][0]
+        #tsdf_vol = data_batch["tsdf_vol"][0]
         T_plane = data_batch["T_plane"][0]
         
-        points_scene, scene_idx = backproject(depth_image, INTRINSICS, np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2), NOCS_convention=False)
+        points_scene, scene_idx = backproject(depth_image/1000, INTRINSICS, np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2), NOCS_convention=False)
         colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2, 1, 0]] / 255.0
         pcd_scene = visualize_points(points_scene, colors_scene)
 
-        # TODO: use the anchor object name to get the anchor object position
+        #5 get the all object bbox and generate the tsdf
         all_bboxes = None
-        temp_rgb_path = ".tmp/temp_rgb.jpg"
-        temp_depth_path = ".tmp/temp_depth.png"
-        os.makedirs(".tmp", exist_ok=True)
-        cv2.imwrite(temp_rgb_path, rgb_image.astype(np.uint8)) # BGR
-        cv2.imwrite(temp_depth_path, depth_image.astype(np.uint16))
-        # TODO: multi hypotheses
+        all_bboxes = get_all_obj_bbox(model_detection, rgb_image) # bboxes_xyxy
+        # Build the TSDF for collision avoidance guidance
+        if all_bboxes is not None:
+            obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
+            for bg_obj_bbox in all_bboxes:
+                bg_obj_bbox = bg_obj_bbox.astype(int)
+                x1, y1, x2, y2 = bg_obj_bbox
+                obj_bbox_mask[y1:y2, x1:x2] = 1
+        else:
+            obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
+        T_plane, plane_model = get_tf_for_scene_rotation(np.asarray(pcd_scene.points))
+        vol_bnds = np.zeros((3, 2))
+        view_frust_pts = get_view_frustum(depth_image / 1000.0, INTRINSICS, np.eye(4))
+        vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
+        vol_bnds[:, 1] = np.maximum(vol_bnds[:, 1], np.amax(view_frust_pts, axis=1))
+        vol_bnds[:, 0] = vol_bnds[:, 0].min()
+        vol_bnds[:, 1] = vol_bnds[:, 1].max()
+        color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
+        tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, INTRINSICS, np.eye(4))
+
+
+        #TODO: get the bbox of all objects to generate tsdf and check collision
+
         # Save temporary image for VLM processing
-        target_names, direction_texts = chatgpt_condition(
-                    temp_rgb_path, "object_placement"
-                )
+        target_names, direction_texts = anchor_obj_name_list, direction_list    
         pred_affordance_list = []
+
         for i in range(len(target_names)):
             anchor_obj_name = target_names[i]
             direction = direction_texts[i]
-            anchor_obj_position = anchor_obj_position_list[i]
-            data_batch_prepared = prepare_data_batch(rgb_image, depth_image, INTRINSICS, anchor_obj_name, anchor_obj_position, direction, to_tensor=True)
+            # detect the anchor object
+            selected_box, selected_phrase = detect_object(model_detection, rgb_image, anchor_obj_name, use_chatgpt=True)
+        
+            data_batch_prepared = prepare_data_batch(rgb_image, depth_image, INTRINSICS, target_names[i], selected_box, direction_texts[i], to_tensor=True)
                 
             for key, val in data_batch_prepared.items():
                 if not isinstance(val, torch.Tensor):
@@ -540,17 +563,19 @@ def GeoL_completed_metrics_mult_cond(
         pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min()) 
         pred_affordance_fine = (pred_affordance_fine - pred_affordance_fine.min() ) / (pred_affordance_fine.max() - pred_affordance_fine.min())
         
-        if visualize_affordance:
-            generate_heatmap_pc(data_batch_prepared, pred_affordance_fine, INTRINSICS, interpolate=False) # visualize single case
-            generate_heatmap_pc(data_batch_prepared, pred_affordance_merge, INTRINSICS, interpolate=False) # visualize single case
+
+        #generate_heatmap_pc(data_batch_prepared, pred_affordance_fine, INTRINSICS, interpolate=False) # visualize single case
+        #generate_heatmap_pc(data_batch_prepared, pred_affordance_merge, INTRINSICS, interpolate=False) # visualize single case
         
         pred_affordance_merge = affordance_pred.sigmoid()
         pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min())
         
         data_batch_prepared['affordance'] = pred_affordance_merge.to("cuda")
         
-        obj_pc = obj_mesh.sample_points_uniformly(512)
-        obj_pc = np.asarray(obj_pc.points)
+        mesh_category = data_batch["mesh_category"][0] 
+        mesh_target_size = data_batch["mesh_target_size"][0]
+        obj_mesh, obj_mesh_file = retrieve_obj_mesh(mesh_category, target_size=mesh_target_size)
+        obj_pc = obj_mesh.sample(512)  # Sample 512 points from the object mesh
         
         data_batch_prepared['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch_prepared['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -577,9 +602,6 @@ def GeoL_completed_metrics_mult_cond(
         tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
         tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, INTRINSICS, np.eye(4))
 
-        # mesh = tsdf.get_mesh()
-        # mesh.compute_vertex_normals()
-        # o3d.visualization.draw_geometries([mesh])
         
         data_batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -588,12 +610,12 @@ def GeoL_completed_metrics_mult_cond(
         data_batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch['intrinsics'] = torch.tensor(INTRINSICS, dtype=torch.float32).unsqueeze(0).to("cuda")
   
-        pred = model_diffuser(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
-    if visualize_diff:
-        visualize_xy_pred_points(pred, data_batch, intrinsics=intrinsics)
+        pred = model_diffusion(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
+
+
 
     # 10 select topk points
-    topk = 10
+    topk = 1
     target_shape = pred['pose_xyR_pred'].shape[1] 
 
 
@@ -638,168 +660,9 @@ def GeoL_completed_metrics_mult_cond(
     pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
     
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        print(mask_file_path)
 
-        affordance_pred_list = []
-        for i, (direction, anchor_obj_name) in enumerate(zip(direction_list, anchor_obj_name_list)):
-            direction = direction[0]
-            anchor_obj_name = anchor_obj_name[0]
-            print(f"place {object_to_place} to the {direction} of {anchor_obj_name}")
-            #5  find anchor object: use grounding dino or use the anchor position directly
-            annotated_frame = rgb_obj_dect_use_gpt_select(
-                image_path=rgb_img_path,
-                text_prompt=anchor_obj_name,
-                out_dir="outputs"
-            )
-            color_no_obj = np.array(annotated_frame)
-            depth = cv2.imread(depth_file_path, cv2.IMREAD_UNCHANGED)
-            depth = depth.astype(np.float32) / 1000.0
-
-            points_no_obj_scene, scene_no_obj_idx = backproject(
-                depth,
-                INTRINSICS,
-                np.logical_and(depth > 0, depth < 2)
-            )
-            colors_no_obj_scene = color_no_obj[scene_no_obj_idx[0], scene_no_obj_idx[1]]
-            pcd_no_obj_scene = visualize_points(points_no_obj_scene, colors_no_obj_scene)
-
-            dataset_one_case = pred_one_case_dataset(
-                pcd_no_obj_scene,
-                rgb_image_file_path=rgb_img_path,
-                target_name=anchor_obj_name,
-                direction_text=direction,
-                depth_img_path=depth_file_path, # use depth_with_obj_path to make crowded scene
-            )
-            dataloader_one_case = DataLoader(dataset_one_case, batch_size=1, shuffle=False)
-
-            for i, batch in enumerate(dataloader_one_case):
-
-                for k in range(len(anchor_obj_name_list)):
-                    #batch["anchor_position"] = anchor_obj_position_list[k].unsqueeze(0) # use the anchor position directly instead of grounding dino
-
-                    for key, val in batch.items():
-                        if type(val) == list:
-                            continue
-                        batch[key] = val.float().to("cuda")
-
-                    with torch.no_grad():
-                        affordance_pred = model_affordance(batch=batch)["affordance"]
-                        #generate_heatmap_pc(batch, affordance_pred, intrinsics=INTRINSICS, interpolate=False)
-                        affordance_pred_list.append(affordance_pred)
-                
-                break
-                
-            
-        #7 merge the affordance prediction
-        pred_affordance_merge = torch.cat(affordance_pred_list, dim=0)
-        pred_affordance_merge = (pred_affordance_merge ).mean(dim=0, keepdim=True)
-        # normalize the affordance prediction
-        pred_affordance_merge = (pred_affordance_merge - pred_affordance_merge.min()) / (pred_affordance_merge.max() - pred_affordance_merge.min()) 
-        #generate_heatmap_pc(batch, pred_affordance_merge, INTRINSICS, interpolate=False) # visualize single case
-
-        #8 prepare the data for diffusion model
-        affordance_pred_sigmoid = pred_affordance_merge.cpu().numpy()
-        affordance_thershold = -100
-        fps_points_scene_from_original = batch["fps_points_scene"][0]
-        #fps_points_scene_from_original = batch["fps_points_scene"][0]
-
-        fps_points_scene_affordance = fps_points_scene_from_original[
-            affordance_pred_sigmoid[0][:, 0] > affordance_thershold
-        ]
-        fps_points_scene_affordance = fps_points_scene_affordance.cpu().numpy()
-        min_bound_affordance = np.append(
-            np.min(fps_points_scene_affordance, axis=0), -1
-        )
-        max_bound_affordance = np.append(
-            np.max(fps_points_scene_affordance, axis=0), 1
-        )
-        # sample 512 points from fps_points_scene_affordance
-        fps_points_scene_affordance = fps_points_scene_affordance[
-            np.random.choice(
-                fps_points_scene_affordance.shape[0], 512, replace=True
-            )
-        ]  # [512, 3]
-
-        batch['affordance'] = pred_affordance_merge.to('cuda')
-        batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
-        batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
-        batch['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
-        batch['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
-        batch['object_pc_position'] = torch.tensor(data_batch["obj_points"], dtype=torch.float32).to("cuda")
-        batch['tsdf_vol'] = torch.tensor(data_batch["tsdf_vol"], dtype=torch.float32).to("cuda")
-        batch['T_plane'] = torch.tensor(data_batch["T_plane"], dtype=torch.float32).to("cuda")
-        batch['color_tsdf'] = torch.tensor(data_batch["color_tsdf"], dtype=torch.float32).to("cuda")
-        batch['intrinsics'] = torch.tensor(data_batch["intrinsics"], dtype=torch.float32).to("cuda")
-        batch['vol_bnds'] = torch.tensor(data_batch["vol_bnds"], dtype=torch.float32).to("cuda")
-        #9 predict the xyR
-        pred = model_diffusion(batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
-        #visualize_xy_pred_points(pred, batch, intrinsics=INTRINSICS) # visualize the singel case
         
-        #10 transfer 2D pred_points to 3D
-        depth = batch["depth"][0].cpu().numpy()
-        points_scene, idx = backproject(
-            depth,
-            INTRINSICS,
-            np.logical_and(depth > 0, depth < 1.5),
-            NOCS_convention=False,
-        )
-        T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
-        points_for_place = pred["pose_xyR_pred"][..., :2] # option2: use the plane_model to get the points 
-        points_for_place = points_for_place[0].cpu().numpy()
-        points_for_place_z = (-plane_model[3] - plane_model[0] * points_for_place[..., 0] - plane_model[1] * points_for_place[..., 1]) / plane_model[2]
-        points_for_place = np.concatenate([points_for_place, points_for_place_z[:, None]], axis=1)
-        pred_points = points_for_place
-
-        #11 get the topk point with the lowest cost
-        topk = 1
-        guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()
-        guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()
-        guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()
-        min_colliion_loss = guide_collision_loss.min()
-        guide_composite_loss = guide_affordance_loss
-        #guide_composite_loss[guide_collision_loss > min_colliion_loss] = np.inf # NOTE: only use the affordance loss since the collision loss is not accurate
-        min_guide_loss_idx = np.argsort(guide_composite_loss)[0][:topk]
-        pred_points = pred_points[min_guide_loss_idx]
-        print("min distance loss:", guide_distance_error[0][min_guide_loss_idx])
-        print("min collision loss:", guide_collision_loss[0][min_guide_loss_idx])
-
-        #12 process the merics
-        is_success, is_in_mask = process_metric_func(
-                pred_points,
-                obj_mesh_path = data_batch["obj_mesh_path"][0],
-                mask_file_path = mask_file_path,
-                obj_mesh = 
-            )          
-
-        is_success_result += is_success
-        is_in_mask_result += is_in_mask
-        test_sum += 1
-
-        print("test_sum:", test_sum) 
-        print("success:", is_success)
-        print("mask:", is_in_mask)
-
-        print("current success rate:", sum(is_success_result) / len(is_success_result)*100, "%")
-        print("current in mask rate:", sum(is_in_mask_result) / len(is_in_mask_result)*100, "%")
+    
 
 
 def visualize_xy_pred_points(pred, batch, intrinsics=None):
@@ -913,6 +776,160 @@ def get_heatmap(values, cmap_name="turbo", invert=False):
     colormaps = cm.get_cmap(cmap_name)
     rgb = colormaps(values)[..., :3]  # don't need alpha channel
     return rgb
+
+def get_all_obj_bbox(
+    detection_model,
+    image,
+
+):
+    TEXT_PROMPT = "minitor, keyboard, laptop, mouse, phone, book, cup, bottle, plant, pen, glass, plate, wine, food"
+    BOX_TRESHOLD = 0.1 # 0.35
+    TEXT_TRESHOLD = 0.20 # 0.25
+
+    image_source, image_input = preprocess_image_groundingdino(image)
+    boxes, logits, phrases = predict(
+        model=detection_model,
+        image=image_input,
+        caption=TEXT_PROMPT,
+        box_threshold=BOX_TRESHOLD,
+        text_threshold=TEXT_TRESHOLD,
+    )
+
+    phrases = [f"id{id}" for id in range(len(phrases))]
+
+    _, h, w = image_input.shape
+    boxes_xyxy = boxes * torch.Tensor([w, h, w, h])
+    boxes_xyxy = box_convert(boxes=boxes_xyxy, in_fmt="cxcywh", out_fmt="xyxy").numpy()
+
+    # filter out the bboex whose area is larger than 80% of the whole image
+    image_area = w * h
+    boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
+    area_mask = boxes_area < image_area * 0.6
+    boxes_xyxy = boxes_xyxy[area_mask]
+    boxes = boxes[area_mask]
+    logits = logits[area_mask]
+    phrases = [f"id{id}" for id in range(boxes_xyxy.shape[0])]
+
+    if len(phrases) > 0:
+        # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
+        annotated_frame = annotate(
+            image_source=image_source, boxes=boxes, logits=logits, phrases=phrases
+        )
+        write_path = ".tmp/detect_all_bbox.jpg"
+        cv2.imwrite(write_path, annotated_frame)
+
+    else: 
+        print("No object detected")
+        return None, None
+    return boxes_xyxy
+
+def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weights/mesh/"):
+    obj_mesh_files = glob(os.path.join(obj_mesh_dir, obj_category, "*", "mesh.obj"))
+    obj_mesh_file = obj_mesh_files[random.randint(0, len(obj_mesh_files)-1)]
+    print("Selected object mesh file: ", obj_mesh_file)
+    obj_mesh = o3d.io.read_triangle_mesh(obj_mesh_file)
+    obj_mesh.compute_vertex_normals()
+    
+    # Compute the bounding box of the mesh, and acquire the diagonal length
+    bounding_box = obj_mesh.get_axis_aligned_bounding_box()
+    diagonal_length = np.linalg.norm(bounding_box.get_max_bound() - bounding_box.get_min_bound())
+    # Compute the scale factor to resize the mesh
+    scale = target_size / diagonal_length
+    obj_inverse_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, -1, 0],
+            [0, 0, -1],
+        ]
+    )
+    # obj_mesh.transform(obj_scale_matrix)
+    obj_mesh.scale(scale, center=[0, 0, 0])  # scale obj mesh
+    obj_mesh.rotate(obj_inverse_matrix, center=[0, 0, 0])  # rotate obj mesh
+    
+    # Move the mesh center to the bottom part of the mesh
+    vertices = np.asarray(obj_mesh.vertices)
+    # Find the minimum y-coordinate (bottom point)
+    min_z = np.min(vertices[:, 2])
+    # Create translation vector to move bottom to origin
+    translation = np.array([0, 0, min_z])
+    # Apply translation to move bottom to origin
+    obj_mesh.translate(translation)
+    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    # o3d.visualization.draw([obj_mesh, axis])
+    return obj_mesh, obj_mesh_file
+
+def preprocess_image_groundingdino(image):
+    transform = GDinoT.Compose(
+        [
+            GDinoT.RandomResize([800], max_size=1333),
+            GDinoT.ToTensor(),
+            GDinoT.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
+    image_source = Image.fromarray(image.astype(np.uint8))
+    image = np.asarray(image_source)
+    image_transformed, _ = transform(image_source, None)
+    return image, image_transformed
+
+def apply_kmeans_to_affordance(points, affordance_values, n_clusters=3, 
+                               percentile_threshold=70, dist_factor=1):
+    """
+    Filter out low affordance points using K-means clustering.
+    
+    Parameters:
+    -----------
+    points : torch.Tensor or np.ndarray
+        Point cloud data of shape [N, 3]
+    affordance_values : torch.Tensor or np.ndarray
+        Affordance values of shape [N, 1] or [N]
+    n_clusters : int
+        Number of clusters for K-means
+    percentile_threshold : float
+        Percentile threshold for filtering low affordance points
+        
+    Returns:
+    --------
+    filtered_points : np.ndarray
+        Points with high affordance values
+    filtered_affordance : np.ndarray
+        Corresponding affordance values
+    """
+    # Convert to numpy if tensors
+    if isinstance(points, torch.Tensor):
+        points = points.cpu().numpy()
+    if isinstance(affordance_values, torch.Tensor):
+        affordance_values = affordance_values.cpu().numpy()
+    
+    # Reshape affordance values if needed
+    if len(affordance_values.shape) == 2:
+        affordance_values = affordance_values.squeeze(1)
+    
+    # Calculate threshold
+    threshold = np.percentile(affordance_values, percentile_threshold)
+    
+    # Get high affordance points
+    high_affordance_mask = affordance_values > threshold
+    high_affordance_points = points[high_affordance_mask]
+    high_affordance_values = affordance_values[high_affordance_mask]
+    
+    # Apply K-means clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans.fit(high_affordance_points)
+    
+    # Get cluster centers and labels
+    cluster_centers = kmeans.cluster_centers_
+    labels = kmeans.labels_
+    
+    # Compute the pairwise distance between the points and the cluster centers
+    pairwise_distance = np.linalg.norm(points[:, None, :] - cluster_centers[None, :, :], axis=2)
+    # Find the nearest cluster center for each point
+    nearest_cluster_center = np.argmin(pairwise_distance, axis=1)
+    dist = np.min(pairwise_distance, axis=1)
+    dist = dist ** dist_factor
+    dist *= -1
+    affordance_values_new = (dist - np.min(dist)) / (np.max(dist) - np.min(dist))
+    assert len(affordance_values_new) == len(points)
+    return affordance_values_new
         
 if __name__ == "__main__":
     seed_everything(42)
@@ -931,7 +948,7 @@ if __name__ == "__main__":
         dataset=dataset,
         sample_datasize=len(dataset),
         pretrained_affordance="outputs/checkpoints/GeoL_v9_20K_meter_retrain_lr_1e-4_0213/ckpt_11.pth",
-        pretrained_diffusion="outputs/checkpoints/GeoL_diffuser_v0_1K_xyr/ckpt_93.pth",
+        pretrained_diffusion="outputs/checkpoints/GeoL_diffuser_v0_1K_scene_xyr/ckpt_31.pth",
         process_metric_func=rw_process_success_metrics_GeoL_completed,
     )
 

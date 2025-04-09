@@ -1,4 +1,4 @@
-from groundingdino.util.inference import load_model, load_image, predict, annotate
+from thirdpart.GroundingDINO.groundingdino.util.inference import load_model, load_image, predict, annotate
 import cv2
 from GeoL_net.gpt.gpt import chatgpt_select_id
 import torch

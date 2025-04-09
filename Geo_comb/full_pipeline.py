@@ -27,7 +27,7 @@ from GeoL_diffuser.models.utils.fit_plane import *
 from scipy.spatial.distance import cdist
 from matplotlib import cm
 import torchvision.transforms as T
-from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id, chatgpt_selected_plan
+from GeoL_net.gpt.gpt import chatgpt_condition, chatgpt_select_id, chatgpt_selected_plan, chatgpt_selected_plan_given_image
 from GeoL_diffuser.algos.pose_algos import PoseDiffusionModel
 import yaml
 from omegaconf import OmegaConf
@@ -109,12 +109,16 @@ def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
     return pred_depth, confidence
 
 def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weights/mesh/"):
-    obj_mesh_files = glob(os.path.join(obj_mesh_dir, obj_category, "*", "mesh.obj"))
-    obj_mesh_file = obj_mesh_files[random.randint(0, len(obj_mesh_files)-1)]
+    obj_mesh_file_dir_default = os.path.join(obj_mesh_dir, obj_category)
+    if not os.path.exists(obj_mesh_file_dir_default):
+        obj_mesh_file = os.path.join("data_and_weights/mesh/mesh_realworld", "{}.obj".format(obj_category))
+    else:
+        obj_mesh_files = glob(os.path.join(obj_mesh_file_dir_default, "*", "mesh.obj"))
+        obj_mesh_file = obj_mesh_files[random.randint(0, len(obj_mesh_files)-1)]
     print("Selected object mesh file: ", obj_mesh_file)
     obj_mesh = o3d.io.read_triangle_mesh(obj_mesh_file)
     obj_mesh.compute_vertex_normals()
-    
+        
     # Compute the bounding box of the mesh, and acquire the diagonal length
     bounding_box = obj_mesh.get_axis_aligned_bounding_box()
     diagonal_length = np.linalg.norm(bounding_box.get_max_bound() - bounding_box.get_min_bound())
@@ -721,13 +725,13 @@ def detect_object_with_vlm(
     Detect object with VLM: GroudingDIno -> chatgpt select anchor obj_name, direction, bbox_id -> bbox
     """
 
-    TEXT_PROMPT = "detergent, sink, kettle"
-    #TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
+    #TEXT_PROMPT = "detergent, sink, kettle"
+    TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
     # TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
     # TEXT_PROMPT = "plate, cookie" #, fork, spoon, knife, wine, napkin, box, paper, food"
    
    
-    BOX_TRESHOLD = 0.25# 0.35
+    BOX_TRESHOLD = 0.20# 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
 
@@ -763,7 +767,8 @@ def detect_object_with_vlm(
         write_path = ".tmp/annotated_detection_chatgpt_direct.jpg"
         cv2.imwrite(write_path, annotated_frame[:, :, [2, 1, 0]])
 
-        target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
+        #target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
+        target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan_given_image(write_path)
 
         for i, bbox_id in enumerate(bbox_id_list):
             bbox_id_list[i] = int(bbox_id)
@@ -866,12 +871,11 @@ def full_pipeline_v2(
     coordinate_frame_pca = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
     coordinate_frame_pca.rotate(eig_vec, center=[0, 0, 0])
     coordinate_frame_pca.translate(pcd_table_mean - [0, 0, 0.05])
-    o3d.visualization.draw_geometries([pcd_scene, axes, coordinate_frame, coordinate_frame_pca])
-    
-    
+
     print("axis_x:", eig_vec[:, 0])
     print("axis_y:", eig_vec[:, 1])
     print("axis_z:", eig_vec[:, 2])
+    o3d.visualization.draw_geometries([pcd_scene, axes, coordinate_frame, coordinate_frame_pca])
     
     # map the axis x of the coordinate frame_pca to the axis x of the coordinate frame 
     table_frame_y_on_world_xy = eig_vec[:, 1]
@@ -1149,8 +1153,8 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "data_and_weights/realworld_2103/color/000082.png"
-    depth_image_file_path = "data_and_weights/realworld_2103/depth/000082.png"
+    rgb_image_file_path = "data_and_weights/realworld_2103/color/000006.png"
+    depth_image_file_path = "data_and_weights/realworld_2103/depth/000006.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
@@ -1184,7 +1188,7 @@ if __name__ == "__main__":
     # Load the image and depth image, and object mesh
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
-    obj_mesh = retrieve_obj_mesh("cup", target_size=0.5)
+    obj_mesh = retrieve_obj_mesh("bowl_real", target_size=0.5)
     
     # DO the inference
     seed_everything(42)

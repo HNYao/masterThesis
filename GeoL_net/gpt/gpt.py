@@ -334,7 +334,7 @@ def chatgpt_selected_plan(image_path: str):
 
 
 
-def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = None):
+def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = "GeoL_net/gpt/tabletop_scene_yao.JPG"):
     
     """
     ChatGPT condition for object placement or scene understanding
@@ -347,7 +347,7 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = N
 
     base64_image = encode_image(image_path)
     base64_image_example = encode_image("./GeoL_net/gpt/example_case.jpg")
-    base_64_image_given_case = encode_image(image_given_case)
+    base64_image_given_case = encode_image(image_given_case)
 
     api_key = os.getenv("CHATGPT_API_KEY")
   
@@ -383,7 +383,7 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = N
             anchor: <object name 1, object name 2, ...>\n \
             direction: <direction of target object relative to object name 1, direction of target object relative to object name 2, ...>\n \
             bbox id: <int(ID of object name 1),  int(ID of object name 2), ...>\n "
-                  },
+        },
         {"role": "user",
          "content": [
             {
@@ -397,8 +397,7 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = N
                 "text": f"Base on the image, where should I put a mouse reasonably without collision and overlap with other objects? Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\nbbox id: <id of the bounding box>\n "
             }
 
-          ]
-            
+          ]    
         },
         {
           "role": "assistant",
@@ -463,7 +462,7 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = N
             {
               "type": "image_url",
               "image_url": {
-                  "url": f"data:image/jpeg;base64,{base_64_image_given_case}"
+                  "url": f"data:image/jpeg;base64,{base64_image_given_case}"
                 }
             },
             {
@@ -474,10 +473,12 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = N
         },
         {
           "role": "user",
-          "content": {
+          "content": [
+            {
               "type": "text",
               "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: follow the expample case to place the object. Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
             },
+          ]
         },
 
       ],

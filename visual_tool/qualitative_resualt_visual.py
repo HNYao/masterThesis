@@ -119,6 +119,7 @@ def get_obj_mesh(obj_mesh_file_path, target_size=1):
     obj_mesh = o3d.io.read_triangle_mesh(obj_mesh_file_path)
     obj_mesh.compute_vertex_normals()
     bounding_box = obj_mesh.get_axis_aligned_bounding_box()
+    center = obj_mesh.get_center()
     diagonal_length = np.linalg.norm(bounding_box.get_max_bound() - bounding_box.get_min_bound())
     # Compute the scale factor to resize the mesh
     scale = target_size / diagonal_length
@@ -140,7 +141,7 @@ def get_obj_mesh(obj_mesh_file_path, target_size=1):
     # Create translation vector to move bottom to origin
     translation = np.array([0, 0, min_z])
     # Apply translation to move bottom to origin
-    obj_mesh.translate(translation)
+    obj_mesh.translate(translation)  # move obj mesh
     # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
     # o3d.visualization.draw([obj_mesh, axis])
     return obj_mesh
@@ -159,7 +160,14 @@ def initialize_renderer(height=720, width=1280, exposure=1, numSamples=64):
 
 def visualize_npz(args):
     data = np.load(args.npz_path)
-    
+    data_filename = os.path.basename(args.npz_path).strip(".npz")
+    render_dir = "qualitative_demo/blender_output/{}".format(data_filename)
+    os.makedirs(render_dir, exist_ok=True)
+    project_fpath = os.path.join(render_dir, "project.blend")
+    if args.overwrite_project and os.path.exists(project_fpath):
+        os.remove(project_fpath)
+    render_fpath = os.path.join(render_dir, "render.png")
+
     pred_xyz_all = data["pred_xyz_all"]
     pred_r_all  = data["pred_r_all"]
     pred_cost = data["pred_cost"]
@@ -169,8 +177,11 @@ def visualize_npz(args):
     intr = data["intrinsics"]
     mesh_category = data["mesh_category"]
     target_size = data["target_size"].item()
-    obj_mesh_file = data["obj_mesh_file"].item()
-    
+    if args.obj_mesh is not None:
+        obj_mesh_file = args.obj_mesh
+    else:
+        obj_mesh_file = data["obj_mesh_file"].item()
+    pred_xyz_all[..., 2] = np.min(pred_xyz_all[..., 2]) 
 
     # get processed obj mesh
     print(f"Processing the obj mesh: {obj_mesh_file}")
@@ -187,11 +198,22 @@ def visualize_npz(args):
     rgb_colors = rgb_image[idx[0], idx[1], :] / 255
     scene_pcd = visualize_points(points_scene, rgb_colors)
     T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
-    
-    vis_o3d = [scene_pcd]
+    #visuallize plane coordinates frame
+
+    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    axis.transform(T_plane)
+    vis_o3d = [scene_pcd, axis]
     
     guide_loss_color = get_heatmap(pred_cost[None])[0] # [N, 3]
-    
+    plane_z_axis = T_plane[:3, 2]
+
+    coord_z_plane = []
+    for i in range(len(pred_xyz_all)):
+        coordinate_on_z = np.dot(pred_xyz_all[i], plane_z_axis) * plane_z_axis
+        coord_z_plane.append(coordinate_on_z)
+    coord_z_plane = np.array(coord_z_plane) # [N, 3]
+    coord_z_plane_final = np.min(coord_z_plane, axis=0)
+
     # visualize the point clouds with objects mesh directly
     for i in range(len(pred_xyz_all)):
         guide_loss_color_i = guide_loss_color[i]
@@ -203,10 +225,12 @@ def visualize_npz(args):
         
         obj_mesh_i.paint_uniform_color(guide_loss_color_i)
         dR_object = SciR.from_euler("Z", pred_r_all[i], degrees=True).as_matrix()
+        xyz_object = pred_xyz_all[i] - plane_z_axis * (coord_z_plane[i] - coord_z_plane_final)
+        pred_xyz_all[i] = xyz_object
 
         obj_mesh_i.rotate(dR_object, center=[0, 0, 0])
         obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
-        obj_mesh_i.translate(pred_xyz_all[i])  # move obj
+        obj_mesh_i.translate(xyz_object)  # move obj
 
         vis_o3d.append(obj_mesh_i)  
 
@@ -223,7 +247,6 @@ def visualize_npz(args):
 
 
         # Prepare the blender project file
-        project_fpath = "qualitative_demo/blender_file/project.blend"
         print("... Initialize new project file and set camera parameters")
         initialize_renderer()
         bt.setLight_sun(light_rotation, light_strength, 1)
@@ -235,9 +258,10 @@ def visualize_npz(args):
             np.asarray(scene_pcd.points), (0, 0, 0), (0, 0, 0), (1, 1, 1)
         )
         scene_mesh = bt.setPointColors(scene_mesh, np.asarray(scene_pcd.colors))
-        bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE) # TODO: try this mode
-        #setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
+        #bt.setMat_pointCloudColored(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE) # TODO: try this mode
+        setMat_pointCloudColoredEmission(scene_mesh, POINT_COLOR, SCENE_POINT_SIZE)
         scene_mesh.name = "SceneGeo"
+        obj_mesh_combined = o3d.geometry.TriangleMesh()
         for i in range(len(pred_xyz_all)):
             guide_loss_color_i = guide_loss_color[i]
             # Create a mesh by copying the vertices and faces of the original mesh
@@ -250,21 +274,26 @@ def visualize_npz(args):
             dR_object = SciR.from_euler("Z", pred_r_all[i], degrees=True).as_matrix()
 
             obj_mesh_i.rotate(dR_object, center=[0, 0, 0])
-            obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])
+            obj_mesh_i.rotate(T_plane[:3, :3], center=[0, 0, 0])  # rotate obj mesh
             obj_mesh_i.translate(pred_xyz_all[i])  # move obj
-            
+
             # Prepare the object mesh
             o3d.io.write_triangle_mesh("visual_tool/obj.ply", obj_mesh_i)  # Save the mesh ..
             mesh = bt.readMesh("visual_tool/obj.ply", (0, 0, 0), (0, 0, 0), (1, 1, 1))
             bpy.ops.object.shade_smooth()
-            # bt.setMat_plastic(mesh, MESH_COLOR)
+            #bt.setMat_plastic(mesh, MESH_COLOR)
 
             color = list(guide_loss_color_i) + [0.0] 
             # C1 = bt.colorObj(bt.coralRed, 0.5, 1.0, 1.0, 0.0, 0.5)
             # C2 = bt.colorObj(bt.caltechOrange, 0.5, 1.0, 1.0, 0.0, 0.0)
-            C1 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0)
-            C2 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.0)
-            bt.setMat_carPaint(mesh, C1, C2)
+            # C1 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.5)
+            # C2 = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.0)
+            # bt.setMat_carPaint(mesh, C1, C2)
+            meshColor = bt.colorObj(color, 0.5, 1.0, 1.0, 0.0, 0.0)
+            AOStrength = 0.5
+            metalVal = 0.9
+            bt.setMat_metal(mesh, meshColor, AOStrength, metalVal)
+            # bt.setMat_emission(mesh, C1, emission_strength=0.5)
             os.remove("visual_tool/obj.ply")  # .. and remove it
         ################################ BLENDER RENDERING ################################
 
@@ -274,7 +303,6 @@ def visualize_npz(args):
 
         # Do the rendering
         bpy.ops.wm.save_as_mainfile(filepath=project_fpath)
-        render_fpath = os.path.join("qualitative_demo/qualitative_render/render.png")
         bt.renderImage(render_fpath, cam)
         print("... Rendered image saved at: ", render_fpath)
 
@@ -287,6 +315,11 @@ if __name__ == "__main__":
         default="qualitative_demo/qualitative_npz/cake_plate.npz",
     )
     parser.add_argument(
+        "--obj_mesh",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
         "--overwrite_project",
         action="store_true",
         help="overwrite the project file",
@@ -297,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument("--cam_rotation", type=float, nargs=3, default=[-180.0, 0, 0])
     parser.add_argument("--ground_location", type=float, nargs=3, default=[0, 0, 4.5])
     parser.add_argument(
-        "--light_rotation", type=float, nargs=3, default=[-18, 200, -50]
+        "--light_rotation", type=float, nargs=3, default=[9, 170, -50]
     )
     parser.add_argument("--light_strength", type=float, default=5)
     parser.add_argument("--focal_length", type=float, default=55)
