@@ -111,7 +111,7 @@ def predict_depth(depth_model, rgb_origin, intr, input_size = (616, 1064)):
 def retrieve_obj_mesh(obj_category, target_size=1, obj_mesh_dir="data_and_weights/mesh/"):
     obj_mesh_file_dir_default = os.path.join(obj_mesh_dir, obj_category)
     if not os.path.exists(obj_mesh_file_dir_default):
-        obj_mesh_file = os.path.join("data_and_weights/mesh/mesh_realworld", "{}.obj".format(obj_category))
+        obj_mesh_file = os.path.join("data_and_weights/mesh_realworld", "{}.obj".format(obj_category))
     else:
         obj_mesh_files = glob(os.path.join(obj_mesh_file_dir_default, "*", "mesh.obj"))
         obj_mesh_file = obj_mesh_files[random.randint(0, len(obj_mesh_files)-1)]
