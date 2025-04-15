@@ -1042,7 +1042,8 @@ class realworld_dataset(Dataset):
             "T_plane": T_plane,
             #"color_tsdf": color_tsdf,
             "obj_points": obj_points_sampled,
-            "obj_mesh_path": "dataset/obj/mesh/cup/cup_0001_red/mesh.obj"
+            "obj_mesh_path": "dataset/obj/mesh/cup/cup_0001_red/mesh.obj",
+            "obj_bbox_file_path":rgb_image_file_path.replace("color", "obj_bbox").replace("png", "npz"),
 
         }
         return batch

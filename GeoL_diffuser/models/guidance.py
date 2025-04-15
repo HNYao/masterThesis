@@ -830,7 +830,7 @@ class AffordanceGuidance_v2(Guidance):
         if "affordance_fine" in data_batch:
             affordance_ori = data_batch["affordance"] 
         else:
-            print("No affordance_fine in data_batch, using affordance")
+            #print("No affordance_fine in data_batch, using affordance")
             affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
         affordance_ori = self.normalize_affordance(affordance_ori) # (B, 2048, num_affordance)
         

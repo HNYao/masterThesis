@@ -7,10 +7,10 @@ from GeoL_net.gpt.gpt import *
 def gpt_metrics(
         dataset=BlendprocDesktopDataset(),
         sample_datasize=10,
-        gpt_version = "gpt-4o-mini",
+        gpt_version = "gpt-4o",
         process_metric_func = process_direction_metrics
 ):
-    
+    INTRINSICS = np.array([[911.09 , 0. , 657.44 ], [0., 910.68, 346.58], [0.0, 0.0, 1.0]])
     num_sample = sample_datasize
     indices = torch.arange(num_sample)
     subset = Subset(dataset, indices)
@@ -22,6 +22,7 @@ def gpt_metrics(
 
     is_success_result = []
     is_mask_result = []
+    is_non_collision_result = []
 
     test_sum = 0
     for data_batch in dataloader:
@@ -31,40 +32,77 @@ def gpt_metrics(
         object_to_place = data_batch["obj_to_place"][0]
         direction = data_batch["directions"][0]
         anchor_obj_name = data_batch["ref_objects"][0]
+        obj_bbox_file_path = data_batch["obj_bbox_file_path"][0]
+        depth_file_path = data_batch["depth_img_file_path"][0]
+        obj_pc = data_batch["obj_points"][0]
+        rgb_image = cv2.imread(img_path)
+        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        obj_bbox_npz = np.load(obj_bbox_file_path)
+        all_bboxes = np.int16(obj_bbox_npz["all_obj_bboxes"])
+        depth_image = cv2.imread(depth_file_path, cv2.IMREAD_UNCHANGED)
+        depth_image[depth_image>1500] = 0
 
-        bbox = chatgpt_object_placement_bbox(
-            gpt_version=gpt_version,
-            image_path=img_path,
-            prompts_obj_place=object_to_place,
-            prompts_direction=direction,
-            prompts_anchor_obj=anchor_obj_name,
+        print(f"place the object {object_to_place} in the direction {direction[0]} with anchor object {anchor_obj_name[0]}")
+
+        if all_bboxes is not None:
+            obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
+            for bg_obj_bbox in all_bboxes:
+                bg_obj_bbox = bg_obj_bbox.astype(int)
+                x1, y1, x2, y2 = bg_obj_bbox
+                obj_bbox_mask[y1:y2, x1:x2] = 1
+        else:
+            obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
+
+        scene_only_obj, scene_only_obj_idx = backproject(
+            depth_image/1000 * obj_bbox_mask,
+            INTRINSICS,
+            np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2)
         )
+        pcd_scene_only_obj = visualize_points(scene_only_obj)
+        try:
+            bbox = chatgpt_object_placement_bbox(
+                gpt_version=gpt_version,
+                image_path=img_path,
+                prompts_obj_place=object_to_place,
+                prompts_direction=direction[0],
+                prompts_anchor_obj=anchor_obj_name[0],
+            )
+        except:
+            print("Error in GPT processing")
+            bbox = [0,0,1,1]
 
         if bbox is None:
-            print("Failed to find position")
-            is_success = [False, False, False, False, False]
-            is_mask = [False, False, False, False, False]
-            test_sum+=1
+            bbox= [0,0,1,1]
+ 
+        image = np.array(image)
+        updated_img = sample_points_in_bbox(image, bbox, n=5)
+
+        is_success, is_in_mask, is_non_collision = process_metric_func(
+            image_sampled_point=updated_img, 
+            depth_path=data_batch["depth_img_file_path"][0],
+            mask_file_path = data_batch["mask_file_path"][0], 
+            pcd_scene_only_obj=pcd_scene_only_obj,   
+            obj_pc=obj_pc,           
+            )
+
         
-        else:
-
-            image = np.array(image)
-            updated_img = sample_points_in_bbox(image, bbox, n=5)
-
-            is_success, is_mask = process_metric_func(
-                image_sampled_point=updated_img, 
-                depth_path=data_batch["depth_img_file_path"][0],
-                mask_file_path = data_batch["mask_file_path"][0],               
-                )
         
-            is_success_result += is_success
+        if sum(is_success) > 0:
+            is_success = [True] * len(is_success)
+        if sum(is_in_mask) > 0:
+            is_in_mask = [True] * len(is_in_mask)
+        if sum(is_non_collision) > 0:
+            is_non_collision = [True] * len(is_non_collision)
+    
+        is_success_result += is_success
+        is_mask_result += is_in_mask
+        is_non_collision_result += is_non_collision
+        test_sum+=1
 
-            is_mask_result += is_mask
-            test_sum+=1
         print('test_sum:', test_sum)
         print("current success rate:", sum(is_success_result) / len(is_success_result) * 100, "%")
         print("current mask rate:", sum(is_mask_result) / len(is_mask_result) * 100, "%")
-
+        print("current non collision rate:", sum(is_non_collision_result) / len(is_non_collision_result) * 100, "%")
     
     print("final success rate:", sum(is_success_result) / len(is_success_result)*100, "%")
     print("final mask rate:", sum(is_mask_result) / len(is_mask_result)*100, "%")

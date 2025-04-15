@@ -26,6 +26,7 @@ import yaml
 from Geo_comb.full_pipeline import prepare_data_batch, detect_object, detect_object_with_vlm
 from groundingdino.util.inference import load_model, load_image, predict, annotate # type: ignore
 from torchvision.ops import box_convert
+from sklearn.cluster import KMeans
 
 
 
@@ -448,6 +449,7 @@ def GeoL_completed_metrics_mult_cond(
     #3 initialize the metrics
     is_success_result = []
     is_in_mask_result = []
+    is_non_collision_result = []    
     #non_collision_result = []
 
     # loop over the dataset
@@ -457,23 +459,37 @@ def GeoL_completed_metrics_mult_cond(
         #4 get the data
         rgb_img_path = data_batch["rgb_image_file_path"][0]
         rgb_image = cv2.imread(rgb_img_path)
+        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
         direction_list = data_batch["directions"]
         anchor_obj_name_list = data_batch["ref_objects"]
         depth_file_path = data_batch["depth_img_file_path"][0]
         depth_image = cv2.imread(depth_file_path, cv2.IMREAD_UNCHANGED)
-        depth_image[depth_image<2000] = 0
+        depth_image[depth_image>1500] = 0
         mask_file_path = data_batch["mask_file_path"][0]
         vol_bnds = data_batch["vol_bnds"][0]
         #tsdf_vol = data_batch["tsdf_vol"][0]
         T_plane = data_batch["T_plane"][0]
+
+
+        print("test_sum:", test_sum)
+        print("case:", rgb_img_path)
+        print("instrction:", anchor_obj_name_list, direction_list)
         
-        points_scene, scene_idx = backproject(depth_image/1000, INTRINSICS, np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2), NOCS_convention=False)
-        colors_scene = rgb_image[scene_idx[0], scene_idx[1]][..., [2, 1, 0]] / 255.0
+        points_scene, scene_idx = backproject(depth_image/1000, INTRINSICS, np.logical_and(depth_image/1000 > 0, depth_image/1000 < 1.5), NOCS_convention=False)
+        colors_scene = rgb_image[scene_idx[0], scene_idx[1]] / 255.0
         pcd_scene = visualize_points(points_scene, colors_scene)
+        #o3d.visualization.draw_geometries([pcd_scene])
 
         #5 get the all object bbox and generate the tsdf
         all_bboxes = None
         all_bboxes = get_all_obj_bbox(model_detection, rgb_image) # bboxes_xyxy
+
+        # save all boxes as npz
+        data_npz = {}
+        data_npz["all_obj_bboxes"] = all_bboxes
+        file_index = rgb_img_path.split("/")[-1].split(".")[0]
+        np.savez(f"dataset/realworld_2103/obj_bbox/{file_index}.npz", **data_npz)
+
         # Build the TSDF for collision avoidance guidance
         if all_bboxes is not None:
             obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
@@ -495,8 +511,6 @@ def GeoL_completed_metrics_mult_cond(
         tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, INTRINSICS, np.eye(4))
 
 
-        #TODO: get the bbox of all objects to generate tsdf and check collision
-
         # Save temporary image for VLM processing
         target_names, direction_texts = anchor_obj_name_list, direction_list    
         pred_affordance_list = []
@@ -507,7 +521,7 @@ def GeoL_completed_metrics_mult_cond(
             # detect the anchor object
             selected_box, selected_phrase = detect_object(model_detection, rgb_image, anchor_obj_name, use_chatgpt=True)
         
-            data_batch_prepared = prepare_data_batch(rgb_image, depth_image, INTRINSICS, target_names[i], selected_box, direction_texts[i], to_tensor=True)
+            data_batch_prepared = prepare_data_batch(rgb_image, depth_image, INTRINSICS, target_names[i][0], selected_box, direction_texts[i][0], to_tensor=True)
                 
             for key, val in data_batch_prepared.items():
                 if not isinstance(val, torch.Tensor):
@@ -572,11 +586,12 @@ def GeoL_completed_metrics_mult_cond(
         
         data_batch_prepared['affordance'] = pred_affordance_merge.to("cuda")
         
-        mesh_category = data_batch["mesh_category"][0] 
-        mesh_target_size = data_batch["mesh_target_size"][0]
-        obj_mesh, obj_mesh_file = retrieve_obj_mesh(mesh_category, target_size=mesh_target_size)
-        obj_pc = obj_mesh.sample(512)  # Sample 512 points from the object mesh
+        # mesh_category = data_batch["mesh_category"][0] 
+        # mesh_target_size = data_batch["mesh_target_size"][0]
+        # obj_mesh, obj_mesh_file = retrieve_obj_mesh(mesh_category, target_size=mesh_target_size)
+        # obj_pc = obj_mesh.sample(512)  # Sample 512 points from the object mesh
         
+        obj_pc = data_batch["obj_points"][0].to("cuda")  # Use the object points from the dataset
         data_batch_prepared['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch_prepared['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch_prepared['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -587,11 +602,11 @@ def GeoL_completed_metrics_mult_cond(
         if all_bboxes is not None:
             obj_bbox_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
             for bg_obj_bbox in all_bboxes:
-                x1, y1, x2, y2 = bg_obj_bbox
+                x1, y1, x2, y2 = np.int16(bg_obj_bbox)
                 obj_bbox_mask[y1:y2, x1:x2] = 1
         else:
             obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
-        T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
+        #T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
         vol_bnds = np.zeros((3, 2))
         view_frust_pts = get_view_frustum(depth_image / 1000.0, INTRINSICS, np.eye(4))
         vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
@@ -601,6 +616,20 @@ def GeoL_completed_metrics_mult_cond(
         color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
         tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
         tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, INTRINSICS, np.eye(4))
+        #tsdf_mesh = tsdf.get_mesh()
+        #o3d.visualization.draw_geometries([tsdf_mesh])
+
+        # visualize the depth only with the object bbox
+        scene_only_obj, scene_only_obj_idx = backproject(
+            depth_image/1000 * obj_bbox_mask,
+            INTRINSICS,
+            np.logical_and(depth_image/1000 > 0, depth_image/1000 < 2)
+        )
+
+        colors_only_obj = rgb_image[scene_only_obj_idx[0], scene_only_obj_idx[1]][..., [2, 1, 0]] / 255.0
+        pcd_only_obj = visualize_points(scene_only_obj, colors_only_obj)
+        #o3d.visualization.draw_geometries([pcd_only_obj])
+
 
         
         data_batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -609,55 +638,101 @@ def GeoL_completed_metrics_mult_cond(
         data_batch['intrinsics'] = torch.tensor(INTRINSICS, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
         data_batch['intrinsics'] = torch.tensor(INTRINSICS, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['affordance'] = torch.tensor(pred_affordance_merge, dtype=torch.float32).to("cuda")
+        data_batch['pc_position'] = data_batch_prepared['pc_position'].to("cuda") 
+
+
+        data_batch['object_pc_position'] = torch.tensor(obj_pc, dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['gt_pose_xy_min_bound'] = torch.tensor(min_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['gt_pose_xy_max_bound'] = torch.tensor(max_bound_affordance[...,:2], dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['gt_pose_xyR_min_bound'] = torch.tensor(np.delete(min_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+        data_batch['gt_pose_xyR_max_bound'] = torch.tensor(np.delete(max_bound_affordance, obj=2, axis=0), dtype=torch.float32).unsqueeze(0).to("cuda")
+
   
         pred = model_diffusion(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
 
 
 
-    # 10 select topk points
-    topk = 1
-    target_shape = pred['pose_xyR_pred'].shape[1] 
+        # 10 select topk points
+        topk = 5
+        target_shape = pred['pose_xyR_pred'].shape[1] 
 
 
-    guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
-    guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
-    guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+        guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+        guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+        guide_loss_total = pred["guide_losses"]["loss"].cpu().numpy().reshape(target_shape) # [BN, ]
+            
+        # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
+        pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
+        # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
+        # min_colliion_loss = guide_collision_loss.min()
+        # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
+        # guide_loss_total = guide_affordance_loss + guide_collision_loss
+        # Select the topk points with the lowest guide loss
+        min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
+        pred_points = pred_points[min_guide_loss_idx]
+        guide_loss_total = guide_loss_total[min_guide_loss_idx] # [N,]
+        guide_loss_color = get_heatmap(guide_loss_total[None])[0] # [N, 3]
         
-    # guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy().reshape(target_shape) # [BN, ]
-    pred_points = pred['pose_xyR_pred'].cpu().numpy().reshape(target_shape, -1)
-    # guide_loss_color = get_heatmap(guide_collision_loss[None])[0] # [N,]
-    # min_colliion_loss = guide_collision_loss.min()
-    # guide_affordance_loss[guide_collision_loss > min_colliion_loss] = np.inf
-    # guide_loss_total = guide_affordance_loss + guide_collision_loss
-    # Select the topk points with the lowest guide loss
-    min_guide_loss_idx = np.argsort(guide_loss_total)[:topk]
-    pred_points = pred_points[min_guide_loss_idx]
-    guide_loss_total = guide_loss_total[min_guide_loss_idx] # [N,]
-    guide_loss_color = get_heatmap(guide_loss_total[None])[0] # [N, 3]
+        # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
+        print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
+        print("pred xyR:", pred_points) 
     
-    # print("min distance loss:", guide_distance_error[min_guide_loss_idx])
-    print("min collision loss:", guide_collision_loss[min_guide_loss_idx])
-    print("pred xyR:", pred_points) 
-  
-    pred_xyz_all, pred_r_all = [], []
-    for i in range(len(pred_points)):
-        pred_xy = pred_points[i,:2]
-        pred_r = pred_points[i, 2]
-        pred_r = pred_r * 180 / np.pi
-        pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
-        pred_xyz = np.append(pred_xy, pred_z)
+        pred_xyz_all, pred_r_all = [], []
+        vis = [pcd_scene]
+        for i in range(len(pred_points)):
+            pred_xy = pred_points[i,:2]
+            pred_r = pred_points[i, 2]
+            pred_r = pred_r * 180 / np.pi
+            pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]) / plane_model[2]
+            pred_xyz = np.append(pred_xy, pred_z)
 
-        pred_xyz = pred_xyz  
-        pred_xyz_all.append(pred_xyz)
-        pred_r_all.append(pred_r)
+            pred_xyz = pred_xyz  
+            pred_xyz_all.append(pred_xyz)
+            pred_r_all.append(pred_r)
+
+        #     # add point mesh in to the scene
+        #     pred_sphere = create_sphere_at_points(pred_xyz, radius=0.02, color=[1, 0, 0])
+        #     #pred_sphere.translate(pred_xyz)
+        #     pred_sphere.paint_uniform_color([1, 0, 0])
+        #     vis.append(pred_sphere)
+        # o3d.visualization.draw_geometries(vis, window_name="pred_points")
+
+            
+        pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
+        pred_r_all = np.array(pred_r_all) # [N,]
+        pred_cost = guide_loss_total # [N,]
+
+        min_point_coord = np.min(points_scene, axis=0) * 1.2  # [3,]
+        max_point_coord = np.max(points_scene, axis=0) * 0.8  # [3,]
+        #pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
+
+        # check if the pred_points are in the mask
+        is_success, is_in_mask, is_non_collision = process_metric_func(
+            pred_xyz_all,
+            pred_r_all,
+            obj_pc,
+            mask_file_path,
+            pcd_only_obj,
+            pcd_scene,
+        )
+        is_success_result +=is_success
+        is_in_mask_result += is_in_mask
+        is_non_collision_result+=is_non_collision
+
+        success_rate = sum(is_success_result) / len(is_success_result) * 100
+        in_mask_rate = sum(is_in_mask_result) / len(is_in_mask_result) * 100
+        non_collision_rate = sum(is_non_collision_result) / len(is_non_collision_result) * 100
+
+
+        print("success rate:", success_rate, "%")
+        print("in mask rate:", in_mask_rate, "%")
+        print("non collision rate:", non_collision_rate, "%")
+        print("---------")
+        test_sum += 1
+
         
-    pred_xyz_all = np.array(pred_xyz_all) # [N, 3]
-    pred_r_all = np.array(pred_r_all) # [N,]
-    pred_cost = guide_loss_total # [N,]
 
-    min_point_coord = np.min(points_scene, axis=0) * 1.2  # [3,]
-    max_point_coord = np.max(points_scene, axis=0) * 0.8  # [3,]
-    pred_xyz_all = np.clip(pred_xyz_all, min_point_coord, max_point_coord)
     
         
 
@@ -782,7 +857,7 @@ def get_all_obj_bbox(
     image,
 
 ):
-    TEXT_PROMPT = "minitor, keyboard, laptop, mouse, phone, book, cup, bottle, plant, pen, glass, plate, wine, food"
+    TEXT_PROMPT = "minitor, keyboard, headphone, paper, laptop, mouse, phone, book, cup, bottle, plant, pen, glass, plate, knife, fork, spoon, wine, food"
     BOX_TRESHOLD = 0.1 # 0.35
     TEXT_TRESHOLD = 0.20 # 0.25
 
@@ -804,7 +879,7 @@ def get_all_obj_bbox(
     # filter out the bboex whose area is larger than 80% of the whole image
     image_area = w * h
     boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
-    area_mask = boxes_area < image_area * 0.6
+    area_mask = boxes_area < image_area * 0.15
     boxes_xyxy = boxes_xyxy[area_mask]
     boxes = boxes[area_mask]
     logits = logits[area_mask]

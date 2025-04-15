@@ -9,6 +9,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation as SciR
 from Geo_comb.full_pipeline import full_pipeline_v2, predict_depth, retrieve_obj_mesh 
 from GeoL_net.core.registry import registry
+from GeoL_net.gpt.gpt import chatgpt_object_placement_bbox
+from metrics.utils import sample_points_in_bbox
 import open3d as o3d
 import torch
 from PIL import Image
@@ -186,6 +188,191 @@ class HephaisbotPlacementController(ControllerBase):
             place_pos = pred_xyz_all[np.argmin(pred_cost)]
             place_ang = pred_r_all[np.argmin(pred_cost)]
         
+        ##### Dummy inference by manual selection ####
+        dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
+        # Solve for T_base_object
+        T_headcam_object = np.eye(4)
+        T_headcam_object[:3, 3] = place_pos
+        T_base_object = T_base_headcam @ T_headcam_object
+        
+        Rx_base_obj, Ry_base_obj, Rz_base_obj = T_base_object[:3, 0], T_base_object[:3, 1], T_base_object[:3, 2]
+        Rz_base_obj = np.array([0, 0, 1])
+        Ry_base_obj = np.cross(Rz_base_obj, Rx_base_obj)
+        Rx_base_obj = np.cross(Ry_base_obj, Rz_base_obj)
+        R_base_object = np.stack([Rx_base_obj, Ry_base_obj, Rz_base_obj], axis=1)
+        T_base_object[:3, :3] = R_base_object @ dR_object 
+        T_base_object[2, 3] += height_offset
+        T_base_hand = T_base_object @ T_object_hand
+
+        if verbose:
+            obj_mesh_vis.transform(T_base_object)
+
+            print("... Visualize the inference results ...")
+            points_scene_in_base = points_scene @ T_base_headcam[:3, :3].T + T_base_headcam[:3, 3]
+            pcd_scene = DataUtils.visualize_points(points_scene_in_base, colors_scene)
+            vis_place_pos_in_base = DataUtils.visualize_sphere_o3d(T_headcam_object[:3, 3], size=0.05)
+            axis_base = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+            axis_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+            axis_obj = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+            axis_hand = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+
+            axis_cam.transform(T_base_headcam)
+            axis_obj.transform(T_base_object)
+            axis_hand.transform(T_base_hand)
+            vis = [pcd_scene, vis_place_pos_in_base, axis_base, axis_cam, axis_obj, axis_hand, obj_mesh_vis]
+            o3d.visualization.draw(vis)
+        
+        # place_pos_in_base += TRAJ_OFFSET
+        # return place_pos_in_base
+        return T_base_object
+
+
+class GPTPlacementController(ControllerBase):
+    def __init__(self, cfg=None, use_monodepth=True, dummy_place=False):
+        robot_calib = DataUtils.load_json("./stretch_config/config_base_cam.json")
+        T_base_headcam = np.array(robot_calib["T_base_headcam"]).reshape(4,4)
+        self.T_base_headcam = T_base_headcam
+        self.raw_intr = INTRINSICS_HEAD
+        super().__init__(cfg=cfg)   
+        print("Done with controller initialization!")     
+        self.use_monodepth = use_monodepth
+        self.dummy_place = dummy_place
+        
+        if not self.dummy_place:
+            # Detection model
+            pass
+            
+        if use_monodepth:
+            self.depth_model = torch.hub.load(
+                'yvanyin/metric3d', 'metric3d_vit_large', pretrain=True)
+            self.depth_model.cuda().eval()
+        else:
+            self.depth_model = None
+
+    def inference(self, 
+                T_object_hand, 
+                obj_mesh, 
+                target_names=["Monitor"],
+                direction_texts=["Front"],
+                use_vlm=False,
+                fast_vlm_detection=False,
+                use_kmeans=True,
+                disable_rotation=False,
+                visualize_affordance=False,
+                visualize_diff=False,
+                visualize_final_obj=True,
+                rendering = False,
+                height_offset=0.12, 
+                cut_mode="center", 
+                verbose=True, 
+                debug=False):
+        sub_count = 0
+        while True:
+            _, _, _, _ = self._subscribe_image(cut_mode, preprocess=False)
+            sub_count += 1
+            if sub_count == 100:
+                color, depth, intr, T_calib = self._subscribe_image(cut_mode, preprocess=True)
+                cv2.imwrite(".tmp/tmp_color.png", color[..., [2,1,0]])
+                if not self.use_monodepth:
+                    cv2.imwrite(".tmp/tmp_depth.png", (depth * 1000).astype(np.uint16))
+                break
+        if self.use_monodepth:
+            print("Using Metric3D model for depth prediction")
+            if cut_mode == "full":
+                offset = 25
+                padding = (1280 - 405) // 2
+                img_mask = np.zeros_like(color[..., 0])
+                img_mask[:, padding + offset: padding + 405 - offset] = 1
+            else:
+                img_mask = np.ones_like(color[..., 0])
+            # color = (color * img_mask[..., None]).astype(np.uint8)
+            depth, _ = predict_depth(self.depth_model, color, intr)
+            depth = depth * img_mask
+            depth[depth < 0.5] = 0
+            cv2.imwrite(".tmp/tmp_depth.png", (depth * 1000).astype(np.uint16))
+        print("===============> Successfully subscribed to image!")
+
+        points_scene, scene_ids = DataUtils.backproject(
+            depth,
+            intr,
+            depth < 1.5,
+            NOCS_convention=False,
+        )
+        # depth[depth >  1] = 0
+        colors_scene = color[scene_ids[0], scene_ids[1]] / 255.0
+        obj_mesh_vis =  copy.deepcopy(obj_mesh)
+        obj_mesh_vis.compute_vertex_normals()
+        obj_mesh_vis.rotate(ROTATION_MATRIX_X180[:3, :3])
+        T_base_headcam = self.T_base_headcam @ T_calib
+        # pcd_scene = DataUtils.visualize_points(points_scene, colors_scene)
+        # o3d.visualization.draw([pcd_scene])
+        ##### Dummy inference by manual selection ####
+        if debug and self.dummy_place:
+            place_pos_samples = DataUtils.pick_points_in_viewer(
+                points_scene, colors_scene
+            )
+            place_pos = place_pos_samples.mean(axis=0)
+            place_ang = 10
+        else:
+            # pcd_scene = visualize_points(points_scene, colors_scene)
+            # o3d.visualization.draw([pcd_scene])
+            color = color[..., ::-1].copy().astype(np.uint8)
+            depth = (depth * 1000).astype(np.uint16)
+            T_camera_plane = np.linalg.inv(T_base_headcam)
+
+            prompts_obj_place = input("Please input the object need to be places: ")
+            prompts_anchor_obj = input("Please input the anchor object: ")
+            prompts_direction = input("Please input the direction : ")
+
+            try:
+                bbox = chatgpt_object_placement_bbox(
+                    gpt_version='gpt-4o',
+                    image_path=".tmp/tmp_color.png",
+                    prompts_obj_place=prompts_obj_place,
+                    prompts_direction=prompts_direction,
+                    prompts_anchor_obj=prompts_anchor_obj,
+                )
+            except:
+                print("Error in GPT placement bbox prediction")
+                bbox = [0,0,1,1]
+
+            # visualize the bbox on the image
+            image_visual = Image.open(".tmp/tmp_color.png")
+            image_visual = image.convert("RGB")
+            h, w = image_visual.size
+            x_min = int(bbox[0] * w)
+            y_min = int(bbox[1] * h)
+            x_max = int(bbox[2] * w)
+            y_max = int(bbox[3] * h)
+            color = (255, 0, 0)
+            thickness = 2
+            cv2.rectangle(image_visual, (x_min, y_min), (x_max, y_max), color, thickness)
+            cv2.imshow("bbox", image_visual)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+            
+            image = np.array(image)
+            updated_img = sample_points_in_bbox(image, bbox, n=5)
+            # get the pred xyz all from the updated_img
+            pts, idx = backproject(depth/1000, INTRINSICS_HEAD, np.logical_and(depth > 0, depth/1000<2))
+            color_sampled_point = updated_img[idx[0], idx[1]]
+            pts_sampled_point = visualize_points(pts, color_sampled_point/255)            
+            pts_colors = np.asarray(pts_sampled_point.colors)
+            pts_points = np.asarray(pts_sampled_point.points)
+            is_red = (pts_colors[:, 0] >= 0.9) & (pts_colors[:, 1] <= 0.1) & (pts_colors[:, 2] <= 0.1)
+            sampled_points = pts_points[is_red]
+
+            place_pos = sampled_points
+            place_ang = 0 # default no rotation
+
+
+            # place_pos = pred_xyz_all[np.argmin(pred_cost)]
+            # place_ang = pred_r_all[np.argmin(pred_cost)]
+
+
+
+
         ##### Dummy inference by manual selection ####
         dR_object = SciR.from_euler("Z", -place_ang, degrees=True).as_matrix()
         # Solve for T_base_object

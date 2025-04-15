@@ -8,6 +8,7 @@ from GeoL_diffuser.models.utils.fit_plane import fit_plane_from_points, get_tf_f
 import h5py
 import trimesh
 import json
+import copy
 
 def hdf52png_table(hdf5_path, output_dir=None):
     """
@@ -1284,22 +1285,81 @@ def rw_process_success_metrics(
         image_sampled_point: np.ndarray, 
         depth_path: str,
         mask_file_path: str,
+        pcd_scene_only_obj,
+        obj_pc,
 ):
+    
     is_in_mask = rw_process_mask_metrics(
         image_sampled_point,
         depth_path,
         mask_file_path,
     )
+    is_non_collision = rw_process_collision_metrics(
+        image_sampled_point,
+        depth_path,
+        obj_pc,
+        pcd_scene_only_obj
+    )
 
-    is_success = [all(x) for x in zip(is_in_mask)]
-    return is_success, is_in_mask
+    is_success = [all(x) for x in zip(is_in_mask, is_non_collision)]
+    return is_success, is_in_mask, is_non_collision
+
+def rw_process_collision_metrics(
+        image_sampled_point: np.ndarray,
+        depth_path: str,
+        obj_pc,
+        pcd_scene_only_obj,
+        intrinsics=None,
+    ):
+    non_collision = []
+    if intrinsics is None:
+        intrinsics = np.array([[911.09 ,   0.     , 657.44  ],
+                    [  0.     , 910.68, 346.58],
+                    [  0.     ,   0.     ,   1.     ]])
+    depth = np.array(cv2.imread(depth_path, cv2.IMREAD_UNCHANGED))/1000
+    pts, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth<2))
+    color_sampled_point = image_sampled_point[idx[0], idx[1]]
+    pts_sampled_point = visualize_points(pts, color_sampled_point/255)
+
+    colors = np.asarray(pts_sampled_point.colors)
+    points = np.asarray(pts_sampled_point.points)
+
+    is_red = (colors[:, 0] >= 0.9) & (colors[:, 1] <= 0.1) & (colors[:, 2] <= 0.1)
+    sampled_points = points[is_red]
+
+    obj_pcd = o3d.geometry.PointCloud() 
+    obj_pcd.points = o3d.utility.Vector3dVector(obj_pc)
+    
+    vis = [pcd_scene_only_obj]
+    non_collision = []
+    for pred_point in sampled_points:
+        pred_point = np.asarray(pred_point)
+        # get the center of the obj_pc
+        obj_max_bound = obj_pcd.get_max_bound()
+        obj_min_bound = obj_pcd.get_min_bound()
+        obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
+
+        # move the obj to the point
+        obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+        # deep copy
+        obj_case = copy.deepcopy(obj_pcd)
+        obj_case.translate(pred_point - obj_bottom_center)
+        noncollision = isNonCollision(obj_case, pcd_scene_only_obj, threshold=0.01)
+        vis.append(obj_case)
+        non_collision.append(noncollision)
+    
+    #o3d.visualization.draw_geometries(vis, window_name="collision pred")
+
+    return non_collision
 
 
+    
 
 def rw_process_mask_metrics(
         image_sampled_point: np.ndarray,
         depth_path,
         mask_with_obj_path: str,
+
         intrinsics=None,
     ):
 
@@ -1323,6 +1383,16 @@ def rw_process_mask_metrics(
     sampled_points = points[is_red]
     sampled_mask_points = mask_points[is_red]
     sampled_mask_colors = mask_colors[is_red]
+
+    # create sphre on sampled points
+    sampled_sphere = [mask_pcd]
+    # for sampled_point in sampled_points:
+    #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
+    #     sphere.compute_vertex_normals()
+    #     sphere.scale(1, [0,0,0])
+    #     sphere.translate(sampled_point)
+    #     sampled_sphere.append(sphere)
+    # o3d.visualization.draw_geometries(sampled_sphere, window_name="mask and pred")
 
     is_mask = []
     for sampled_mask_color in sampled_mask_colors:
@@ -1391,27 +1461,45 @@ def process_success_metrics_GeoL_completed(
 
 def rw_process_success_metrics_GeoL_completed(
         pred_points,
-        obj_mesh_path,
+        pred_rotations,
+        obj_pc,
         mask_file_path,
+        pcd_only_obj,
+        pcd_scene,
         **kwargs
 ):
 
-    is_in_mask = []
+    is_in_mask_result = []
+    is_non_collision_result = []
 
-    in_mask = rw_process_mask_metrics_GeoL_completed(
+    is_in_mask = rw_process_mask_metrics_GeoL_completed(
         pred_points,
         mask_file_path,
+        pcd_scene
     )
-    is_in_mask = is_in_mask + in_mask
+    is_in_mask_result = is_in_mask_result + is_in_mask
+
+    in_non_collision = rw_process_collision_metrics_GeoL_completed(
+        pred_points,
+        pred_rotations,
+        obj_pc,
+        pcd_only_obj,
+        pcd_scene
+    )
+    is_non_collision_result = is_non_collision_result + in_non_collision
 
     print(is_in_mask)
     # calculate the success rate
-    is_success = [all(x) for x in zip(is_in_mask)]
-    return is_success, is_in_mask
+    is_success = [all(x) for x in zip(is_in_mask_result, is_non_collision_result)]
+    print("is_success:", is_success)
+    print("is_in_mask_result:", is_in_mask_result)
+    print("is_non_collision_result:", is_non_collision_result)
+    return is_success, is_in_mask_result, is_non_collision_result
 
 def rw_process_mask_metrics_GeoL_completed(
         pred_points,
         mask_file_path,
+        pcd_scene
 ):
     mask_pcd = o3d.io.read_point_cloud(mask_file_path)
     pred_points = np.asarray(pred_points)
@@ -1431,36 +1519,41 @@ def rw_process_mask_metrics_GeoL_completed(
     #     sphere.scale(0.01, [0,0,0])
     #     sphere.translate(query_point)
     #     sampled_sphere.append(sphere)
-    # o3d.visualization.draw_geometries(sampled_sphere)
+    # o3d.visualization.draw_geometries(sampled_sphere, window_name="mask and pred")
+
     return in_mask
 
 def rw_process_collision_metrics_GeoL_completed(
         pred_points,
-        pred_xyRs,
-        mesh,
-        rgb_path,
-        depth_path,
-        intrinsics=None,
-
+        pred_rotations,
+        obj_pc,
+        pcd_only_obj,
+        pcd_scene,
+        target_size=[0.1, 0.1, 0.1],
     ):
-    if intrinsics is None:
-        intrinsics = np.array([[607.09912/2 ,   0.     , 636.85083/2  ],
-                    [  0.     , 607.05212/2, 367.35952/2],
-                    [  0.     ,   0.     ,   1.     ]])
-    depth = np.array(cv2.imread(depth_path, cv2.IMREAD_UNCHANGED))/1000
-    color_rgb = cv2.imread(rgb_path, cv2.COLOR_BGR2RGB)
-    pts, idx = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2))
-
-    color_sampled_point = color_rgb[idx[0], idx[1]]
-    pts_sampled_point = visualize_points(pts, color_sampled_point/255)
-
     non_collision = []
-    for query_point, xyR in pred_points, pred_xyRs:
-        obj_rotation_degree = xyR[2] * np.pi / 180
-        obj_rotation = np.radians(obj_rotation_degree)
-    
-        o3d.visualization.draw_geometries([mesh, pts_sampled_point])   
+    obj_pcd = o3d.geometry.PointCloud()
+    obj_pcd.points = o3d.utility.Vector3dVector(np.asarray(obj_pc.cpu().numpy()))
+    vis = [pcd_only_obj]
+    for pred_point in pred_points:
+        pred_point = np.asarray(pred_point)
+        # get the center of the obj_pc
+        obj_max_bound = obj_pcd.get_max_bound()
+        obj_min_bound = obj_pcd.get_min_bound()
+        obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
 
+        # move the obj to the point
+        obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
+        # deep copy
+        obj_case = copy.deepcopy(obj_pcd)
+        obj_case.translate(pred_point - obj_bottom_center)
+        noncollision = isNonCollision(obj_case, pcd_only_obj, threshold=0.01)
+        vis.append(obj_case)
+        non_collision.append(noncollision)
+    
+    #o3d.visualization.draw_geometries(vis, window_name="collision pred")
+
+    return non_collision
 
 
     

@@ -808,7 +808,7 @@ def chatgpt_select_id(image_path: str, text_prmpt, mode="object_placement"):
     # object placement
     if mode == "object_placement":
       payload = {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "messages": [
           {
             "role": "system", 

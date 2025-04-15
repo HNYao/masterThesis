@@ -75,7 +75,7 @@ def main(args):
     print(" ====================== Step 1: Parse the scene for the placement configuration ====================== ")
     obj_mesh = retrieve_obj_mesh(mesh_category, target_size=target_size)
     # T_base_object_to_place = controller.inference(T_object_hand, height_offset=0.07, cut_mode="full")
-    T_base_object_to_place = controller.inference(
+    T_base_object_to_place = f.inference(
                             T_object_hand, 
                             obj_mesh, 
                             target_names=["Monitor", ],

@@ -620,7 +620,11 @@ def prepare_data_batch(rgb_image,
     
     # Acquire the location of the anchor object
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
-    x1, y1, x2, y2 = target_box
+    try:
+        x1, y1, x2, y2 = target_box
+    except:
+        print("Error: target box is not valid")
+        x1, y1, x2, y2 = 0, 0, rgb_image.shape[1], rgb_image.shape[0]
     width, height = x2 - x1, y2 - y1
     scale = 1.0
     if "Left" in direction_text:
@@ -674,7 +678,7 @@ def detect_object(
     use_chatgpt=False,
 ):
     TEXT_PROMPT = text_prompt
-    BOX_TRESHOLD = 0.20 # 0.35
+    BOX_TRESHOLD = 0.1 # 0.35
     TEXT_TRESHOLD = 0.20 # 0.25
 
     image_source, image_input = preprocess_image_groundingdino(image)
@@ -692,6 +696,14 @@ def detect_object(
     boxes_xyxy = boxes * torch.Tensor([w, h, w, h])
     boxes_xyxy = box_convert(boxes=boxes_xyxy, in_fmt="cxcywh", out_fmt="xyxy").numpy()
 
+    image_area = w * h
+    boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
+    area_mask = boxes_area < image_area * 0.1
+    boxes_xyxy = boxes_xyxy[area_mask]
+    boxes = boxes[area_mask]
+    logits = logits[area_mask]
+    phrases = [f"id{id}" for id in range(boxes_xyxy.shape[0])]
+
 
     if len(phrases) > 0:
         # print("orignal boxes cxcy:", ori_boxes, ori_boxes[0][0], ori_boxes[0][1])
@@ -702,17 +714,25 @@ def detect_object(
         cv2.imwrite(write_path, annotated_frame)
 
         if use_chatgpt:
-            id_selected_vlm= chatgpt_select_id(write_path, TEXT_PROMPT)
-            selected_id = int(id_selected_vlm)
+            try:
+                id_selected_vlm= chatgpt_select_id(write_path, TEXT_PROMPT)
+                selected_id = int(id_selected_vlm)
+            except:
+                print("Error: chatgpt select id failed")
+                selected_id = 0
         else:
             selected_id = 0
     else: 
         print("No object detected")
         return None, None
             
+    try:
+        selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
+        selected_phrase = phrases[selected_id]
+    except:
+        selected_box_xyxy = boxes_xyxy[0].astype(np.int32)
+        selected_phrase = phrases[0]
 
-    selected_box_xyxy = boxes_xyxy[selected_id].astype(np.int32)
-    selected_phrase = phrases[selected_id]
     return selected_box_xyxy, selected_phrase
 
 
@@ -1188,7 +1208,7 @@ if __name__ == "__main__":
     # Load the image and depth image, and object mesh
     rgb_image = cv2.imread(rgb_image_file_path)
     depth_image = cv2.imread(depth_image_file_path, -1)
-    obj_mesh = retrieve_obj_mesh("bowl_real", target_size=0.5)
+    obj_mesh, _ = retrieve_obj_mesh("bowl_real", target_size=0.5)
     
     # DO the inference
     seed_everything(42)

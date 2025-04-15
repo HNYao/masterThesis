@@ -4,7 +4,7 @@ import time
 # BlenderProc 运行命令
 command = [
     "blenderproc", "run",
-    "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset_gen/mesh_scene_gen_mask_bproc_v2.py"
+    "/home/stud/zhoy/MasterThesis_zhoy/GeoL_net/dataset_gen/mesh_scene_gen_mask_bproc_v2_multi_view.py"
 ]
 
 def run_blenderproc():

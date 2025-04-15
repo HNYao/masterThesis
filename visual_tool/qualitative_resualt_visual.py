@@ -172,11 +172,21 @@ def visualize_npz(args):
     pred_r_all  = data["pred_r_all"]
     pred_cost = data["pred_cost"]
     rgb_image = data["rgb_image"][...,[2, 1, 0]] # [H, W, 3]
+
+    # save the image use PIL
+    from PIL import Image
+    rgb_image = Image.fromarray(rgb_image.astype(np.uint8))
+    rgb_image.save(os.path.join(".tmp", "cactus_scene.png"))
+
+
+
     depth_image_raw = data["depth_image_raw"]
     depth_image = data["depth_image"] # in mm
+    #depth_image_completed = data["depth_image_completed"]
     intr = data["intrinsics"]
     mesh_category = data["mesh_category"]
     target_size = data["target_size"].item()
+
     if args.obj_mesh is not None:
         obj_mesh_file = args.obj_mesh
     else:
@@ -187,16 +197,24 @@ def visualize_npz(args):
     print(f"Processing the obj mesh: {obj_mesh_file}")
     obj_mesh = get_obj_mesh(obj_mesh_file, target_size)
 
+    # visuliaze the image
+    # import matplotlib.pyplot as plt
+    # plt.imshow(rgb_image)
+    # plt.axis("off")
+    # plt.show()
+
 
     # built scene point cloud
     points_scene, idx= backproject(
         depth_image/1000,
         intr,
-        depth_image > 0,
+        depth_image> 0,
         NOCS_convention=False,
     )
     rgb_colors = rgb_image[idx[0], idx[1], :] / 255
     scene_pcd = visualize_points(points_scene, rgb_colors)
+    o3d.io.write_point_cloud(".tmp/pipepine_depth.ply", scene_pcd)
+    # o3d.visualization.draw_geometries([scene_pcd])
     T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
     #visuallize plane coordinates frame
 
@@ -312,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--npz_path",
         type=str,
-        default="qualitative_demo/qualitative_npz/cake_plate.npz",
+        default="qualitative_demo/qualitative_npz/cactus_workingdesk_rw.npz",
     )
     parser.add_argument(
         "--obj_mesh",
