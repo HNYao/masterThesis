@@ -346,8 +346,8 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = "
     """
 
     base64_image = encode_image(image_path)
-    base64_image_example = encode_image("./GeoL_net/gpt/example_case.jpg")
-    base64_image_given_case = encode_image(image_given_case)
+    base64_image_example = encode_image("./GeoL_net/gpt/example_case.jpg") # for teaching the gpt model how to use visual prompting
+    base64_image_given_case = encode_image(image_given_case) # for asking the gpt model to follow the given case to arrange objects
 
     api_key = os.getenv("CHATGPT_API_KEY")
   
@@ -467,7 +467,7 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = "
             },
             {
                 "type": "text",
-                "text": f"This is the example case, please follow the example case to place the object."
+                "text": f"Please follow the example case when suggesting object placements. For instance, if the long-handled soup spoon is placed on the pot in the example, you should also suggest placing the long-handled soup spoon on the pot in similar cases. Base your recommendations closely on the placements in the example"
             }
           ]
         },
