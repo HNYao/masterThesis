@@ -465,10 +465,10 @@ def dynamic_sleep():
 if __name__ == "__main__":
     #### generate one case for picked case
     bproc.init()
-    json_file = "dataset/scene_gen/picked_scene_mesh_json/id15_0.json"
+    json_file = "dataset/scene_gen/picked_scene_mesh_json/id108_0.json"
     parent_dir = "dataset/multi_view"
     scene_id = json_file.split("/")[-1].split(".")[0]
-    text_guidance_file = "dataset/picked_scene_RGBD_mask/id15_0/text_guidance.json"
+    text_guidance_file = "dataset/picked_scene_RGBD_mask/id108_0/text_guidance.json"
 
     scene_id_file = os.path.join("dataset/picked_scene_RGBD_mask",scene_id)
 
@@ -488,9 +488,9 @@ if __name__ == "__main__":
         anchor_obj_path_list.append(anchor_obj_path)
         removed_obj_path_list.append(removed_obj_path)
 
-    #view_angle = "left"
+    view_angle = "left"
     #view_angle = "right"
-    view_angle = "front"
+    #view_angle = "front"
     bproc_gen_mask_with_and_without_obj(
         scene_mesh_json=json_file,
         RGBD_out_dir=parent_dir,

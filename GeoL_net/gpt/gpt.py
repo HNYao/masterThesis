@@ -1,7 +1,7 @@
 import os
 import cv2
 from typing import Optional
-import openai
+import openai #1.45.1
 import base64
 import requests
 import numpy as np
@@ -897,3 +897,65 @@ def chatgpt_select_id(image_path: str, text_prmpt, mode="object_placement"):
     # prompts_direction = 'the left of the eye glasses'
     # bbox_list = chatgpt_object_placement_bbox_o1(image_path, prompts_obj, prompts_direction)
     # visualize_bbox_set(image_path, bbox_list)
+  
+
+
+def get_sentence_probability(sentence):
+    api_key = os.getenv("CHATGPT_API_KEY")
+    openai.api_key = api_key
+    # 使用gpt-3.5-turbo模型进行聊天模式请求
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",  # 使用gpt-3.5-turbo模型
+        messages=[
+            {"role": "system", "content": "Repeat the given sentenece."},
+            {"role": "user", "content": sentence}
+        ],
+        logprobs=True,  # 使用布尔值True来启用logprobs
+        max_tokens=10
+    )
+
+
+    # sum the log probabilities
+    log_prob_sum = 0.0
+    for i in range(len(response['choices'][0].get('logprobs', {})['content'])):
+        log_prob_i = response['choices'][0].get('logprobs', {})['content'][i]["logprob"]
+        log_prob_sum += log_prob_i
+    return log_prob_sum          
+
+
+
+        # sum the log probabilities
+
+
+if __name__ == "__main__":
+  from sklearn.metrics.pairwise import cosine_similarity
+  sentences = [
+      "A monitor is on the working desk.",
+      "A keyboard is on the working desk.",
+      "A laptop is on the working desk.",
+      "A plate is on the working desk.",
+      "A bowl is on the working desk.",
+      "A cup is on the working desk.",
+      "A mouse is on the working desk.",
+      "A power strip is on the working desk.",
+      "A bottle is on the working desk.",
+      "A can is on the working desk.",
+      "A book is on the working desk.",
+      "A pen is on the working desk.",
+      "A paper is on the working desk.",
+  ]
+
+  # 计算每个句子的log概率并排序
+  log_probs = {sentence: get_sentence_probability(sentence) for sentence in sentences}
+  sorted_log_probs = sorted(log_probs.items(), key=lambda x: x[1])
+
+  # # 输出按可能性排序的句子
+  # for sentence, score in sorted_log_probs:
+  #     print(f"Sentence: '{sentence}', Probability: {score:.6f}")
+
+  # 按照从高到底排序
+  sorted_log_probs.reverse()
+  # 输出按可能性排序的句子
+  for sentence, score in sorted_log_probs:
+      print(f"Sentence: '{sentence}', Probability: {score:.6f}")
+  

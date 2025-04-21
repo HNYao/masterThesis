@@ -467,7 +467,7 @@ def GeoL_completed_metrics_mult_cond(
             for i, batch in enumerate(dataloader_one_case):
 
                 for k in range(anchor_obj_position_list.shape[0]):
-                    batch["anchor_position"] = anchor_obj_position_list[k].unsqueeze(0) # use the anchor position directly instead of grounding dino
+                    #batch["anchor_position"] = anchor_obj_position_list[k].unsqueeze(0) # use the anchor position directly instead of grounding dino
 
                     for key, val in batch.items():
                         if type(val) == list:
@@ -543,7 +543,7 @@ def GeoL_completed_metrics_mult_cond(
         pred_points = points_for_place
 
         #11 get the topk point with the lowest cost
-        topk = 1
+        topk = 5
         guide_affordance_loss = pred["guide_losses"]["affordance_loss"].cpu().numpy()
         guide_collision_loss = pred["guide_losses"]["collision_loss"].cpu().numpy()
         guide_distance_error = pred["guide_losses"]["distance_error"].cpu().numpy()
