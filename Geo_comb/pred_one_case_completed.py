@@ -505,11 +505,11 @@ def rgb_obj_dect_no_vlm(
     image_path,
     text_prompt,
     out_dir=None,
-    model_path="GroundingDINO/weights/groundingdino_swint_ogc.pth",
+    model_path="thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth",
 ):
 
     model = load_model(
-        "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", model_path
+        "thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", model_path
     )
     IMAGE_PATH = image_path
     TEXT_PROMPT = text_prompt

@@ -706,9 +706,39 @@ class BlendprocDesktopDataset_incompleted_sparse(Dataset):
             sub_items = os.listdir(sub_folder_path)
             for sub_item in sub_items:
                 sub_sub_folder_path = os.path.join(sub_folder_path, sub_item)
+                if sub_sub_folder_path not in [
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id414_id317_0_0/lamp_0004_orange',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id295_id157_0_0/notebook_0003_green',		
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id330_id136_0_0/eye_glasses_0002_black',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id61_id102_0_0/cup_0003_green',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id19_id44_0_0/bowl_0003_white',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id64_id20_0_0/laptop_0005_black',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id432_id4_0_0/cup_0004_white',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id68_id231_0_0/monitor_0012_white',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id68_id231_0_0/phone_0000_normal',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id68_id231_0_0/pencil_0006_orange',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id68_id231_0_0/bottle_0002_mixture',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id323_id8_0_0/clock_0001_normal',			
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id323_id8_0_0/bottle_0002_mixture',				
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id39_id338_0_0/vase_0003_red'
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id39_id338_0_0/eye_glasses_0004_black',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id68_id231_0_0/clock_0001_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id323_id8_0_0/phone_0000_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id295_id157_0_0/bottle_0003_cola',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id39_id68_0_0/cup_0004_white',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id39_id68_0_0/phone_0000_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id19_id318_0_0/plant_0008_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id317_id108_0_0/eraser_0002_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id432_id321_0_0/clock_0001_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id6_id435_0_0/phone_0000_normal',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id6_id435_0_0/bottle_0001_plastic',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id6_id435_0_0/bottle_0004_brown',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id295_id5_0_0/eye_glasses_0002_black',
+                    '/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data_sparse/id19_id318_0_0/clock_0001_normal',
+                    ]:
                 
-                if os.path.isdir(sub_sub_folder_path):
-                    self.files.extend([sub_sub_folder_path])
+                    if os.path.isdir(sub_sub_folder_path):
+                        self.files.extend([sub_sub_folder_path])
     
     def __len__(self):
         return len(self.files)
@@ -831,7 +861,7 @@ class BlendprocDesktopDataset_incompleted_sparse(Dataset):
         scale_x, scale_y, scale_z = [target_size[0]/current_size[0], target_size[1]/current_size[1], target_size[2]/current_size[2]]
         
         obj_mesh.apply_scale([scale_x, scale_y, scale_z])
-        obj_points_sampled = obj_mesh.sample(2000)
+        obj_points_sampled = obj_mesh.sample(512)
         obj_rotation_matrix = np.array([[np.cos(obj_rotation), -np.sin(obj_rotation), 0], [np.sin(obj_rotation), np.cos(obj_rotation), 0], [0, 0, 1]])
         obj_points_sampled = obj_points_sampled @ obj_rotation_matrix.T
 
