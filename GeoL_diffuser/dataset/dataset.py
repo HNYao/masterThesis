@@ -505,6 +505,7 @@ class PoseDataset_top(Dataset):
 
 
 
+
         bound_affordance_z_mid = np.median(fps_points_scene_affordance_perfect[:, 2])
         min_bound_affordance = np.append(np.min(fps_points_scene_affordance_perfect, axis=0), -180)
         max_bound_affordance = np.append(np.max(fps_points_scene_affordance_perfect, axis=0), 180)
@@ -538,6 +539,263 @@ class PoseDataset_top(Dataset):
         scene_id = pc_path.split('/')[2]
         obj_name = pc_path.split('/')[3]
         json_path = os.path.join("dataset/scene_gen/scene_mesh_json_aug", f"{scene_id}.json") #e.g. "dataset/scene_mesh_json_kinect/id3.json"
+        # find the key which includes obj_name
+        with open(json_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            for key in data.keys():
+                if obj_name in key:
+                    obj_json = data[key]
+                    break
+        obj_mesh_path = key
+        obj_json = data[obj_mesh_path]
+        obj_scale = obj_json[1]
+        obj_rotation = torch.tensor(obj_json[2], dtype=torch.float32).unsqueeze(0)
+        obj_mesh = trimesh.load(obj_mesh_path)
+        #with open("GeoL_net/dataset_gen/obj_size.json", 'r') as f:
+        #    obj_size = json.load(f)
+        #obj_size = obj_size[obj_name]
+        #obj_mesh_extent = obj_mesh.bounds.to_extents()
+        #obj_scale = obj_size / obj_mesh_extent
+        obj_mesh.apply_scale(obj_scale)
+        obj_pc = obj_mesh.sample(512)
+
+        
+        # add noise
+        noise_scale = 0.05
+        noise = torch.randn(self.gt_pose_samples,4, dtype=torch.float32) * noise_scale
+
+        noise_4d = noise
+        noise_4d[:, 2:] = 0
+        noise_xyR = noise[:, :3]
+        noise_xyz = noise[:, :3]
+        # Prepare the final sample
+        sample = {
+            
+            "pc_position": fps_points_scene_from_original, #[num_points, 3]
+            "affordance": fps_mask_mapped,  # [num_points, 1]New mask based on turbo colormap
+            "affordance_for_non_cond": fps_mask_for_non_cond,
+            "object_name": obj_name,
+            "object_pc_position": obj_pc, # [num_obj_points, 3]
+            #"gt_pose_4d": torch.cat((max_green_point, obj_rotation), dim=0).unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_4d, 
+            "gt_pose_4d_min_bound":min_bound, #[4,]
+            "gt_pose_4d_max_bound":max_bound, #[4,]
+            "pc_position_xy_affordance": fps_points_scene_affordance[:, :2], #[num_affordance, 2]
+            #"gt_pose_xyR": torch.cat((max_green_point[:2], obj_rotation), dim=0).unsqueeze(0).repeat(self.gt_pose_samples, 1) + noise_xyR, #[pose_samples, 3]
+            "gt_pose_xyR_min_bound": np.delete(min_bound_affordance, 2, axis=0), #[3,] 
+            "gt_pose_xyR_max_bound": np.delete(max_bound_affordance, 2, axis=0), #[3,] 
+            "gt_pose_xyz": topk_green_points, #[pose_samples, 3] same point repeated 80
+            "gt_pose_xy": topk_green_points[:, :2], #[pose_samples, 2]
+            "gt_pose_xyz_for_non_cond": topk_green_points_for_non_cond, #[pos_samples, 3]
+            "gt_pose_xy_for_non_cond": topk_green_points_for_non_cond[:, :2], #[pos_samples, 2]
+            #"gt_pose_xyz_min_bound": np.delete(min_bound_affordance, 3, axis=0), #[3,]
+            #"gt_pose_xyz_max_bound": np.delete(max_bound_affordance, 3, axis=0), #[3,]
+            "gt_pose_xyz_min_bound": min_xyz_bound, #[3,]
+            "gt_pose_xyz_max_bound": max_xyz_bound, #[3,]
+            "gt_pose_xy_min_bound": min_xyz_bound[:2], #[2,]
+            "gt_pose_xy_max_bound": max_xyz_bound[:2], #[2,]
+            #"tsdf_grid": tsdf_grid, 
+            "depth": depth,
+            "image": rgb_image,
+            "T_plane": T_plane,
+            "plane_model": plane_model
+        }
+
+        return sample
+
+
+
+@registry.register_dataset(name="Pose_bproc_top_rotation")
+class PoseDataset_top_rotation(Dataset):
+    """ 
+    The dataset for the pose estimation task
+    
+    Update:
+        1. use topk point positions as the gt
+    """
+
+    def __init__(self,
+                 split:str,
+                 affordance_threshold:float = 0.001,
+                 gt_pose_samples:int = 80,
+                 root_dir = "dataset/scene_RGBD_mask_v2_kinect_cfg") -> None:
+        super().__init__()
+
+        self.split = split
+        self.root_dir = root_dir
+        self.folder_path = self.root_dir
+        self.affordance_threshold = affordance_threshold
+
+        self.files = []
+        self.gt_pose_samples = gt_pose_samples
+        items = os.listdir(self.root_dir)
+        for item in items:
+            sub_folder_path = os.path.join(self.folder_path, item) # e.g. 'dataset/scene_RGBD_mask_v2/id164_1'
+            #print(sub_folder_path)
+            sub_items =[f for f in os.listdir(sub_folder_path) if os.path.isdir(os.path.join(sub_folder_path, f))] # e.g. ['printer_0001_normal', 'printer_0001_normal', 'printer_0001_normal', 'printer_0001_normal']
+
+            for sub_item in sub_items:
+                sub_sub_folder_path = os.path.join(sub_folder_path, sub_item) # 'dataset/scene_RGBD_mask_direction/id164_1/printer_0001_normal'
+                for sub_sub_item in os.listdir(sub_sub_folder_path):
+                    # if end with ply
+                    #if sub_sub_item.endswith('_Behind.ply') or sub_sub_item.endswith('_Front.ply') or sub_sub_item.endswith('_Left.ply') or sub_sub_item.endswith('_Right.ply'):
+                    if sub_sub_item.endswith('mask_Left.ply') or sub_sub_item.endswith('mask_Right.ply') or sub_sub_item.endswith('mask_Front.ply') or sub_sub_item.endswith('mask_Behind.ply')\
+                        or sub_sub_item.endswith('mask_Left Front.ply') or sub_sub_item.endswith('mask_Left Behind.ply') or sub_sub_item.endswith('mask_Right Front.ply') or sub_sub_item.endswith('mask_Right Behind.ply'):
+                        one_dataset_pcd_path = os.path.join(sub_sub_folder_path, sub_sub_item)
+                        self.files.extend([one_dataset_pcd_path])
+                
+
+        #print(self.files)
+    def __len__(self):
+        return len(self.files)
+    
+    
+    def __getitem__(self, index) -> Any:
+        """
+        fps_points_scene_from_original: points after FPS [4096*3]
+        fps_colors_scene_from_original: colors of points after FPS [4096*3]
+
+        reference_obj: name of the reference obj, text
+        reference_position: position of the reference obj in the PC [3]
+        phrase: guidance text, text
+        """
+        torch.manual_seed(42)
+        np.random.seed(42)
+
+        pc_path = self.files[index] # "dataset/scene_RGBD_mask_direction/id164_1/printer_0001_normal/mask_Right.ply"
+        json_path = os.path.join(pc_path.rsplit('/',2)[0], 'text_guidance.json')
+        with open(json_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+
+        cam_rotation_matrix = np.array([
+            [1, 0, 0],
+            [0, 0.8, -0.6],
+            [0, 0.6, 0.8]
+        ])
+
+        intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+
+        # get scene pcd 
+        scene_pcd = o3d.io.read_point_cloud(pc_path) # use red mask instead of mask.ply
+
+        # scene pcd points and colors
+        scene_pcd_points_ori = np.asarray(scene_pcd.points) / 1000 # convert to meters
+        scene_pcd_points = (np.linalg.inv(cam_rotation_matrix) @ scene_pcd_points_ori.T).T  # reverse rotation to original position, whose normal is not aligned with z-axis (can be aligned to image directly)
+        scene_pcd_colors = np.asarray(scene_pcd.colors)
+
+        # get color and depth
+        rgb_img_path = os.path.join(pc_path.rsplit('/',1)[0], "no_obj/test_pbr/000000/rgb/000000.jpg")
+        rgb_image = Image.open(rgb_img_path).convert("RGB")
+        rgb_image = np.array(rgb_image).astype(float)
+        rgb_image = np.transpose(rgb_image, (2, 0, 1)) 
+        rgb_image = rgb_image / 255.0 # FIXME: Normalize the image to [0, 1]
+        assert rgb_image.max() <= 1.0 and rgb_image.min() >= 0.0
+
+        depth_path = pc_path.rsplit("/", 1)[0] + "/no_obj/test_pbr/000000/depth/000000.png"
+        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+        depth = depth.astype(np.float32)
+        depth = depth / 1000.0 # depth shall be in the unit of meters
+        depth[depth > 2] = 0 # remove the invalid depth values
+        scene_depth_cloud, _ = backproject(depth, intrinsics, np.logical_and(depth > 0, depth < 2))
+        scene_depth_cloud = visualize_points(scene_depth_cloud)
+        scene_depth_cloud_points = np.asarray(scene_depth_cloud.points)
+
+
+        ##########visualize 
+        #scene_pcd.points = o3d.utility.Vector3dVector(scene_pcd_points)
+        #o3d.visualization.draw_geometries([scene_depth_cloud, scene_pcd])
+        #scene_depth_cloud = np.asarray(scene_depth_cloud.points)
+        #assert depth.max() <= 2.0 and depth.min() >= 0.0
+        #scene_points_perfect, scene_points_id = backproject(depth, intrinsics, depth > 0)
+        
+        # make the plane noraml align with z-axis
+            # get the T_plane and plane_model
+        T_plane, plane_model = get_tf_for_scene_rotation(scene_pcd_points)
+        #scene_pcd_points_z = np.dot(scene_pcd_points, T_plane[:3, :3]) + T_plane[:3, 3] # norm z-axis
+        
+        
+        # Convert points and colors to tensors
+        scene_pcd_tensor = torch.tensor(scene_pcd_points, dtype=torch.float32).unsqueeze(0)
+        scene_color_tensor = torch.tensor(scene_pcd_colors, dtype=torch.float32).unsqueeze(0)
+
+        # Move to CUDA if necessary
+        scene_pcd_tensor = scene_pcd_tensor.to("cuda")
+        scene_color_tensor = scene_color_tensor.to("cuda")
+
+        # Perform furthest point sampling (FPS)
+        fps_indices_scene = pointnet2_utils.furthest_point_sample(scene_pcd_tensor.contiguous(), 2048)
+        fps_indices_scene_np = fps_indices_scene.squeeze(0).cpu().numpy()
+        fps_points_scene_from_original = scene_pcd_points[fps_indices_scene_np]
+        fps_colors_scene_from_original = scene_pcd_colors[fps_indices_scene_np]
+
+        #fps_colors_scene_from_original_for_non_cond = torch.randn_like(fps_colors_scene_from_original) # get the non_cond color
+        fps_colors_scene_from_original_for_non_cond = np.random.rand(*fps_colors_scene_from_original.shape)
+        # Get the label (green channel color) 
+        fps_mask_mapped = fps_colors_scene_from_original[:,1].reshape(-1, 1) # get label from green mask directly
+        fps_mask_for_non_cond = fps_colors_scene_from_original_for_non_cond[:,1].reshape(-1, 1) # get label from green mask directly
+        
+        
+        # find the point position with the highest affordance (G channel value)
+        topk_green_points = get_top_affordance_points(fps_colors_scene_from_original, fps_points_scene_from_original, self.gt_pose_samples)
+        topk_green_points_avg = torch.mean(topk_green_points, dim=0).repeat(self.gt_pose_samples, 1)
+        topk_green_points_for_non_cond = get_top_affordance_points(fps_colors_scene_from_original_for_non_cond, fps_points_scene_from_original, self.gt_pose_samples)
+        #max_green_index = np.argmax(fps_colors_scene_from_original[:,1])
+        #max_green_point = torch.tensor(fps_points_scene_from_original[max_green_index], dtype=torch.float32)
+
+        # gt_pose_4d_min_bound find the min bound of the whole pc
+        min_bound = np.append(np.min(fps_points_scene_from_original, axis=0), -180)
+        max_bound = np.append(np.max(fps_points_scene_from_original, axis=0), 180)
+
+        min_xyz_bound = np.min(scene_depth_cloud_points, axis=0) 
+        max_xyz_bound = np.max(scene_depth_cloud_points, axis=0) 
+
+
+        # sample points with affordance value higher than the threshold
+        affordance_threshold = self.affordance_threshold
+        fps_points_scene_affordance = fps_points_scene_from_original[fps_colors_scene_from_original[:,1] > affordance_threshold] # [F, 3]
+        if fps_points_scene_affordance.shape[0] == 0:
+            fps_points_scene_affordance = fps_points_scene_from_original
+        fps_points_scene_affordance_perfect = fps_points_scene_affordance
+
+
+        bound_affordance_z_mid = np.median(fps_points_scene_affordance_perfect[:, 2])
+        min_bound_affordance = np.append(np.min(fps_points_scene_affordance_perfect, axis=0), -180)
+        max_bound_affordance = np.append(np.max(fps_points_scene_affordance_perfect, axis=0), 180)
+        min_bound_affordance[2] = bound_affordance_z_mid * 0.9
+        max_bound_affordance[2] = bound_affordance_z_mid * 0.9
+        min_xyz_bound[2] = bound_affordance_z_mid * 0.9
+        max_xyz_bound[2] = bound_affordance_z_mid * 0.9
+
+
+        # sample 512 points from fps_points_scene_affordance
+        fps_points_scene_affordance = fps_points_scene_affordance[np.random.choice(fps_points_scene_affordance.shape[0], 512, replace=True)] # [512, 3]
+
+        # sample num_samples from scene for non_condition
+        #gt_non_cond = fps_points_scene_from_original[np.random.choice(fps_points_scene_from_original.shape[0], self.gt_pose_samples, replace=True)] # [num_samples, 3]
+        # x1 = min_xyz_bound[0]
+        # x2 = max_xyz_bound[0]
+        # y1 = min_xyz_bound[1]
+        # y2 = max_xyz_bound[1]
+        # z1 = min_xyz_bound[2]
+        # z2 = max_xyz_bound[2]
+
+        # bound_points = [
+        #     [x1, y1, z1],
+        #     [x2, y1, z1],
+        #     [x2, y2, z1],
+        #     [x1, y2, z1],
+        # ]
+        # points_per_group = self.gt_pose_samples // 4
+        # gt_non_cond = np.repeat(bound_points, points_per_group, axis=0)
+        # get the object pc position (rotated, scaled, translated to the origin point)
+        scene_id = pc_path.split('/')[2]
+        obj_name = pc_path.split('/')[3]
+        json_path = os.path.join("dataset/scene_gen/scene_mesh_json_kinect", f"{scene_id}.json") #e.g. "dataset/scene_mesh_json_kinect/id3.json"
         # find the key which includes obj_name
         with open(json_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
