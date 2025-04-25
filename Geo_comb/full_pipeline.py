@@ -746,12 +746,12 @@ def detect_object_with_vlm(
     """
 
     #TEXT_PROMPT = "detergent, sink, kettle"
-    TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup' 
+    TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup, fork, yellow box' 
     # TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
     # TEXT_PROMPT = "plate, cookie" #, fork, spoon, knife, wine, napkin, box, paper, food"
    
    
-    BOX_TRESHOLD = 0.20# 0.35
+    BOX_TRESHOLD = 0.15# 0.35
     TEXT_TRESHOLD = 0.25 # 0.25
 
 
@@ -773,7 +773,7 @@ def detect_object_with_vlm(
     # filter out the bboex whose area is larger than 80% of the whole image
     image_area = w * h
     boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
-    area_mask = boxes_area < image_area * 0.8
+    area_mask = boxes_area < image_area * 0.5
     boxes_xyxy = boxes_xyxy[area_mask]
     boxes = boxes[area_mask]
     logits = logits[area_mask]
@@ -1173,8 +1173,8 @@ if __name__ == "__main__":
     # depth_image_file_path = "dataset/kinect_dataset/depth/000025.png"
 
     # realsense data
-    rgb_image_file_path = "data_and_weights/realworld_2103/color/000006.png"
-    depth_image_file_path = "data_and_weights/realworld_2103/depth/000006.png"
+    rgb_image_file_path = "dataset/realworld_2103/color/000099.png"
+    depth_image_file_path = "dataset/realworld_2103/depth/000099.png"
 
     # data from robot camera
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"

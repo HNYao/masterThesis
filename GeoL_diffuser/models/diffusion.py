@@ -1025,6 +1025,20 @@ class Diffusion(nn.Module):
 
         return outputs
 
+    def xyr2pose(state):
+        """
+        convert the state to 6D pose
+        state: [batch_size, num_points, 4]
+        """
+        pass
+
+    def pose2xyr(pose):
+        """
+        convert the pose to state
+        pose: [batch_size, num_points, 6]
+        """
+        pass
+
 
 
 class Diffusion_muti_affordance(nn.Module):
