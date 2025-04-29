@@ -607,17 +607,23 @@ def prepare_data_batch(rgb_image,
     )
     scene_pcd_colors = rgb_image[points_scene_idx[0], points_scene_idx[1]] / 255.0
     scene_pcd = visualize_points(points_scene, scene_pcd_colors)
+    scene_pcd.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    scene_pcd.orient_normals_towards_camera_location(camera_location=[0, 0, 0])    # fps the points_scene
     
-    # fps the points_scene
     scene_pcd_tensor = torch.tensor(np.asarray(scene_pcd.points), dtype=torch.float32).unsqueeze(0)
     scene_pcd_colors = np.asarray(scene_pcd.colors)
+    scene_pcd_normals = np.asarray(scene_pcd.normals)
+
     fps_indices_scene = pointnet2_utils.furthest_point_sample(
             scene_pcd_tensor.contiguous().cuda(), 2048
         )
+        
     fps_indices_scene_np = fps_indices_scene.squeeze(0).cpu().numpy()
     fps_points_scene_from_original = points_scene[fps_indices_scene_np]
     fps_colors_scene_from_original = scene_pcd_colors[fps_indices_scene_np]
-    
+    fps_normals_scene_from_original = scene_pcd_normals[fps_indices_scene_np]
+
     # Acquire the location of the anchor object
     box_mask = np.zeros((rgb_image.shape[0], rgb_image.shape[1]))
     try:
@@ -663,6 +669,7 @@ def prepare_data_batch(rgb_image,
     data_batch["depth"] = depth_image
     data_batch["fps_points_scene"] = fps_points_scene_from_original
     data_batch["fps_colors_scene"] = fps_colors_scene_from_original
+    data_batch["fps_normals_scene"] = fps_normals_scene_from_original
     data_batch["pc_position"] = fps_points_scene_from_original
     if to_tensor:
         data_batch_to_tensor(data_batch)
@@ -885,7 +892,7 @@ def full_pipeline_v2(
     axes.lines = o3d.utility.Vector2iVector([[0, 1], [0, 2], [0, 3]])
     axes.colors = o3d.utility.Vector3dVector([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-    o3d.visualization.draw_geometries([pcd_scene, pcd_table, axes, coordinate_frame])
+    # o3d.visualization.draw_geometries([pcd_scene, pcd_table, axes, coordinate_frame])
     
     # create a coordinate frame based on the eigen vector and move it to the origin of the vector
     coordinate_frame_pca = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
@@ -895,7 +902,7 @@ def full_pipeline_v2(
     print("axis_x:", eig_vec[:, 0])
     print("axis_y:", eig_vec[:, 1])
     print("axis_z:", eig_vec[:, 2])
-    o3d.visualization.draw_geometries([pcd_scene, axes, coordinate_frame, coordinate_frame_pca])
+    # o3d.visualization.draw_geometries([pcd_scene, axes, coordinate_frame, coordinate_frame_pca])
     
     # map the axis x of the coordinate frame_pca to the axis x of the coordinate frame 
     table_frame_y_on_world_xy = eig_vec[:, 1]
@@ -1047,7 +1054,29 @@ def full_pipeline_v2(
             obj_bbox_mask[y1:y2, x1:x2] = 1
     else:
         obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
-    T_plane, plane_model = get_tf_for_scene_rotation(points_scene)
+
+    # get the surface normal of the scene
+    fps_afford_np = data_batch['affordance'].cpu().numpy()[0, :, 0]
+    fps_normal_np = data_batch['fps_normals_scene'].cpu()[0].numpy()
+    fps_afford_mask = fps_afford_np > np.percentile(fps_afford_np, 95)
+    fps_normal_np = fps_normal_np[fps_afford_mask]
+    normal_kmeans = KMeans(n_clusters=1, random_state=0).fit(fps_normal_np)
+    surface_normal = - normal_kmeans.cluster_centers_[0]
+    surface_normal = surface_normal / np.linalg.norm(surface_normal)
+    T_plane = np.eye(4)
+    T_plane[:3, 2] = surface_normal
+    T_plane[:3, 1] = np.cross(surface_normal, np.array([0, 0, 1]))
+    T_plane[:3, 1] = T_plane[:3, 1] / np.linalg.norm(T_plane[:3, 1])
+    T_plane[:3, 0] = np.cross(T_plane[:3, 1], T_plane[:3, 2])
+    T_plane[:3, 0] = T_plane[:3, 0] / np.linalg.norm(T_plane[:3, 0])
+    T_plane[:3, 3] = np.mean(points_scene.mean(0), axis=0)
+
+    # # Visualize the plane
+    # plane_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+    # plane_mesh.transform(T_plane)
+    # o3d.visualization.draw_geometries([pcd_scene, plane_mesh])
+    # import pdb; pdb.set_trace()
+
     vol_bnds = np.zeros((3, 2))
     view_frust_pts = get_view_frustum(depth_image / 1000.0, intrinsics, np.eye(4))
     vol_bnds[:, 0] = np.minimum(vol_bnds[:, 0], np.amin(view_frust_pts, axis=1))
@@ -1107,11 +1136,15 @@ def full_pipeline_v2(
         pred_xy = pred_points[i,:2]
         pred_r = pred_points[i, 2]
         pred_r = pred_r * 180 / np.pi
-        pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]-0.01) / plane_model[2]
+        # pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]) / plane_model[2]
+        top_closest_ids = np.argpartition(
+            np.linalg.norm(points_scene[:, :2] - pred_xy, axis=1), 10
+        )[:50]
+        pred_z = np.median(points_scene[top_closest_ids, 2], 0)
         pred_xyz = np.append(pred_xy, pred_z)
         if disable_rotation:
             pred_r = 0
-        pred_xyz = pred_xyz  
+        pred_xyz = pred_xyz - surface_normal * 0.03
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
@@ -1206,10 +1239,15 @@ if __name__ == "__main__":
     model_diffuser.eval()
     
     # Load the image and depth image, and object mesh
-    rgb_image = cv2.imread(rgb_image_file_path)
-    depth_image = cv2.imread(depth_image_file_path, -1)
+    # rgb_image = cv2.imread(rgb_image_file_path)
+    # depth_image = cv2.imread(depth_image_file_path, -1)
+    npz_path = "qualitative_demo/qualitative_npz/cactus_workingdesk_rw.npz"
+    data = np.load(npz_path)
+    rgb_image = data["rgb_image"]
+    depth_image = data["depth_image"]
     obj_mesh, _ = retrieve_obj_mesh("bowl_real", target_size=0.5)
     
+
     # DO the inference
     seed_everything(42)
     full_pipeline_v2(
@@ -1220,10 +1258,10 @@ if __name__ == "__main__":
         depth_image=depth_image,
         obj_mesh=obj_mesh,
         intrinsics=INTRINSICS,
-        target_names=["white plate in the middle"],     #, "Monitor", "Monitor"],
-        direction_texts=["On"],     #, "Left Front", "Right Front"],
-        use_vlm=True,
-        fast_vlm_detection=True,
+        target_names=["keyboard"],     #, "Monitor", "Monitor"],
+        direction_texts=["Right"],     #, "Left Front", "Right Front"],
+        use_vlm=False,
+        fast_vlm_detection=False,
         use_kmeans=True,
         visualize_affordance=False,
         visualize_diff=False,
