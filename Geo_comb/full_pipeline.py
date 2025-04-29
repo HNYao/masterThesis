@@ -1136,15 +1136,14 @@ def full_pipeline_v2(
         pred_xy = pred_points[i,:2]
         pred_r = pred_points[i, 2]
         pred_r = pred_r * 180 / np.pi
-        # pred_z = (-plane_model[0] * pred_xy[0] - plane_model[1] * pred_xy[1] - plane_model[3]) / plane_model[2]
         top_closest_ids = np.argpartition(
             np.linalg.norm(points_scene[:, :2] - pred_xy, axis=1), 10
         )[:50]
         pred_z = np.median(points_scene[top_closest_ids, 2], 0)
+
         pred_xyz = np.append(pred_xy, pred_z)
         if disable_rotation:
             pred_r = 0
-        pred_xyz = pred_xyz - surface_normal * 0.03
         pred_xyz_all.append(pred_xyz)
         pred_r_all.append(pred_r)
         
