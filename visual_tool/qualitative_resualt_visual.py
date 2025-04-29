@@ -171,7 +171,7 @@ def visualize_npz(args):
     pred_xyz_all = data["pred_xyz_all"]
     pred_r_all  = data["pred_r_all"]
     pred_cost = data["pred_cost"]
-    rgb_image = data["rgb_image"][...,[2, 1, 0]] # [H, W, 3]
+    rgb_image = data["rgb_image"] # [H, W, 3]
 
     # save the image use PIL
     from PIL import Image

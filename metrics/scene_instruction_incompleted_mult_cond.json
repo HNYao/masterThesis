@@ -1,0 +1,380 @@
+{
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id20_1/laptop_0001_grey/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the laptop to the Left Front of the green cup so I can use it more easily."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id20_1/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the clock Right Behind the plastic bottle so I can easily see the time."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281_1/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the phone Behind the green notebook when you get a chance."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down to the Left of the brown bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281_1/vase_0005_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the vase behind the brown bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the eraser to the Left of the blue phone so it is easy to reach when I need it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10/notebook_0002_pink/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Arrange the notebook to the Right of the blue phone, as that's where I need it to be."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the phone to the Left of the pink notebook, so it's easy to grab.  \nPlace the phone to the Left Front of the normal plant for quick access."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10/eye_glasses_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Arrange the eye glasses to the Left Behind the red cup.  \nPosition the eye glasses to the Right Behind the normal plant."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10/plant_0007_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Could you position the plant to the Left Behind the pink notebook?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/cup_0001_red/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the cup in Front of the plastic bottle; I need it there for easy access."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the eraser to the Left of the red cup.  \nGo ahead and place the eraser to the Left of the white keyboard.  \nSet the eraser to the Left Front of the black monitor, please.  "
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/keyboard_0006_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the keyboard in front of the black monitor so it's ready for use."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/notebook_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the notebook to the Left of the plastic bottle for easy access.  \nMake sure to place the notebook to the Right of the black monitor so it's convenient to use."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/pencil_0003_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the pencil to the Left of the red cup so it's easy to reach.  \nSet the pencil down to the Right of the white keyboard for convenience while typing."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/monitor_0018_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the monitor so that it's Behind the white keyboard."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down to the Left of the white keyboard, so it's easy to reach."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15_1/pencil_0001_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the pencil down to the Left of the red cup.  \nPosition the pencil to the Right of the white keyboard."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the eraser Right Behind the grey laptop for easy access later."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8/vase_0004_purple/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the vase to the Right of the grey laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Can you set the phone down in Front of the black book?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle to the Left of the blue book; I'd like it positioned there for easy access.  \nCan you position the bottle Left Front of the normal printer? That way, it will be convenient when I need it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eraser to the Left Behind the white cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/printer_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the printer Behind the blue book so I can access it easily."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/pencil_0003_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please make sure to place the pencil in Front of the black laptop, so it's easy to grab when I need to write."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/book_0001_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please place the book to the Right of the mixture bottle.  \nSet the book down in Front of the normal printer."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/pencil_0004_red/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Arrange the pencil to the Right of the blue phone, so it's easy to grab when I need it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260_1/cup_0004_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the cup Right Front of the black laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18_2/cup_0004_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the cup to the Left of the black eye_glasses."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18_2/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Right of the blue phone so I can easily reach it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18_2/cup_0004_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the cup down in Front of the black laptop so it is easy to reach while I work."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_2/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Left Front of the black book so I can easily reach it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_2/pencil_0005_wooden/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil down to the Right of the plastic bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_2/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Left Front of the red lamp."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_2/bottle_0001_plastic/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle in Front of the blue phone so that it's easily accessible."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_2/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the clock Behind the blue cup, as I would like to check the time easily."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the eraser to the Left of the white cup, please.  \nSet the eraser in Front of the babyblue notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/monitor_0001_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the monitor Behind the black keyboard so that I can see the screen clearly."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/pencil_0005_wooden/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the pencil to the Left of the white cup, please.  \nSet the pencil in Front of the babyblue notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/cup_0004_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup in Front of the green bottle, as I would like it to be easily reachable."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/pencil_0001_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the pencil to the Left of the white cup.  \nSet the pencil in Front of the babyblue notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id15/notebook_0001_babyblue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Arrange the notebook to the Left of the green bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138/plant_0003_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the plant to the Left Front of the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138/pencil_0002_brown/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil to the Left of the blue phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Could you set the phone down to the Left of the plastic bottle?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138/eye_glasses_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the eye glasses to the Left of the black eye glasses."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138/bottle_0001_plastic/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle to the Left Behind the brown bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/cup_0001_red/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup Right Behind the pink notebook, so it's easily accessible when I need it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the eraser to the Left of the normal phone so it's easy to grab.  \nPosition the eraser to the Right of the blue phone for quick access."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down to the Left of the pink notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/plant_0008_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the plant to the Left Behind the pink notebook, as I want it to look nice there."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/notebook_0002_pink/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the notebook to the Right of the normal phone, so it is easily accessible."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the phone to the Left of the normal phone for easy access."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_1/eye_glasses_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eyeglasses to the Left Behind the red cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle Left Behind the blue phone, as that is where I would like it to be placed."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/cup_0004_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the cup to the Left Front of the mixture bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Right of the black eye_glasses, so it's easy to reach."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/plant_0004_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the plant to the Right Front of the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/cup_0002_yellow/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Could you set the cup to the Left Front of the babyblue notebook, as I'd like to have it within reach?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the phone to the Right Front of the mixture bottle, as I need it within reach."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/laptop_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the laptop to the Right of the blue phone; that way, I can easily reach it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the clock to the Left of the blue phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle in Front of the blue phone so it's easy to grab."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the phone to the Left Front of the purple book.  \nCan you set the phone to the Right Front of the normal lamp?  \nMake sure to place the phone Behind the red pencil.  "
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/eye_glasses_0002_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Could you please set the eye glasses in Front of the red cup?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/lamp_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please arrange the lamp to the Left Behind the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/pencil_0004_red/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil to the Left of the babyblue notebook; it will be easier to reach that way.  \nTry placing the pencil to the Right of the mixture bottle, so it is conveniently located."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/pencil_0005_wooden/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil down to the Right of the mixture bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Left Front of the normal lamp, as that would be the best spot for it.  \nCan you position the phone to the Left Behind the mixture bottle? That would be ideal."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the clock behind the red cup when you get a chance.  \nPosition the clock to the right of the purple book, please."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9_1/book_0001_purple/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the book to the Right of the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_2/plant_0003_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the plant to the Left Behind the pink notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_2/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eraser to the Left of the blue phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_2/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Left of the pink notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_2/eye_glasses_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eye_glasses to the Left Behind the blue cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id10_2/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the clock to the Left Front of the glass bottle so that we can easily see the time."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40_1/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the bottle to the Right of the glass bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40_1/cup_0004_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the cup to the Right of the blue book."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40_1/bottle_0002_glass/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle Behind the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id20/laptop_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the laptop at the Right Front of the purple book so it's easy to reach."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id20/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the clock Right Behind the brown bottle so we can see it easily."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id20/book_0001_purple/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Could you position the book to the Left Behind the black laptop?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281/cup_0004_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup Behind the black laptop, as that is the perfect spot for it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281/vase_0002_yellow/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the vase Behind the plastic bottle so it can stand out nicely."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281/notebook_0002_pink/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the notebook to the Left Behind the blue phone, as that's where I need it to be."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the phone down to the Left of the plastic bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id281/bottle_0001_plastic/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the bottle in Front of the yellow vase.  \nCan you set the bottle to the Left of the blue phone?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22_1/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down to the Right of the black eye glasses."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22_1/cup_0002_yellow/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup to the Left Front of the babyblue notebook."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22_1/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the clock to the Left of the blue phone, so I can easily check the time."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id22_1/bottle_0004_brown/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the bottle to the Left Behind the blue phone, so it's out of the way."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle to the Left Front of the white cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/bottle_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please move the bottle to the Left Behind the mixture bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/pencil_0006_orange/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the pencil to the Left of the blue phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/plant_0004_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the plant to the Left Front of the normal phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/pencil_0002_brown/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil to the Left of the normal phone so it's easy to grab."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id138_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone to the Left of the green bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18_1/cup_0004_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup in Front of the black laptop so it's easy to reach while I work."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18_1/bottle_0002_glass/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle behind the plastic bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/pencil_0007_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil to the Left of the babyblue notebook, as it will help me find it easily.  \nRemember to position the pencil to the Right of the plastic bottle so I can reach it without any trouble."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/pencil_0006_orange/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the pencil down to the Right of the plastic bottle."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/lamp_0017_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the lamp to the Left Behind the blue phone."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/eye_glasses_0002_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eye glasses in Front of the red cup so I can see them easily."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/bottle_0001_plastic/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle in Front of the normal phone, as I would like it to be easily accessible."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id9/clock_0001_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Can you set the clock behind the red cup? I need to check the time."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_2/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Go ahead and set the eraser to the Left Behind the normal phone, please."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_2/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down to the Right of the black laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_2/laptop_0002_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the laptop to the Right Front of the cola bottle so I can easily access it.  \nCould you move the laptop to the Right Behind the green book? That way, it will be out of the way but still accessible."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_2/book_0001_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the book Right Behind the blue phone so it's easily accessible.  \nCould you position the book Left Front the black laptop for better organization?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_2/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone in Front of the green book so I can easily reach it."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the bottle to the Right of the brown bottle, please.  \nSet the bottle to the Left of the black eye glasses."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40/eye_glasses_0002_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eye glasses down to the Left of the yellow cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40/cup_0002_yellow/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the cup to the Right of the black eye glasses."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40/cup_0004_white/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Set the cup down to the Right of the white book, please.  \nPosition the cup in Front of the black eye glasses, if you could."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id40/bottle_0004_brown/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle Behind the normal phone, so it is out of the way."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id32/bottle_0003_green/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the bottle Behind the red cup."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id32/plant_0007_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the plant Behind the normal phone, as I would like to create a nice arrangement."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_1/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Let's position the eraser to the Left Behind the blue phone.  \nYou should place the eraser to the Right of the black laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_1/phone_0000_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the phone down in Front of the black book so it's easy to reach."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_1/book_0001_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please slide the book to the Right Behind the normal phone.  \nLet us position the book to the Left Front of the black laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_1/phone_0000_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please position the phone to the Right of the black laptop."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id8_1/laptop_0003_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the laptop to the Right of the plastic bottle.  \nCould you arrange the laptop to the Left of the blue phone?"
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260/bottle_0002_mixture/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the bottle to the Left of the blue book for easy access."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id260/eraser_0002_normal/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eraser to the Left Behind the white cup, so it's easily accessible."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18/cup_0004_blue/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Position the cup to the Left of the black eye_glasses, please."
+    ],
+    "/home/stud/zhoy/MasterThesis_zhoy/dataset/benchmark_bproc_data/id18/eye_glasses_0002_black/no_obj/test_pbr/000000/rgb/000000.jpg": [
+        "Please set the eye glasses to the Right of the blue cup."
+    ]
+}

@@ -526,14 +526,6 @@ class BlendprocDesktopDataset_incompleted_mult_cond(Dataset):
             anchor_obj_position = find_anchor_obj_position(anchor_obj_file)
             anchor_obj_position_list.append(anchor_obj_position)
 
-        
-
-                
-        
-        
-
-
-
         # image_with_obj
         mask_with_obj_path = os.path.join(file_path, 'mask_with_obj.png')
 
@@ -1056,6 +1048,7 @@ class realworld_dataset(Dataset):
         obj_points_sampled = obj_mesh.sample(512)
 
         batch = {
+            'json_file': json_file,
             "rgb_image_file_path": rgb_image_file_path,
             "depth_img_file_path": depth_img_file_path,
             "mask_file_path": mask_file_path,

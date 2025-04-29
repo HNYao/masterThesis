@@ -55,10 +55,10 @@ def clip_cat_emb_patch32(cat_list, model, tokenizer):
 if __name__ == "__main__":
     model = CLIPTextModelWithProjection.from_pretrained("openai/clip-vit-base-patch32")
     tokenizer = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
-    cat_list = ["bottle", 'cup', "computer", "computer monitor", 'monitor', 'display', 'controller', 'phone', 'remoter',\
+    cat_list = ["bottle", 'cup', "computer", 'monitor', 'display', 'controller', 'phone', 'remoter',\
                 'remote control', 'keyboard', 'mouse', 'laptop', 'tablet', 'notebook', 'desktop', 'game console', 'gamepad',\
                 'roundtable', 'trashbin', 'bowl', 'plate', 'mug', 'glass', 'chessboard', 'book', 'notebook', 'pencil', 'pen',\
-                'eraser', 'coffe machine', "printer"]
+                'eraser', 'coffe machine', "printer", "vase", 'plant']
 
     #inputs = tokenizer(, padding = True, return_tensors="pt")
     clip_cat_emb_patch32(cat_list, model, tokenizer)

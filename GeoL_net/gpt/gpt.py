@@ -268,7 +268,9 @@ def chatgpt_selected_plan(image_path: str):
           "content": [
             {
               "type": "text",
-              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info} Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info}\
+                    please use more than one anchor objects to describe one location. \
+                   Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
             },
             {
               "type": "image_url",
@@ -279,7 +281,7 @@ def chatgpt_selected_plan(image_path: str):
           ]
         }
       ],
-      "max_tokens": 40
+      "max_tokens": 60
     }
     print("object need to be placed: ", object_placement)
 
@@ -373,7 +375,8 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = "
             **Input**: You are provided with an image of a tabletop scene. The image contains multiple objects, each enclosed within a bounding box with a unique ID displayed in the top-left corner.\
             You are also given the category name of a **target object** that needs to be placed. \n\
             You are also gieven an example image which guidances you where to place the object. You should place the object as the example image.\
-            Task: Your goal is to determine the best placement for the target object using existing objects in the scene as **anchor objects** (i.e., reference objects). Think step by Step! \
+            Task: Your goal is to determine the best placement for the target object using existing objects in the scene as **anchor objects** (i.e., reference objects). Please try to use more than\
+              one anchor objects to describe one location. Think step by Step! \
             **Guidelines**:\
             1. Selecting Anchor Objects: Choose one or more anchor objects from the image. Only objects with a bounding box and an assigned ID can be selected as anchors. For each anchor, provide its name and ID. \n \
             2. Determining Placement Direction: Specify the best placement direction(s) for the target object relative to each chosen anchor. Use the following directional terms: Left Front, Right Front, Left Behind, On \n \
@@ -476,13 +479,15 @@ def chatgpt_selected_plan_given_image(image_path: str, image_given_case: str = "
           "content": [
             {
               "type": "text",
-              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: follow the expample case to place the object. Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: follow the expample case to place the object. \
+                Use more than one anchor objects to describe one location. \
+                Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
             },
           ]
         },
 
       ],
-      "max_tokens": 40
+      "max_tokens": 60
     }
     print("object need to be placed: ", object_placement)
 
@@ -830,7 +835,6 @@ def chatgpt_select_id(image_path: str, text_prmpt, mode="object_placement"):
                     id: 1
                 3. phone.  Please answer:
                     id: 0
-
           """
             },
           {
@@ -862,41 +866,7 @@ def chatgpt_select_id(image_path: str, text_prmpt, mode="object_placement"):
         #context = "id: 0"
         context=0
     return context
-    # print(reponse.json()['choices'][0]['message']['content'])
 
-    # # refine the response
-
-        
-    # payload['messages'].append({
-    #     "role": "assistant",
-    #     "content": [
-    #         {
-    #             "type": "text",
-    #             "text": reponse.json()['choices'][0]['message']['content']
-    #         }
-    #     ]
-    # })
-
-    # # payload['messages'].append({
-    # #     "role": "user",
-    # #     "content": [
-    # #         {
-    # #             "type": "text",
-    # #             "text": user_input
-    # #         }
-    # #     ]
-    # # })
-
-    # reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-    #print(reponse.json()['choices'][0]['message']['content'])
-    # anchor= extract_response()
-    # import re
-    # numbers = re.findall(r'\d+', anchor)v2_kinect_cfg/id18/cup_0004_white/with_obj/test_pbr/000000/rgb/000000.jpg"
-    # object_name = "a pair of eye glasses"
-    # prompts_obj = "cup"
-    # prompts_direction = 'the left of the eye glasses'
-    # bbox_list = chatgpt_object_placement_bbox_o1(image_path, prompts_obj, prompts_direction)
-    # visualize_bbox_set(image_path, bbox_list)
   
 
 
@@ -924,7 +894,80 @@ def get_sentence_probability(sentence):
 
 
 
-        # sum the log probabilities
+def convert_form_fix2free(list_anchor:list, list_direction:list, object_to_place:str):
+  """
+  use chatgpt to convert the fixed form instruction to a free form instruction
+  e.g. Left-Monitor -> I wanna put the object on the left of the monitor
+  """
+
+  api_key = os.getenv("CHATGPT_API_KEY")
+  headers = {
+      "content-type": "application/json",
+      "Authorization": f"Bearer {api_key}"
+  }
+  assert len(list_anchor) == len(list_direction), "The length of anchor and direction should be the same"
+
+  fixed_form = ""
+  for i in range(len(list_anchor)):
+      if list_direction[i] == "On":
+        fixed_form += f"Put the {object} On the {list_anchor[i]}.\n"
+      if list_direction[i] in ["Behind", "Left Behind", "Right Behind", "Left Front", "Right Front"]:
+        fixed_form += f"Put the {object_to_place} {list_direction[i]} the {list_anchor[i]}.\n"
+      if list_direction[i] in ["Front"]:
+        fixed_form += f"Put the {object_to_place} in {list_direction[i]} the {list_anchor[i]}.\n"
+      if list_direction[i] in ["Left", "Right"]:
+        fixed_form += f"Put the {object_to_place} to the {list_direction[i]} of the {list_anchor[i]}.\n"
+
+  
+
+  # object placement
+  payload = {
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "system", 
+        "content": "You are tasked with rephrasing location instructions into a more free-form, natural-sounding English sentence.\
+                    The original instruction follows the fixed format: Put the <object> to <direction> of the <anchor object>.\
+                    When rephrasing: You must not change the anchor object or the direction. You can freely vary sentence structure, add natural phrasing, \
+                    and slightly expand the sentence to sound more human-like. Maintain the original meaning exactly. But do not use a question. Avoid rigid or robotic phrasing. \
+                      The output should only contain the rephrased instruction, without any additional text or explanations. Each instruction one line."
+                },
+      {
+          "role": "assistant",
+          "content": """
+              Here are the example:\n
+              Assume the given fixed-form instrction is: Put the cup on the Right of the bootle. \n
+              The output can be: Help me place the cup on the Right of the bootle, I want to drink water. \n
+
+              Another example:\n
+              Assume the given fixed-form instrction is: Put the keyboard in Front of the monitor. \n
+              The output can be: Place the keyboard in Front of the monitor, I want to type with it.\n
+
+              Now input the new fixed-form instruction, I will help you to convert it to free-form instruction.\n
+          """
+            },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": f"{fixed_form}"
+          }
+        ]
+      }
+    ],
+    "max_tokens": 200
+  }
+
+
+  
+  reponse = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+
+  context = reponse.json()['choices'][0]['message']['content']
+  context_list= context.split("\n")
+
+  return context
+
 
 
 if __name__ == "__main__":
