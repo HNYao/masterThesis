@@ -762,6 +762,9 @@ def get_heatmap(values, cmap_name="turbo", invert=False):
     colormaps = cm.get_cmap(cmap_name)
     rgb = colormaps(values)[..., :3]  # don't need alpha channel
     return rgb
+
+
+
         
 if __name__ == "__main__":
     seed_everything(42)

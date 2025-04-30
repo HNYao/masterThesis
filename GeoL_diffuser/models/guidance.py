@@ -377,5 +377,5 @@ class CompositeGuidance(Guidance):
         guide_losses["collision_loss"] = collision_guide_losses["loss"]
         guide_losses["loss"] = guide_losses["affordance_loss"]  * 500 + guide_losses["collision_loss"] * 1000
 
-        print("diffusion step {}, affordance_loss: {}, collision_loss: {}".format(t,  affordance_loss.mean().item(), collision_loss.mean().item()))
+        #print("diffusion step {}, affordance_loss: {}, collision_loss: {}".format(t,  affordance_loss.mean().item(), collision_loss.mean().item()))
         return loss_tot, guide_losses

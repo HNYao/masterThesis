@@ -124,8 +124,8 @@ def predicted_placement_gpt(
 
 if __name__ == "__main__":
     # Example usage
-    #npz_file_path = "qualitative_demo/qualitative_npz/cactus_workingdesk_rw.npz"
     npz_file_paths = {
+         "qualitative_demo/qualitative_npz/cactus_workingdesk_rw.npz": ["cactus", "On", "Put it on the left of the keyboard"],
         "qualitative_demo/qualitative_npz/box_shelf_rw.npz": ["box", "On", "relatvely empty shelf"],
         "qualitative_demo/qualitative_npz/cup_drinkwine_rw.npz": ["cup", "Left", "white wine"],
         "qualitative_demo/qualitative_npz/detergent_sink_rw.npz":["detergent", "Right Behind", "left sink"],
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         "qualitative_demo/qualitative_npz/mouse_righthanded_rw.npz": ["mouse", "Right", "keyboard"],
         "qualitative_demo/qualitative_npz/plate_dinningtable_rw.npz": ["plate", "Left, Right", "knife, fork"],
         "qualitative_demo/qualitative_npz/cake_plate_rw.npz": ["cake", "On", "plate"],
-
+       
 
     }
     for npz_file_path, item in npz_file_paths.items():

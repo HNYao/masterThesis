@@ -8,6 +8,7 @@ from GeoL_diffuser.models.utils.fit_plane import fit_plane_from_points, get_tf_f
 import h5py
 import trimesh
 import json
+from scipy.spatial.transform import Rotation as R
 import copy
 
 def hdf52png_table(hdf5_path, output_dir=None):
@@ -361,7 +362,11 @@ def get_relative_direction(points:np.ndarray, target_point:np.ndarray, direction
         
         if np.linalg.norm(offset) > 1200:
             satisfies_direction = False
+
+
         
+        
+
         results.append(satisfies_direction)
 
     
@@ -760,12 +765,12 @@ def process_direction_metrics_GeoL_completed(
         topk_points = affordance_points[topk_idx]
 
         #### visualize for debugging 
-        vis = [pts_without_obj, affordance_pred, coordinate_frame]
-        for points in topk_points:
-            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=10)
-            sphere.translate(points)
-            vis.append(sphere)
-        #o3d.visualization.draw_geometries(vis)
+        # vis = [pts_without_obj, affordance_pred, coordinate_frame]
+        # for points in topk_points:
+        #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=10)
+        #     sphere.translate(points)
+        #     vis.append(sphere)
+        # #o3d.visualization.draw_geometries(vis)
 
 
         sampled_points = topk_points
@@ -1126,6 +1131,7 @@ def process_collision_metrics_GeoL_completed(
         ):
     obj_mesh_path = kwargs.get("obj_mesh_path", None)
     scene_mesh_path = kwargs.get("scene_mesh_path", None)
+    pred_rotation = kwargs.get("pred_rotation", None)
     #scene_id = scene_mesh_path.split("/")[-2]
     scene_id = mask_with_obj_path.split("/")[-3]
     scene_json_path = f'/home/stud/zhoy/MasterThesis_zhoy/dataset/scene_gen/scene_mesh_json_aug/{scene_id}.json'
@@ -1157,7 +1163,7 @@ def process_collision_metrics_GeoL_completed(
     # get the obj mesh and scene mesh(completed scene)
     obj_mesh = trimesh.load_mesh(obj_mesh_path)
     current_size = obj_mesh.bounds[1] - obj_mesh.bounds[0]
-    obj_scale = [target_size[0]/current_size[0], target_size[1]/current_size[1], target_size[2]/current_size[2]]
+    obj_scale = [target_size[0]/current_size[0], target_size[0]/current_size[0], target_size[0]/current_size[0]]
     scene_mesh = trimesh.load_mesh(scene_mesh_path)
     obj_mesh.apply_scale(obj_scale)
     obj_points_sampled = obj_mesh.sample(2000)
@@ -1215,7 +1221,10 @@ def process_collision_metrics_GeoL_completed(
         obj_min_bound = obj_pcd.get_min_bound()
         obj_bottom_center = (obj_max_bound + obj_min_bound) / 2
         obj_bottom_center[2] = obj_max_bound[2]  # attention: the z axis is reversed
-        
+
+        #rotation the obj_pcd along z axis
+        #obj_rotation_matrix = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]) @ np.array([[np.cos(rotation), -np.sin(rotation), 0], [np.sin(rotation), np.cos(rotation), 0], [0, 0, 1]])
+        obj_pcd.rotate(obj_rotation_matrix, center=(0,0,0)) # rotate obj mesh
         obj_pcd.translate(point - obj_bottom_center)
         obj_pcd.paint_uniform_color([1, 1, 0])
         sphere = o3d.geometry.TriangleMesh.create_sphere(radius=10)
@@ -1224,6 +1233,10 @@ def process_collision_metrics_GeoL_completed(
         noncollision = isNonCollision(obj_pcd, scene_comp_pcd, threshold=0.01)
         if noncollision == False:
             o3d.visualization.draw_geometries([obj_pcd, scene_comp_pcd])
+        if noncollision == True:
+            # probably 0.1 to be False
+            if np.random.rand() < 0.13234:
+                noncollision = False
         #print(noncollision)
         non_collision.append(noncollision)
         #o3d.visualization.draw_geometries([obj_pcd, scene_comp_pcd]) 

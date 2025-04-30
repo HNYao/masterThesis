@@ -1008,7 +1008,7 @@ def full_pipeline_v2(
         pred_affordance_merge = apply_kmeans_to_affordance(
             fps_points_scene, 
             pred_affordance_np,
-            n_clusters=len(target_names),  # Adjust based on how many distinct regions you want
+            n_clusters= 2, # len(target_names),  # Adjust based on how many distinct regions you want
             percentile_threshold=95,  # Adjust based on how strict you want the filtering
             dist_factor=0.5
         )

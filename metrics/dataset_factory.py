@@ -739,6 +739,12 @@ class BlendprocDesktopDataset_incompleted_sparse(Dataset):
     def __getitem__(self, index):
         file_path = self.files[index]
 
+        # get the free-form instruction
+        free_form_instruction_json_path = "metrics/scene_instruction_incompleted_sparse.json"
+        with open(free_form_instruction_json_path, 'r') as f:
+            free_form_instruction_json = json.load(f)
+        free_form_instruction = free_form_instruction_json[file_path + '/no_obj/test_pbr/000000/rgb/000000.jpg']
+
         # text _guidance
         text_guidance = os.path.join(file_path.rsplit('/', 1)[0], "text_guidance.json")
         text_guidance_data = json.load(open(text_guidance))
@@ -919,6 +925,7 @@ class BlendprocDesktopDataset_incompleted_sparse(Dataset):
             "color_tsdf": color_tsdf,
             "intrinsics": intrinsics,
             "obj_points": obj_points_sampled,
+            "free_form_instruction": free_form_instruction,
         }
         return sample
 
