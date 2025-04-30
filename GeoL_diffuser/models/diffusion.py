@@ -1934,6 +1934,47 @@ class Diffusion_muti_affordance(nn.Module):
 
         return outputs
 
+    def xyr_to_6Dpose(self, pose_xyR):
+        """
+        Convert [x, y, theta] to 4x4 SE(3) transformation matrices.
+
+        Args:
+            pose_xyR (Tensor): shape [..., 3] representing (x, y, theta), where theta is in radians.
+
+        Returns:
+            T (Tensor): shape [..., 4, 4], the transformation matrix.
+        """
+        assert pose_xyR.shape[-1] == 3, "Last dim must be 3 for (x, y, theta)"
+
+        x, y, theta = pose_xyR[..., 0], pose_xyR[..., 1], pose_xyR[..., 2]
+
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+
+        zeros = torch.zeros_like(theta)
+        ones = torch.ones_like(theta)
+
+        # Rotation matrix around z-axis
+        row1 = torch.stack([cos_theta, -sin_theta, zeros], dim=-1)
+        row2 = torch.stack([sin_theta,  cos_theta, zeros], dim=-1)
+        row3 = torch.stack([zeros,      zeros,     ones], dim=-1)
+
+        R = torch.stack([row1, row2, row3], dim=-2)  # shape [..., 3, 3]
+
+        # Translation vector
+        t = torch.stack([x, y, zeros], dim=-1)[..., None]  # shape [..., 3, 1]
+
+        Rt = torch.cat([R, t], dim=-1)  # shape [..., 3, 4]
+
+        # Bottom row [0, 0, 0, 1]
+        bottom_row = torch.tensor([0, 0, 0, 1], dtype=pose_xyR.dtype, device=pose_xyR.device)
+        shape = list(pose_xyR.shape[:-1]) + [1, 4]
+        bottom_row = bottom_row.view(1, 1, 1, 4).expand(*shape)  # [..., 1, 4]
+
+        T = torch.cat([Rt, bottom_row], dim=-2)  # shape [..., 4, 4]
+
+        return T
+
 
 
 if __name__ == "__main__":

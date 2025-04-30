@@ -956,8 +956,6 @@ def full_pipeline_v2(
             selected_box, selected_phrase = detect_object(
                 model_detection, rgb_image, target_names[i], use_chatgpt=use_vlm
             )
-        
-
 
         # prepare the data batch
         data_batch = prepare_data_batch(rgb_image, depth_image, intrinsics, target_names[i], selected_box, direction_texts[i], to_tensor=True)
@@ -1059,6 +1057,7 @@ def full_pipeline_v2(
     _, plane_model = get_tf_for_scene_rotation(points_scene)
 
     # get the surface normal of the scene
+    fps_points_scene = data_batch['fps_points_scene'].cpu().numpy()[0] # [N, 3]
     fps_afford_np = data_batch['affordance'].cpu().numpy()[0, :, 0]
     fps_normal_np = data_batch['fps_normals_scene'].cpu()[0].numpy()
     fps_afford_mask = fps_afford_np > np.percentile(fps_afford_np, 95)
@@ -1073,6 +1072,9 @@ def full_pipeline_v2(
     T_plane[:3, 0] = np.cross(T_plane[:3, 1], T_plane[:3, 2])
     T_plane[:3, 0] = T_plane[:3, 0] / np.linalg.norm(T_plane[:3, 0])
     T_plane[:3, 3] = np.mean(points_scene.mean(0), axis=0)
+    fps_afford_plane_mask = fps_afford_np > np.percentile(fps_afford_np, 85)
+    fps_points_scene_plane = fps_points_scene[fps_afford_plane_mask]
+    _, plane_model = get_tf_for_scene_rotation(fps_points_scene_plane)
 
     # # Visualize the plane
     # plane_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
@@ -1087,24 +1089,25 @@ def full_pipeline_v2(
     vol_bnds[:, 0] = vol_bnds[:, 0].min()
     vol_bnds[:, 1] = vol_bnds[:, 1].max()
     color_tsdf = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
-    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)
-    tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, intrinsics, np.eye(4))
+    tsdf = TSDFVolume(vol_bnds, voxel_dim=256, num_margin=20, unknown_free=False)  
+    tsdf.integrate(color_tsdf, depth_image * obj_bbox_mask / 1000.0, intrinsics, np.eye(4))   
+    mesh = tsdf.get_mesh()
 
-    # mesh = tsdf.get_mesh()
     # mesh.compute_vertex_normals()
     # o3d.visualization.draw_geometries([mesh])
 
     # if T_camera_plane is not None:
     #     T_plane[:3, :3] = T_camera_plane[:3, :3]   
 
-    data_batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
+    data_batch['voxel_bounds'] = torch.tensor(vol_bnds[0], dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch["plane_model"] = torch.tensor(plane_model, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
-  
+    data_batch['scene_mesh'] = mesh
+
     # 9 predict the xyR 
     pred = model_diffuser(data_batch, num_samp=1, class_free_guide_w=-0.1, apply_guidance=True, guide_clean=True)
     if visualize_diff:
