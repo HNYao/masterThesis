@@ -34,3 +34,4 @@ GroundingDINO/*
 src/*
 Pointnet2_Pytorch/*
 qualitative_demo/*
+metrics/*

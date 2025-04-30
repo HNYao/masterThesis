@@ -421,6 +421,7 @@ class BlendprocDesktopDataset_incompleted(Dataset):
             "color_tsdf": color_tsdf,
             "intrinsics": intrinsics,
             "obj_points": obj_points_sampled,
+            "obj_mesh": obj_mesh,
         }
         return sample
 
@@ -911,6 +912,7 @@ class BlendprocDesktopDataset_incompleted_sparse(Dataset):
             "image": rgb_image_GeoL, # Geol
             "scene_mesh_path": scene_mesh_path,
             "obj_mesh_path": obj_mesh_path,
+            "obj_mesh_scale":[scale_x, scale_y, scale_z], 
             "tsdf_vol": tsdf._tsdf_vol,
             "vol_bnds": vol_bnds,
             "T_plane": T_plane, 
@@ -1074,8 +1076,8 @@ class realworld_dataset(Dataset):
 
     
 if __name__ == "__main__":
-    #dataset = BlendprocDesktopDataset_incompleted_mult_cond()
-    dataset = realworld_dataset()
+    dataset = BlendprocDesktopDataset_incompleted_sparse()
+    #dataset = realworld_dataset()
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     print(len(dataset))
     for i, data_batch in enumerate(dataloader):

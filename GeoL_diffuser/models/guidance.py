@@ -56,6 +56,48 @@ class Guidance:
         return pose_xy
 
 
+    def scale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
+        """
+        scale the pose_xy to [-1, 1]
+        pose_xy: B * H * 3
+        """
+        if len(pose_xyR.shape) == 3:
+            min_bound_batch = xyR_min_bound.unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1)
+        elif len(pose_xyR.shape) == 4:
+            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
+        elif len(pose_xyR.shape) == 2:
+            min_bound_batch = xyR_min_bound
+            max_bound_batch = xyR_max_bound
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyR = (pose_xyR - min_bound_batch) / (scale + 1e-6)
+        pose_xyR = 2 * pose_xyR - 1
+        pose_xyR = pose_xyR.clamp(-1, 1)
+
+        return pose_xyR
+
+
+    def descale_xyR_pose(self, pose_xyR, xyR_min_bound, xyR_max_bound):
+        """
+        descale the pose_xy to the original range
+        pose_xy: B * N * H * 3
+        """
+        if len(pose_xyR.shape) == 3:
+            min_bound_batch = xyR_min_bound.unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1)
+        elif len(pose_xyR.shape) == 4:
+            min_bound_batch = xyR_min_bound.unsqueeze(1).unsqueeze(1)
+            max_bound_batch = xyR_max_bound.unsqueeze(1).unsqueeze(1)
+        else:
+            raise ValueError("Invalid shape of the input pose_xyR")
+
+        scale = max_bound_batch - min_bound_batch
+        pose_xyR = (pose_xyR + 1) / 2
+        pose_xyR = pose_xyR * scale + min_bound_batch
+        return pose_xyR
+
     def get_heatmap(self, values, cmap_name="turbo", invert=False):
         if invert:
             values = -values
@@ -920,96 +962,122 @@ class AffordanceGuidance_v2(Guidance):
     
     
 
-        k = 20 # top k affordance values
-        topk_affordance, topk_idx = torch.topk(affordance, k, dim=-1)
-        topk_positions = torch.gather(position, dim=1, index=topk_idx.unsqueeze(-1).expand(-1, -1, position.size(-1)))
-        avg_topk_positions = topk_positions.mean(dim=1)  # (B, 3) unscaled
-        avg_topk_positions_debug = avg_topk_positions.clone() # (B, 3) unscaled
-        avg_topk_positions = avg_topk_positions[:, None, None].expand(-1, num_samp, num_hypo, -1)  # (B, N, H, 3)
-        avg_topk_positions = avg_topk_positions[..., :2]
-        # scale the topk affordance
-        avg_topk_positions = self.scale_xy_pose(avg_topk_positions, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"]) # (B, N, H, 3)
-        #avg_topk_positions = torch.zeros_like(avg_topk_positions) # debug
-        affordance_loss = F.mse_loss(
-            avg_topk_positions[..., :2], x[..., :2], reduction="none"
-        ) # (B, N, H, 3) scaled avg_topk_positions, [B, N, H, 3], [B, N, H, 3]
-        #avg_topk_positions = torch.ones_like(avg_topk_positions) * 0.2# debug
-        # affordance_loss = torch.norm(avg_topk_positions[..., :2] - x[..., :2], dim=-1) # (B, N, H)
-        #affordance_loss = affordance_loss.mean(dim=-1)# (B, N, H)
-        #affordance_loss = affordance_loss.values # (B, N, H)
+class AffordanceGuidance_v3(Guidance):
+    """
+    convert to pose and calulate the loss
 
-        #### set second sphere in origin, and use mse, min to get the affordance loss
-        #second_positions_debug = np.array([0.001, -0.01, 1.26]) # (3,)
-        #second_positions_debug = np.array([0.061, -0.273, 1.455])
-        #second_positions_debug[...,2] = (-plane_model[3] - plane_model[0] * second_positions_debug[..., 0] - plane_model[1] * second_positions_debug[..., 1]) / plane_model[2]
-        #second_sphere = self.draw_sphere_at_point(second_positions_debug)
-        #second_positions_debug = torch.tensor(second_positions_debug).cuda()
-        #second_positions_debug = second_positions_debug[None, None, None].expand(bsize, num_samp, num_hypo, -1) # (B, N, H, 3)
-        #second_positions_debug = self.scale_xyz_pose(second_positions_debug, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, N, H, 3)
-        #target_points = torch.cat([avg_topk_positions, second_positions_debug], dim=1) # (B, N=2, H, 3)
-        #affordance_loss = torch.norm(target_points[..., :2] - x[..., :2], dim=-1) # (B, N, H)
-        #affordance_loss = torch.min(affordance_loss, dim=1)[0] # (B, H)
+    """
+    def __init__(self):
+        super(AffordanceGuidance_v3, self).__init__()
 
-        guide_losses["distance_error"] =  affordance_loss.mean(dim=-1) # (B, N, H)
-        affordance_loss = affordance_loss.mean(dim=-1) * 300
-        affordance_loss_debug = affordance_loss.clone()
-        guide_losses["affordance_loss"] = affordance_loss # (B, N, H)
-        affordance_loss = affordance_loss.mean(dim=-1)  # (B, N)
+    def compute_guidance_loss(self, x, t, data_batch):
+        """
+        Evalueates all guidance losses and total and individual values.
+        - x: (B, N, H, 3) the xyR state to use to compute losses
+        - data_batch : various tensors of size (B, ...) that may be needed for loss calculations
+        """
+
+        guide_losses = dict()
+        loss_tot = 0.0
+
+        obj_pc = data_batch['object_pc_position'] # (B, 512, 3) # aligned to z
+        plane_model = data_batch['plane_model'] 
+
+        xyR_descale = self.descale_xyR_pose(x, data_batch["gt_pose_xyR_min_bound"], data_batch["gt_pose_xyR_max_bound"]) # (B, N, H, 3)
+        xyz = self.compute_z_from_xy_plane(xyR_descale[..., :2], plane_model) # (B, N, H, 3)
+
+        # calculate the pose
         
-        affordance_loss = affordance_loss.mean() #* 500 # (B,)
-        loss_tot += affordance_loss
-
-        ####### DEBUG visualize avg_topk_positions
-        #avg_topk_positions_debug = self.scale_xyz_pose(avg_topk_positions_debug, data_batch["gt_pose_xyz_min_bound"], data_batch["gt_pose_xyz_max_bound"]) # (B, 3)
-        avg_topk_positions_debug = avg_topk_positions_debug[0].cpu().detach().numpy() # (3,) unsacled
-        position_debug = position[0].cpu().detach().numpy() # (2048, 3)
-        T_plane, plane_model = get_tf_for_scene_rotation(position_debug)
-        pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(position_debug)
-        pc.paint_uniform_color([0.5, 0.5, 0.5])
-        avg_topk_sphere = self.draw_sphere_at_point(avg_topk_positions_debug)
-        descaled_x = self.descale_xy_pose(x, data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
-        pred_points = descaled_x[0].reshape(-1, 2).cpu().detach().numpy()
-        distances = np.sqrt(
-            ((position_debug[:, :2][:, None, :] - pred_points[:, :2]) ** 2).sum(axis=2)
-        ) # x, y distance 
-
-        scenepts_to_anchor_dist = np.min(distances, axis=1)  # [num_points]
-        scenepts_to_anchor_id = np.argmin(distances, axis=1)  # [num_points]
-        topk_points_id = np.argsort(scenepts_to_anchor_dist, axis=0)[: pred_points.shape[0]]
-        tokk_points_id_corr_anchor = scenepts_to_anchor_id[topk_points_id]
-
-        guide_cost = affordance_loss_debug[0].flatten().cpu().detach().numpy() # [N*H]
-        #guide_cost = guide_cost[tokk_points_id_corr_anchor]
-        guide_cost_color =  self.get_heatmap(guide_cost[None], invert=False)[0]
-
-        #points_for_place= position_debug[topk_points_id] # option1: use the nearest points
-
-        #pred_points_align = pred_points.copy() # option2: use the plane model
-        #pred_points_align[...,2] = (-plane_model[3] - plane_model[0] * pred_points_align[..., 0] - plane_model[1] * pred_points_align[..., 1]) / plane_model[2]
-        #points_for_place = pred_points_align
 
 
+        bsize, num_samp, num_hypo, _ = x.size() 
+        # find the top k affordance
+        if "affordance_fine" in data_batch:
+            affordance_ori = data_batch["affordance"] 
+        else:
+            #print("No affordance_fine in data_batch, using affordance")
+            affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
+        affordance_ori = self.normalize_affordance(affordance_ori) # (B, 2048, num_affordance)
+        
+        affordance_filtered = affordance_ori.clone()
+        affordance_filtered = np.asarray(affordance_filtered.cpu().detach().numpy())
+        position = data_batch["pc_position"] # [B, 2048, 3]
+        min_point_coord = position.min(dim=1, keepdim=True) # [B, 1, 3]
+        max_point_coord = position.max(dim=1, keepdim=True) # [B, 1, 3]
+        
+        # for i in range(affordance_ori.size(-1)):
+        # # filter out the point affordance on the ground
+        #     #plane_model = fit_plane_from_points(np.asarray(position[i].cpu().detach().numpy()))
 
-        vis = [pc, avg_topk_sphere]
-        #vis = [pc, avg_topk_sphere, second_sphere]
+        #     # if point is on the ground, set the affordance value to 0
+        #     distances = np.abs(plane_model[0] * position[i].cpu().detach().numpy()[:, 0] + plane_model[1] * position[i].cpu().detach().numpy()[:, 1] + plane_model[2] * position[i].cpu().detach().numpy()[:, 2] + plane_model[3])
+        #     #position = position[distances > 0.01]
+        #     affordance_filtered[i] = affordance_ori[i].cpu().detach().numpy()
+        #     affordance_filtered[i][distances > 0.01] = 0
+        
+        affordance_filtered = torch.tensor(affordance_filtered).cuda()
+        affordance = affordance_filtered
+        affordance_ori = affordance_filtered
 
-        # for ii, pos in enumerate(points_for_place):
+        
+
+        # visualize the affordance
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(position[0].cpu().detach().numpy())
+        pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance[0].cpu().detach().numpy().squeeze(), invert=False))
+        #pcd.colors = o3d.utility.Vector3dVector(self.get_heatmap(affordance, invert=False))
+
+        #o3d.visualization.draw_geometries([pcd])
+        #vis = [pcd]
+        # sample k points conditioned on the affordance value
+        # option1: weihgted sampling
+        #sampled_position = self.weighted_sampling_with_threshold(position, affordance, sample_k=10, threshold=0.0)
+        # option2: top k sampling
+
+        # visualize the sampled points
+        # for ii in range(sampled_position.size(1)):
         #     pos_vis = o3d.geometry.TriangleMesh.create_sphere()
         #     pos_vis.compute_vertex_normals()
         #     pos_vis.scale(0.03, center=(0, 0, 0))
-        #     pos_vis.translate(pos[:3])
-        #     vis_color = guide_cost_color[ii]
+        #     pos_vis.translate(sampled_position[0, ii, :3].detach().cpu().numpy())
+        #     vis_color = [0.5, 0.5, 0.5]
         #     pos_vis.paint_uniform_color(vis_color)
         #     vis.append(pos_vis)
 
+        #if t == 0:
+            #o3d.visualization.draw_geometries(vis)
 
-        #o3d.visualization.draw_geometries(vis)
-        #o3d.io.write_point_cloud("outputs/debug/AffordanceGuide_pc.ply", vis)
 
-        ##############################################
+        sampled_position = self.scale_xy_pose(sampled_position[...,:2], data_batch["gt_pose_xy_min_bound"], data_batch["gt_pose_xy_max_bound"])
 
+        expanded_target_points = sampled_position.unsqueeze(1).unsqueeze(3)
+        expanded_predicted_points = x.unsqueeze(2)
+        affordance_loss = F.mse_loss(expanded_target_points[...,:2], expanded_predicted_points[...,:2], reduction="none") # (B, N, num_targets, H, 2)
+        affordance_loss = affordance_loss.min(dim=2)[0] # (B, N, H, 2)
+        affordance_loss = affordance_loss.mean(dim=-1) # (B, N, H)
+        guide_losses["distance_error"] = affordance_loss # (B, N, H)
+
+        affordance_loss = affordance_loss
+        guide_losses['loss'] = affordance_loss
+
+        loss_tot += affordance_loss.mean()
+        
         return loss_tot, guide_losses
+
+    def compute_z_from_xy_plane(self, points_xy, planes):
+        B, H, N, _ = points_xy.shape
+        a = planes[:, 0].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        b = planes[:, 1].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        c = planes[:, 2].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        d = planes[:, 3].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+
+        x = points_xy[..., 0:1]
+        y = points_xy[..., 1:2]
+        z = -(a * x + b * y + d) / (c + 1e-8)
+        points_xyz = torch.cat([points_xy, z], dim=-1) # (B, H, N, 3)      
+        return points_xyz
+
     
     def draw_sphere_at_point(self, center, radius=0.06, color=[0.1, 0.1, 0.7]):
         sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
@@ -1088,7 +1156,8 @@ class CompositeGuidance(Guidance):
         loss_tot = 0
         guide_losses = dict()
         # affordance guidance
-        affordance_guidance = AffordanceGuidance_v2()
+        #affordance_guidance = AffordanceGuidance_v2()
+        affordance_guidance = AffordanceGuidance_v3()
         affordance_loss, affordance_guide_losses = affordance_guidance.compute_guidance_loss(x, t, data_batch)
         loss_tot += affordance_loss
         guide_losses["affordance_loss"] = affordance_guide_losses["loss"]

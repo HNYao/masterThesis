@@ -359,7 +359,11 @@ def get_relative_direction(points:np.ndarray, target_point:np.ndarray, direction
         elif direction == "Left Behind" and 22.5-angle_disturb < angel <= 67.5+angle_disturb:
             satisfies_direction = True
         
+        if np.linalg.norm(offset) > 1200:
+            satisfies_direction = False
+        
         results.append(satisfies_direction)
+
     
     return results
 
@@ -569,7 +573,7 @@ def process_collision_metrics(
     #print(collision_rate)
     return non_collision
 
-def isNonCollision(obj_pcd: o3d.geometry.PointCloud, scene_pcd: o3d.geometry.PointCloud, threshold: float = 10):
+def isNonCollision(obj_pcd: o3d.geometry.PointCloud, scene_pcd: o3d.geometry.PointCloud, threshold: float = 50):
     """
     Check if the object point cloud collides with the scene point cloud.
 
@@ -1252,17 +1256,6 @@ def process_success_metrics(
         **kwargs
     )
 
-    is_in_bbox = process_receptacle_metrics(
-        image_sampled_point,
-        mask_with_obj_path,
-        mask_without_obj_path,
-        depth_with_obj_path,
-        depth_without_obj_path,
-        hdf5_path,
-        direction,
-        intrinsics,
-        **kwargs
-    )
 
     non_collision = process_collision_metrics(
         image_sampled_point,
@@ -1277,8 +1270,8 @@ def process_success_metrics(
     )
 
     # calculate the success rate
-    is_success = [all(x) for x in zip(is_direction, is_in_bbox, non_collision)]
-    return is_success, is_direction, is_in_bbox, non_collision
+    is_success = [all(x) for x in zip(is_direction, non_collision)]
+    return is_success, is_direction, non_collision
 
 
 def rw_process_success_metrics(

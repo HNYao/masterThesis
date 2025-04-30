@@ -1055,6 +1055,9 @@ def full_pipeline_v2(
     else:
         obj_bbox_mask = np.ones((rgb_image.shape[0], rgb_image.shape[1]))
 
+    # get the plane model
+    _, plane_model = get_tf_for_scene_rotation(points_scene)
+
     # get the surface normal of the scene
     fps_afford_np = data_batch['affordance'].cpu().numpy()[0, :, 0]
     fps_normal_np = data_batch['fps_normals_scene'].cpu()[0].numpy()
@@ -1097,6 +1100,7 @@ def full_pipeline_v2(
     data_batch['vol_bnds'] = torch.tensor(vol_bnds, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['tsdf_vol'] = torch.tensor(tsdf._tsdf_vol, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch["T_plane"] = torch.tensor(T_plane, dtype=torch.float32).unsqueeze(0).to("cuda")
+    data_batch["plane_model"] = torch.tensor(plane_model, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['color_tsdf'] = torch.tensor(color_tsdf, dtype=torch.float32).unsqueeze(0).to("cuda")
     data_batch['intrinsics'] = torch.tensor(intrinsics, dtype=torch.float32).unsqueeze(0).to("cuda")
