@@ -205,7 +205,7 @@ class NonCollisionGuidance_v3(Guidance):
         query_tsdf = nn.functional.grid_sample(tsdf, query_grids, align_corners=True) # [B, 1, N, O*H, 1]
         query_tsdf = query_tsdf.squeeze(-1).squeeze(1) # [B, N, O*H]
         query_tsdf = query_tsdf.view(B, N, H, N_obj) # [B, N, O*H]
-        collision_loss = F.relu(0.1 - query_tsdf).mean(dim=-1) # (B, N, H)
+        collision_loss = F.relu(0.2 - query_tsdf).mean(dim=-1) # (B, N, H)
 
         guide_losses["loss"] = collision_loss 
         
@@ -222,7 +222,7 @@ class AffordanceGuidance_v3(Guidance):
     """
     def __init__(self):
         super(AffordanceGuidance_v3, self).__init__()
-        self.topk = 50
+        self.topk = 10
 
     def compute_guidance_loss(self, x, t, data_batch):
         """
@@ -238,13 +238,14 @@ class AffordanceGuidance_v3(Guidance):
         obj_pc = obj_pc.unsqueeze(1).unsqueeze(2).expand(-1, N, H, -1, -1) # (B, N, H, O, 3)
         obj_pc_placed = torch.matmul(obj_pc, T[..., :3, :3].transpose(-1, -2)) + T[..., :3, 3].unsqueeze(-2) # (B, N, H, O, 3)
 
-        # find the top k affordance
-        if "affordance_fine" in data_batch:
-            affordance_ori = data_batch["affordance_fine"] 
-        else:
-            #print("No affordance_fine in data_batch, using affordance")
-            affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
-        
+        # # find the top k affordance
+        # if "affordance_fine" in data_batch:
+        #     affordance_ori = data_batch["affordance_fine"] 
+        # else:
+        #     #print("No affordance_fine in data_batch, using affordance")
+        #     affordance_ori = data_batch["affordance"] # [B, 2048, num_affordance]
+        affordance_ori = data_batch["affordance_fine"] 
+
         # sample topk points according to the affordance
         position = data_batch["pc_position"] # [B, 2048, 3]
         sampled_position = self.topk_sampling(position, affordance_ori, sample_k=self.topk) # [B, K, 3]

@@ -182,14 +182,15 @@ def chatgpt_selected_plan(image_path: str):
     
 
     # object placement
-
+    model = "gpt-4o"
+    role = "system" if model == "gpt-4o" else "user"
     object_placement = input("Object need to be placed: ")
     extra_info = input("Extra information: ")
     payload = {
-      "model": "gpt-4o",
+      "model":  f"{model}",
       "messages": [
         {
-          "role": "system", 
+          "role": f"{role}", 
           "content":
             "You are an AI assistant that helps place objects for people.\
             **Input**: You are provided with an image of a tabletop scene. The image contains multiple objects, each enclosed within a bounding box with a unique ID displayed in the top-left corner.\
@@ -268,9 +269,17 @@ def chatgpt_selected_plan(image_path: str):
           "content": [
             {
               "type": "text",
-              "text": f"Base on the image, where should I put {object_placement} reasonably without collision and overlap with other objects? Please attention: {extra_info}\
-                    please use more than one anchor objects to describe one location. \
-                   Answer should be in the following format without any explanations: anchor: <target object>\ndirection: <direction>\n id: <id of the bounding box>\n "
+              "text": f"Base on the image, where should I put {object_placement} reasonably without collision with other objects? {extra_info}\
+                    Attention: Placement should try to satisfy the user preference but also make sure to not collide with the other scene objects. \
+                    Attention: We prefer to use 1~3 anchors objects to describe the placement location!\
+                    Attention: Answer should be in the following format, don't give extra contents: \
+                    ```\n\
+                      anchor: <anchor object 1, anchor object 2, ...>\n\
+                      direction: <direction 1, direction 2, ...>\n\
+                      id: <id of anchor object 1, id of anchor object 2, ...>\n \
+                      reason: <reason why these anchor objects are chosen>\n\
+                    ```",
+                    
             },
             {
               "type": "image_url",
@@ -281,7 +290,7 @@ def chatgpt_selected_plan(image_path: str):
           ]
         }
       ],
-      "max_tokens": 60
+      # "max_tokens": 60
     }
     print("object need to be placed: ", object_placement)
 
@@ -319,10 +328,11 @@ def chatgpt_selected_plan(image_path: str):
         response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
         print(response.json()['choices'][0]['message']['content'])
     content = response.json()['choices'][0]['message']['content']
-    content.strip("```").strip("plaintext")
-
+    content = content.strip("```").strip("```plaintext").strip("```python").strip("```json").strip("```yaml").strip("```text").strip("```txt").strip("```python3").strip("```plaintext")
     try:
         content_split = content.split("\n")
+        if "" in content_split or " " in content_split:
+            content_split.remove("")
         anchor_reponse = content_split[0].split(":")[1].strip()
         direction_response = content_split[1].split(":")[1].strip()
         bbox_id_response = content_split[2].split(":")[1].strip()

@@ -39,7 +39,7 @@ from sklearn.cluster import KMeans
 import copy
 import random
 from glob import glob
-
+from transformations import rotation_matrix
 def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -753,13 +753,11 @@ def detect_object_with_vlm(
     """
 
     #TEXT_PROMPT = "detergent, sink, kettle"
-    TEXT_PROMPT = 'mug, cup, keyboard, laptop, white cup, fork, yellow box' 
-    # TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
-    # TEXT_PROMPT = "plate, cookie" #, fork, spoon, knife, wine, napkin, box, paper, food"
-   
-   
-    BOX_TRESHOLD = 0.15# 0.35
-    TEXT_TRESHOLD = 0.25 # 0.25
+    # TEXT_PROMPT = 'box . shelf layer' 
+    TEXT_PROMPT = "book, monitor, screen, laptop, display, mouse, keyboard, clock, remote, headphone, camera, printer, scanner"
+    # TEXT_PROMPT = "knife . cup . wine . box . food"
+    BOX_TRESHOLD = 0.2 # 0.35
+    TEXT_TRESHOLD = 0.2 # 0.25
 
 
     image_source, image_input = preprocess_image_groundingdino(image)
@@ -780,7 +778,7 @@ def detect_object_with_vlm(
     # filter out the bboex whose area is larger than 80% of the whole image
     image_area = w * h
     boxes_area = (boxes_xyxy[:, 2] - boxes_xyxy[:, 0]) * (boxes_xyxy[:, 3] - boxes_xyxy[:, 1])
-    area_mask = boxes_area < image_area * 0.5
+    area_mask = boxes_area < image_area * 0.8
     boxes_xyxy = boxes_xyxy[area_mask]
     boxes = boxes[area_mask]
     logits = logits[area_mask]
@@ -795,7 +793,7 @@ def detect_object_with_vlm(
         cv2.imwrite(write_path, annotated_frame[:, :, [2, 1, 0]])
 
         #target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
-        target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan_given_image(write_path)
+        target_obj_list, direction_list, bbox_id_list = chatgpt_selected_plan(write_path)
 
         for i, bbox_id in enumerate(bbox_id_list):
             bbox_id_list[i] = int(bbox_id)
@@ -804,8 +802,6 @@ def detect_object_with_vlm(
         #     selected_id = int(id_selected_vlm)
         # else:
         #     selected_id = 0
-    
-   
 
     selected_box_xyxy = [boxes_xyxy[id].astype(np.int32) for id in bbox_id_list]
     boxes_xyxy = [boxes_xyxy[id].astype(np.int32) for id in range(len(boxes_xyxy))] # all boxes
@@ -1062,9 +1058,15 @@ def full_pipeline_v2(
     fps_normal_np = data_batch['fps_normals_scene'].cpu()[0].numpy()
     fps_afford_mask = fps_afford_np > np.percentile(fps_afford_np, 95)
     fps_normal_np = fps_normal_np[fps_afford_mask]
-    normal_kmeans = KMeans(n_clusters=1, random_state=0).fit(fps_normal_np)
-    surface_normal = - normal_kmeans.cluster_centers_[0]
+    normal_kmeans = KMeans(n_clusters=3, random_state=0).fit(fps_normal_np)
+    cluster_labels = normal_kmeans.labels_
+    cluster_centers = normal_kmeans.cluster_centers_
+    cluster_counts = np.bincount(cluster_labels)
+    cluster_top_label = np.argsort(cluster_counts)[-1]
+    surface_normal = - cluster_centers[cluster_top_label]
     surface_normal = surface_normal / np.linalg.norm(surface_normal)
+    
+    # Measure based on the surface normal
     T_plane = np.eye(4)
     T_plane[:3, 2] = surface_normal
     T_plane[:3, 1] = np.cross(surface_normal, np.array([0, 0, 1]))
@@ -1072,15 +1074,11 @@ def full_pipeline_v2(
     T_plane[:3, 0] = np.cross(T_plane[:3, 1], T_plane[:3, 2])
     T_plane[:3, 0] = T_plane[:3, 0] / np.linalg.norm(T_plane[:3, 0])
     T_plane[:3, 3] = np.mean(points_scene.mean(0), axis=0)
-    fps_afford_plane_mask = fps_afford_np > np.percentile(fps_afford_np, 85)
+    T_calib = rotation_matrix(np.pi / 2, (0, 0, 1))
+    T_plane = T_plane @ T_calib
+    fps_afford_plane_mask = fps_afford_np > np.percentile(fps_afford_np, 95)
     fps_points_scene_plane = fps_points_scene[fps_afford_plane_mask]
     _, plane_model = get_tf_for_scene_rotation(fps_points_scene_plane)
-
-    # # Visualize the plane
-    # plane_mesh = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-    # plane_mesh.transform(T_plane)
-    # o3d.visualization.draw_geometries([pcd_scene, plane_mesh])
-    # import pdb; pdb.set_trace()
 
     vol_bnds = np.zeros((3, 2))
     view_frust_pts = get_view_frustum(depth_image / 1000.0, intrinsics, np.eye(4))
@@ -1219,8 +1217,8 @@ if __name__ == "__main__":
     #rgb_image_file_path = "dataset/data_from_robot/img/img_10.jpg"
     #depth_image_file_path = "dataset/data_from_robot/depth/depth_10.png"
     model_detection = load_model(
-        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", 
-        "./thirdpart/GroundingDINO/weights/groundingdino_swint_ogc.pth"
+        "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinB_cfg.py", 
+        "./thirdpart/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth"
     )
     model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
     model_affordance = model_affordance_cls(
@@ -1245,14 +1243,15 @@ if __name__ == "__main__":
     model_diffuser.eval()
     
     # Load the image and depth image, and object mesh
-    # rgb_image = cv2.imread(rgb_image_file_path)
-    # depth_image = cv2.imread(depth_image_file_path, -1)
     npz_path = "qualitative_demo/qualitative_npz/cactus_workingdesk_rw.npz"
+    obj_mesh, _ = retrieve_obj_mesh("cactus", target_size=0.3)
+
+    # npz_path = "qualitative_demo/qualitative_npz/box_shelf_rw.npz"
+    # obj_mesh, _ = retrieve_obj_mesh("yellowbox_realworld", target_size=0.3)
+    
     data = np.load(npz_path)
     rgb_image = data["rgb_image"]
     depth_image = data["depth_image"]
-    obj_mesh, _ = retrieve_obj_mesh("bowl_real", target_size=0.5)
-    
 
     # DO the inference
     seed_everything(42)
@@ -1266,8 +1265,8 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
         target_names=["keyboard"],     #, "Monitor", "Monitor"],
         direction_texts=["Right"],     #, "Left Front", "Right Front"],
-        use_vlm=False,
-        fast_vlm_detection=False,
+        use_vlm=True,
+        fast_vlm_detection=True,
         use_kmeans=True,
         visualize_affordance=False,
         visualize_diff=False,
