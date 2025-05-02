@@ -1227,7 +1227,24 @@ if __name__ == "__main__":
         intrinsics=INTRINSICS,
     ).to("cuda")
     state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
-    model_affordance.load_state_dict(state_affordance_dict["ckpt_dict"])
+    if "ckpt_dict" in state_affordance_dict:
+        state_dict = state_affordance_dict["ckpt_dict"]
+    else:
+        state_dict = state_affordance_dict  
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("fusion_point_moudule."):
+            new_k = k.replace("fusion_point_moudule.", "feat_perceiver_2.sa_ff_decoder.")
+        else:
+            new_k = k
+        new_state_dict[new_k] = v
+    for key in state_dict.keys():
+        print(key)
+    
+    torch.save(new_state_dict, "data_and_weights/affordance_ckpt_11.pth")
+    
+    model_affordance.load_state_dict(new_state_dict, strict=True)
     model_affordance.eval()
 
     # diffuser model

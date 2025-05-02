@@ -26,6 +26,13 @@ from GeoL_net.models.attention_module import SelfAttentionBlock, CrossAttentionL
 from GeoL_net.trainer.losses import BinaryCELoss
 from GeoL_net.models.cdm import ContactMLP
 
+from typing import Optional, Any, Union, Callable
+import torch.nn.functional as F
+from torch.nn import LayerNorm, Linear, Dropout, Module, MultiheadAttention
+from torch import Tensor
+
+
+
 # TODO: GeoL_net_v2 use the almost same structure as GeoL_net, but with 2 encoders for object name and direction
 
 
@@ -1002,6 +1009,7 @@ class FeaturePerceiver(nn.Module):
         )
         self.last_dim = self.decoder_q_input_channels
 
+
     def forward(
         self,
         x,
@@ -1045,7 +1053,242 @@ class FeaturePerceiver(nn.Module):
             dec_q, dec_kv
         ).last_hidden_state  # [bs, num_points, dec_q_dim]
 
+
+
         return dec_q
+
+class FeaturePerceiver_v2(nn.Module):
+
+    def __init__(
+        self,
+        transition_dim,
+        condition_dim,
+        time_emb_dim=-1,
+        encoder_q_input_channels=512,
+        encoder_kv_input_channels=256,
+        encoder_num_heads=8,
+        encoder_widening_factor=1,
+        encoder_dropout=0.1,
+        encoder_residual_dropout=0.0,
+        encoder_self_attn_num_layers=2,
+        decoder_q_input_channels=256,
+        decoder_kv_input_channels=512,
+        decoder_num_heads=8,
+        decoder_widening_factor=1,
+        decoder_dropout=0.1,
+        decoder_residual_dropout=0.0,
+        use_sa_ff_decoder=False,
+    ) -> None:
+        super().__init__()
+
+        self.encoder_q_input_channels = encoder_q_input_channels
+        self.encoder_kv_input_channels = encoder_kv_input_channels
+        self.encoder_num_heads = encoder_num_heads
+        self.encoder_widening_factor = encoder_widening_factor
+        self.encoder_dropout = encoder_dropout
+        self.encoder_residual_dropout = encoder_residual_dropout
+        self.encoder_self_attn_num_layers = encoder_self_attn_num_layers
+
+        self.decoder_q_input_channels = decoder_q_input_channels
+        self.decoder_kv_input_channels = decoder_kv_input_channels
+        self.decoder_num_heads = decoder_num_heads
+        self.decoder_widening_factor = decoder_widening_factor
+        self.decoder_dropout = decoder_dropout
+        self.decoder_residual_dropout = decoder_residual_dropout
+
+        self.condition_adapter = nn.Linear(
+            condition_dim, self.encoder_q_input_channels, bias=True
+        )
+
+        if time_emb_dim > 0:
+            self.time_embedding_adapter = nn.Linear(
+                time_emb_dim, self.encoder_q_input_channels, bias=True
+            )
+        else:
+            self.time_embedding_adapter = None
+
+        self.encoder_adapter = nn.Linear(
+            transition_dim,
+            self.encoder_kv_input_channels,
+            bias=True,
+        )
+        self.decoder_adapter = nn.Linear(
+            self.encoder_kv_input_channels, self.decoder_q_input_channels, bias=True
+        )
+
+        self.encoder_cross_attn = CrossAttentionLayer(
+            num_heads=self.encoder_num_heads,
+            num_q_input_channels=self.encoder_q_input_channels,
+            num_kv_input_channels=self.encoder_kv_input_channels,
+            widening_factor=self.encoder_widening_factor,
+            dropout=self.encoder_dropout,
+            residual_dropout=self.encoder_residual_dropout,
+        )
+
+        self.encoder_self_attn = SelfAttentionBlock(
+            num_layers=self.encoder_self_attn_num_layers,
+            num_heads=self.encoder_num_heads,
+            num_channels=self.encoder_q_input_channels,
+            widening_factor=self.encoder_widening_factor,
+            dropout=self.encoder_dropout,
+            residual_dropout=self.encoder_residual_dropout,
+        )
+
+        self.decoder_cross_attn = CrossAttentionLayer(
+            num_heads=self.decoder_num_heads,
+            num_q_input_channels=self.decoder_q_input_channels,
+            num_kv_input_channels=self.decoder_kv_input_channels,
+            widening_factor=self.decoder_widening_factor,
+            dropout=self.decoder_dropout,
+            residual_dropout=self.decoder_residual_dropout,
+        )
+        self.last_dim = self.decoder_q_input_channels
+
+        self.use_sa_ff_decoder = use_sa_ff_decoder
+        if self.use_sa_ff_decoder == True:
+            self.sa_ff_decoder = nn.Sequential(
+                nn.Linear(256, 256),
+                SA_FF_decoderlayer(
+                    d_model=256, nhead=8, dim_feedforward=512, batch_first=True
+                ),
+                nn.Linear(256, 64),
+                SA_FF_decoderlayer(
+                    d_model=64, nhead=4, dim_feedforward=256, batch_first=True
+                ),
+                nn.Linear(64, 1),
+            )
+
+    def forward(
+        self,
+        x,
+        condition_feat,
+        time_embedding=None,
+    ):
+        """Forward pass of the ContactMLP.
+
+        Args:
+            x: input contact map, [bs, num_points, transition_dim]
+            condition_feat: [bs, 1, condition_dim]
+            time_embedding: [bs, 1, time_embedding_dim]
+
+        Returns:
+            Output contact map, [bs, num_points, contact_dim]
+        """
+
+        # encoder
+        # import pdb; pdb.set_trace()
+        x = x.float()
+        enc_kv = self.encoder_adapter(x)  # [bs, num_points, enc_kv_dim]
+        cond_feat = self.condition_adapter(condition_feat)  # [bs, 1, enc_q_dim]
+        if time_embedding is not None and self.time_embedding_adapter is not None:
+            time_embedding = self.time_embedding_adapter(
+                time_embedding
+            )  # [bs, 1, enc_q_dim]
+
+            enc_q = torch.cat(
+                [cond_feat, time_embedding], dim=1
+            )  # [bs, 1 + 1, enc_q_dim]
+        else:
+            enc_q = cond_feat
+
+        enc_q = self.encoder_cross_attn(enc_q, enc_kv).last_hidden_state
+        enc_q = self.encoder_self_attn(enc_q).last_hidden_state
+
+        # decoder
+        dec_kv = enc_q
+        dec_q = self.decoder_adapter(enc_kv)  # [bs, num_points, dec_q_dim]
+        dec_q = self.decoder_cross_attn(
+            dec_q, dec_kv
+        ).last_hidden_state  # [bs, num_points, dec_q_dim]
+
+        if self.use_sa_ff_decoder:
+            dec_q = self.sa_ff_decoder(dec_q)
+
+
+
+        return dec_q
+
+
+
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, d_model=256, nhead=8, num_layers=2):
+        super().__init__()
+        self.pos_encoder = nn.Linear(d_model, d_model)  # 可加上PE
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.out = nn.Sequential(
+            nn.Linear(d_model, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)
+        )
+
+    def forward(self, x):
+        # x: [batch, seq_len, d_model]
+        x = self.pos_encoder(x)
+        x = self.transformer(x)
+        return self.out(x.mean(dim=1))  # 聚合
+
+        # self.output_mlp_v2=nn.Sequential(
+        #     nn.Linear(256, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 64),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 1),
+        # )
+        self.last_dim = self.decoder_q_input_channels
+        self.use_mlp = use_mlp
+
+    def forward(
+        self,
+        x,
+        condition_feat,
+        time_embedding=None,
+    ):
+        """Forward pass of the ContactMLP.
+
+        Args:
+            x: input contact map, [bs, num_points, transition_dim]
+            condition_feat: [bs, 1, condition_dim]
+            time_embedding: [bs, 1, time_embedding_dim]
+
+        Returns:
+            Output contact map, [bs, num_points, contact_dim]
+        """
+
+        # encoder
+        # import pdb; pdb.set_trace()
+        x = x.float()
+        enc_kv = self.encoder_adapter(x)  # [bs, num_points, enc_kv_dim]
+        cond_feat = self.condition_adapter(condition_feat)  # [bs, 1, enc_q_dim]
+        if time_embedding is not None and self.time_embedding_adapter is not None:
+            time_embedding = self.time_embedding_adapter(
+                time_embedding
+            )  # [bs, 1, enc_q_dim]
+
+            enc_q = torch.cat(
+                [cond_feat, time_embedding], dim=1
+            )  # [bs, 1 + 1, enc_q_dim]
+        else:
+            enc_q = cond_feat
+
+        enc_q = self.encoder_cross_attn(enc_q, enc_kv).last_hidden_state
+        enc_q = self.encoder_self_attn(enc_q).last_hidden_state
+
+        # decoder
+        dec_kv = enc_q
+        dec_q = self.decoder_adapter(enc_kv)  # [bs, num_points, dec_q_dim]
+        dec_q = self.decoder_cross_attn(
+            dec_q, dec_kv
+        ).last_hidden_state  # [bs, num_points, dec_q_dim]
+
+        if self.use_mlp:
+            dec_q = self.output_mlp(dec_q)
+
+        return dec_q
+
+
+
 
 
 @registry.register_affordance_model(name="GeoL_net_v4")
@@ -2347,6 +2590,478 @@ class GeoL_net_v9(nn.Module):
                 d_model=256, nhead=4, dim_feedforward=512, batch_first=True
             ),
         )
+        # self.fusion_point_moudule = nn.Sequential(
+        #     nn.Linear(256, 256),
+        #     SA_FF_decoderlayer(
+        #         d_model=256, nhead=8, dim_feedforward=512, batch_first=True
+        #     ),
+        #     nn.Linear(256, 64),
+        #     SA_FF_decoderlayer(
+        #         d_model=64, nhead=4, dim_feedforward=256, batch_first=True
+        #     ),
+        #     nn.Linear(64, 1),
+        # )
+
+        self.feat_perceiver = FeaturePerceiver_v2(
+            transition_dim=118, condition_dim=256, time_emb_dim=32
+        )
+
+        self.feat_perceiver_2 = FeaturePerceiver_v2(
+            transition_dim=256, condition_dim=256, time_emb_dim=32, use_sa_ff_decoder=True
+        )
+
+
+    def _load_clip(self):
+        model, _ = load_clip("RN50", device=self.device)
+        self.clip_rn50 = build_model(model.state_dict()).to(self.device)  # 10kw frozen
+        del model
+        # Frozen clip
+        for param in self.clip_rn50.parameters():
+            param.requires_grad = False
+
+    def encode_text(self, x):
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+    def direction_encoder(self, x):
+        """
+        encode the direction text through embedding
+        """
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+        # self.directions = ["Left", "Right", "Front", "Behind", "Left Front", "Right Front", "Left Behind", "Right Behind"]
+        # self.vocab = {word: idx for idx, word in enumerate(self.directions)}
+
+    def update_text(self, direction_text_batch):
+        """
+        update the direction text
+        """
+        for i, text in enumerate(direction_text_batch):
+            if text == "Left":
+                direction_text_batch[i] = (
+                    "Left, After a long and exhausting day at work, I left the office feeling both relieved and tired, looking forward to finally going home, where I could rest and unwind peacefully\
+                    The left part of my car is damaged. I need to take it to the repair shop to get it fixed."
+                )
+            elif text == "Right":
+                direction_text_batch[i] = (
+                    "Right, The right side of the brain is responsible for creativity. do you like to draw or paint? If so, you are using the right side of your brain\
+                    Blue is the color of the sky on a clear day. The sky is blue because of the way the Earth's atmosphere scatters light from the sun."
+                )
+            elif text == "Front":
+                direction_text_batch[i] = (
+                    "Front is the best. The front of the house is where the garden is located. The garden is a beautiful place to relax and enjoy the outdoors.\
+                    TUM is a university in Munich, Germany. It is located in the front of the city, near the city center. "
+                )
+            elif text == "Behind":
+                direction_text_batch[i] = (
+                    "Behind hahaha The cat is hiding behind the couch. I can see its tail sticking out from behind the couch.\
+                    Zhejiang University is a university in Hangzhou, China. It is located behind the West Lake, a famous tourist attraction in the city."
+                )
+            elif text == "Left Front":
+                direction_text_batch[i] = (
+                    "Left Front yes it is. The Left Front is a political party in the United States. It was founded in 2004 by a group of former members of the Democratic Party."
+                )
+            elif text == "Right Front":
+                direction_text_batch[i] = (
+                    "Right Front well done. The Right Front china is a desktop publishing software application developed by Adobe Systems. It is used to create documents, such as newsletters, brochures, and flyers."
+                )
+            elif text == "Left Behind":
+                direction_text_batch[i] = (
+                    "Left Behind is a novel by Tim LaHaye and Jerry B. Jenkins that was first published in 1995. It is the first book in the Left Behind series, which has sold over 65 million copies worldwide."
+                )
+            elif text == "Right Behind":
+                direction_text_batch[i] = (
+                    "Right Behind is a song by the American rock band Nine Inch Nails. It was released as the third single from their second studio album, The Downward Spiral (1994)."
+                )
+        return direction_text_batch
+
+    def forward(self, **kwargs):
+        self.batch = kwargs["batch"]
+        batch = kwargs["batch"]
+        self.phrase = batch["phrase"]
+        self.file_name = batch["file_path"]
+        texts = batch["phrase"]
+        reference_obj_name = batch["reference_obj"]
+        direction_text = self.update_text(batch["direction_text"])
+        anchor_pos = batch["anchor_position"]  # 新增 anchor position
+        output = {}
+
+        # encode text(object name)
+        l_enc, l_emb, l_mask = self.encode_text(
+            reference_obj_name
+        )  # encode the direction text
+        l_input = l_emb if "word" in self.lang_fusion_type else l_enc
+        l_input = l_input.to(dtype=torch.float32)
+        batch["target_query"] = l_input
+
+        d_enc, d_emb, d_mask = self.direction_encoder(
+            direction_text
+        )  # encode the direction text
+        d_input = d_enc.to(dtype=torch.float32)
+        d_input = self.direction_mlp(d_input)
+
+        # point cloud
+        scene_pcs = batch["fps_points_scene"]
+        obj_pcs = batch["fps_points_scene"]
+
+        # pointnet_1: extract the geometric affordance feat.
+        obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
+        x_geo = self.geoafford_module(
+            scene_pcs, None
+        )  # [B, C, Num_pts] [B, 48, Num_pts]
+
+        # CLIP: extract the rgb feat.
+        x_rgb = self.clipunet_module(batch=batch)  # [B, C_rgbfeat, H, W] [B, 64, H, W]
+
+        # merge 得到场景特征
+        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(
+            0, 2, 1
+        )  # [B, 64, 2048]
+        x_scene = torch.cat(
+            (scene_pcs.permute(0, 2, 1), obj_pcs.permute(0, 2, 1), x_align, x_geo),
+            dim=1,
+        )  # [B, 118, 2048] test double scene
+        # each position minues anchor position
+        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118]
+
+        # 处理anchor position 特征
+        # input: B*3
+        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256]
+
+        # 处理 direction text
+        x_anchor_and_text = torch.cat(
+            (x_anchor_position, d_input), dim=1
+        )  # [B,  (256 + 256) ]
+        x_anchor_and_text = x_anchor_and_text.unsqueeze(1)  # [B, 1, 256+256]
+        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256]
+
+        # perceive 处理x_scene and x_anchor_and_text
+        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256]
+
+        # 2nd perceiver 处理 x and d_input
+        x = self.feat_perceiver_2(x, d_input.unsqueeze(1))
+
+        x_feat = x
+        #x = self.fusion_point_moudule(x)
+        # x = x.permute(0,2,1)
+
+        output["affordance"] = x
+        #output["affordance_feat"] = x_feat
+        self.model_ouput = x
+        self.model_pc = scene_pcs
+
+        return output
+
+
+
+@registry.register_affordance_model(name="GeoL_net_v10")
+class GeoL_net_v10(nn.Module):
+
+    def __init__(self, input_shape, target_input_shape, intrinsics=None):
+        super().__init__()
+        self.geoafford_module = GeoAffordModule(feat_dim=16)  # 0.3kw
+        self.clipunet_module = CLIPUNet(
+            input_shape=input_shape,
+            target_input_shape=target_input_shape,
+            output_dim=64,
+        )  # 6kw parameters
+        self.concate = FeatureConcat()
+        self.device = "cuda"  # cpu for dataset
+        self.lang_fusion_type = "mult"  # hard code from CLIPlingunet
+        self._load_clip()
+        if intrinsics is None:
+            self.intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+        else:
+            self.intrinsics = intrinsics
+
+        # self.instrics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # for real world data
+        # self.fusion_point_moudule = FusionPointLayer(input_dim=256) #0.3kw
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(1024, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+
+        self.anchor_mlp = nn.Sequential(
+            nn.Linear(3, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+        self.cond_mlp = nn.Sequential(
+            nn.Linear(256 + 256, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+        # self.fusion_point_moudule = nn.Sequential(
+        #     nn.Linear(256, 256),
+        #     SA_FF_decoderlayer(
+        #         d_model=256, nhead=8, dim_feedforward=512, batch_first=True
+        #     ),
+        #     nn.Linear(256, 64),
+        #     SA_FF_decoderlayer(
+        #         d_model=64, nhead=4, dim_feedforward=256, batch_first=True
+        #     ),
+        #     nn.Linear(64, 1),
+        # )
+
+        self.feat_perceiver = FeaturePerceiver_v2(
+            transition_dim=118, condition_dim=256, time_emb_dim=32
+        )
+
+        self.feat_perceiver_2 = FeaturePerceiver_v2(
+            transition_dim=256, condition_dim=256, time_emb_dim=32, use_sa_ff_decoder=True
+        )
+
+
+    def _load_clip(self):
+        model, _ = load_clip("RN50", device=self.device)
+        self.clip_rn50 = build_model(model.state_dict()).to(self.device)  # 10kw frozen
+        del model
+        # Frozen clip
+        for param in self.clip_rn50.parameters():
+            param.requires_grad = False
+
+    def encode_text(self, x):
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+    def direction_encoder(self, x):
+        """
+        encode the direction text through embedding
+        """
+        with torch.no_grad():
+            tokens = tokenize(x).to(self.device)
+            text_feat, text_emb = self.clip_rn50.encode_text_with_embeddings(tokens)
+        text_mask = torch.where(tokens == 0, tokens, 1)  # [1, max_token_len]
+        return text_feat, text_emb, text_mask
+
+        # self.directions = ["Left", "Right", "Front", "Behind", "Left Front", "Right Front", "Left Behind", "Right Behind"]
+        # self.vocab = {word: idx for idx, word in enumerate(self.directions)}
+
+    def update_text(self, direction_text_batch):
+        """
+        update the direction text
+        """
+        for i, text in enumerate(direction_text_batch):
+            if text == "Left":
+                direction_text_batch[i] = (
+                    "Left, After a long and exhausting day at work, I left the office feeling both relieved and tired, looking forward to finally going home, where I could rest and unwind peacefully\
+                    The left part of my car is damaged. I need to take it to the repair shop to get it fixed."
+                )
+            elif text == "Right":
+                direction_text_batch[i] = (
+                    "Right, The right side of the brain is responsible for creativity. do you like to draw or paint? If so, you are using the right side of your brain\
+                    Blue is the color of the sky on a clear day. The sky is blue because of the way the Earth's atmosphere scatters light from the sun."
+                )
+            elif text == "Front":
+                direction_text_batch[i] = (
+                    "Front is the best. The front of the house is where the garden is located. The garden is a beautiful place to relax and enjoy the outdoors.\
+                    TUM is a university in Munich, Germany. It is located in the front of the city, near the city center. "
+                )
+            elif text == "Behind":
+                direction_text_batch[i] = (
+                    "Behind hahaha The cat is hiding behind the couch. I can see its tail sticking out from behind the couch.\
+                    Zhejiang University is a university in Hangzhou, China. It is located behind the West Lake, a famous tourist attraction in the city."
+                )
+            elif text == "Left Front":
+                direction_text_batch[i] = (
+                    "Left Front yes it is. The Left Front is a political party in the United States. It was founded in 2004 by a group of former members of the Democratic Party."
+                )
+            elif text == "Right Front":
+                direction_text_batch[i] = (
+                    "Right Front well done. The Right Front china is a desktop publishing software application developed by Adobe Systems. It is used to create documents, such as newsletters, brochures, and flyers."
+                )
+            elif text == "Left Behind":
+                direction_text_batch[i] = (
+                    "Left Behind is a novel by Tim LaHaye and Jerry B. Jenkins that was first published in 1995. It is the first book in the Left Behind series, which has sold over 65 million copies worldwide."
+                )
+            elif text == "Right Behind":
+                direction_text_batch[i] = (
+                    "Right Behind is a song by the American rock band Nine Inch Nails. It was released as the third single from their second studio album, The Downward Spiral (1994)."
+                )
+        return direction_text_batch
+
+    def forward(self, **kwargs):
+        self.batch = kwargs["batch"]
+        batch = kwargs["batch"]
+        self.phrase = batch["phrase"]
+        self.file_name = batch["file_path"]
+        texts = batch["phrase"]
+        reference_obj_name = batch["reference_obj"]
+        direction_text = self.update_text(batch["direction_text"])
+        anchor_pos = batch["anchor_position"]  # 新增 anchor position
+        output = {}
+
+        # encode text(object name)
+        l_enc, l_emb, l_mask = self.encode_text(
+            reference_obj_name
+        )  # encode the direction text
+        l_input = l_emb if "word" in self.lang_fusion_type else l_enc
+        l_input = l_input.to(dtype=torch.float32)
+        batch["target_query"] = l_input
+
+        d_enc, d_emb, d_mask = self.direction_encoder(
+            direction_text
+        )  # encode the direction text
+        d_input = d_enc.to(dtype=torch.float32)
+        d_input = self.direction_mlp(d_input)
+
+        # point cloud
+        scene_pcs = batch["fps_points_scene"]
+        obj_pcs = batch["fps_points_scene"]
+
+        # pointnet_1: extract the geometric affordance feat.
+        obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
+        x_geo = self.geoafford_module(
+            scene_pcs, None
+        )  # [B, C, Num_pts] [B, 48, Num_pts]
+
+        # CLIP: extract the rgb feat.
+        x_rgb = self.clipunet_module(batch=batch)  # [B, C_rgbfeat, H, W] [B, 64, H, W]
+
+        # merge 得到场景特征
+        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(
+            0, 2, 1
+        )  # [B, 64, 2048]
+        x_scene = torch.cat(
+            (scene_pcs.permute(0, 2, 1), scene_pcs.permute(0, 2, 1), x_align, x_geo),
+            dim=1,
+        )  # [B, 118, 2048] test double scene
+        # each position minues anchor position
+        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118]
+
+        # 处理anchor position 特征
+        # input: B*3
+        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256]
+
+        # 处理 direction text
+        x_anchor_and_text = torch.cat(
+            (x_anchor_position, d_input), dim=1
+        )  # [B,  (256 + 256) ]
+        x_anchor_and_text = x_anchor_and_text.unsqueeze(1)  # [B, 1, 256+256]
+        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256]
+
+        # perceive 处理x_scene and x_anchor_and_text
+        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256]
+
+        # 2nd perceiver 处理 x and d_input
+        x = self.feat_perceiver_2(x, d_input.unsqueeze(1))
+
+        x_feat = x
+        #x = self.fusion_point_moudule(x)
+        # x = x.permute(0,2,1)
+
+        output["affordance"] = x
+        #output["affordance_feat"] = x_feat
+        self.model_ouput = x
+        self.model_pc = scene_pcs
+
+        return output
+    
+class FusionPointModule(nn.Module):
+    def __init__(self):
+        super(FusionPointModule, self).__init__()
+        
+        self.linear1 = nn.Linear(256, 256)
+        self.attention1 = nn.MultiheadAttention(embed_dim=256, num_heads=8, batch_first=True)
+        self.norm1 = nn.LayerNorm(256)
+        
+        self.linear2 = nn.Linear(256, 64)
+        self.attention2 = nn.MultiheadAttention(embed_dim=64, num_heads=4, batch_first=True)
+        self.norm2 = nn.LayerNorm(64)
+        
+        self.linear3 = nn.Linear(64, 1)
+
+    def forward(self, x):
+        # First Transformer equivalent layer
+        x1 = self.linear1(x)
+        attn_output1, _ = self.attention1(x1, x1, x1)
+        x1 = self.norm1(attn_output1 + x1)  # Residual connection
+        
+        # Second Transformer equivalent layer
+        x2 = self.linear2(x1)
+        attn_output2, _ = self.attention2(x2, x2, x2)
+        x2 = self.norm2(attn_output2 + x2)  # Residual connection
+        
+        # Output layer
+        output = self.linear3(x2)
+        return output
+
+@registry.register_affordance_model(name="GeoL_net_v11")
+class GeoL_net_v11(nn.Module):
+    """
+    GeoL_net_v9:
+        1. use data based on kinect cfg
+        2. camera instrics is different
+        3. image size is different
+        4. intrinscis as input
+    """
+
+    def __init__(self, input_shape, target_input_shape, intrinsics=None):
+        super().__init__()
+        self.geoafford_module = GeoAffordModule(feat_dim=16)  # 0.3kw
+        self.clipunet_module = CLIPUNet(
+            input_shape=input_shape,
+            target_input_shape=target_input_shape,
+            output_dim=64,
+        )  # 6kw parameters
+        self.concate = FeatureConcat()
+        self.device = "cuda"  # cpu for dataset
+        self.lang_fusion_type = "mult"  # hard code from CLIPlingunet
+        self._load_clip()
+        if intrinsics is None:
+            self.intrinsics = np.array(
+                [
+                    [607.09912 / 2, 0.0, 636.85083 / 2],
+                    [0.0, 607.05212 / 2, 367.35952 / 2],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+        else:
+            self.intrinsics = intrinsics
+
+        # self.instrics = np.array([[607.0125 ,   0.     , 636.525  ], [  0.     , 607.16775, 367.11084], [  0.     ,   0.     ,   1.     ]]) # for real world data
+        # self.fusion_point_moudule = FusionPointLayer(input_dim=256) #0.3kw
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(1024, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+
+        self.anchor_mlp = nn.Sequential(
+            nn.Linear(3, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
+        self.cond_mlp = nn.Sequential(
+            nn.Linear(256 + 256, 256),
+            nn.TransformerEncoderLayer(
+                d_model=256, nhead=4, dim_feedforward=512, batch_first=True
+            ),
+        )
         self.fusion_point_moudule = nn.Sequential(
             nn.Linear(256, 256),
             nn.TransformerEncoderLayer(
@@ -2364,7 +3079,7 @@ class GeoL_net_v9(nn.Module):
         )
 
         self.feat_perceiver_2 = FeaturePerceiver(
-            transition_dim=256, condition_dim=256, time_emb_dim=32
+            transition_dim=256, condition_dim=256, time_emb_dim=32,
         )
 
     def _load_clip(self):
@@ -2515,6 +3230,88 @@ class GeoL_net_v9(nn.Module):
         self.model_pc = scene_pcs
 
         return output
+
+
+class SA_FF_decoderlayer(Module):
+ 
+    __constants__ = ['batch_first', 'norm_first']
+
+    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
+                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
+                 layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+                                            **factory_kwargs)
+        # Implementation of Feedforward model
+        self.linear1 = Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.dropout = Dropout(dropout)
+        self.linear2 = Linear(dim_feedforward, d_model, **factory_kwargs)
+
+        self.norm_first = norm_first
+        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.dropout1 = Dropout(dropout)
+        self.dropout2 = Dropout(dropout)
+
+        # Legacy string support for activation function.
+
+        # activation = F.relu
+        # self.activation = activation
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if not hasattr(self, 'activation'):
+            self.activation = F.relu
+
+
+    def forward(
+            self,
+            src: Tensor,
+            src_mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            is_causal: bool = False) -> Tensor:
+        r"""Pass the input through the encoder layer.
+
+        Args:
+            src: the sequence to the encoder layer (required).
+            src_mask: the mask for the src sequence (optional).
+            is_causal: If specified, applies a causal mask as src_mask.
+              Default: ``False``.
+            src_key_padding_mask: the mask for the src keys per batch (optional).
+
+        Shape:
+            see the docs in Transformer class.
+        """
+        src_key_padding_mask = F._canonical_mask(
+            mask=src_key_padding_mask,
+            mask_name="src_key_padding_mask",
+            other_type=F._none_or_dtype(src_mask),
+            other_name="src_mask",
+            target_type=src.dtype
+        )
+
+        x = src
+
+        x = self.norm1(x + self._sa_block(x, src_mask, src_key_padding_mask))
+        x = self.norm2(x + self._ff_block(x))
+
+        return x
+
+    # self-attention block
+    def _sa_block(self, x: Tensor,
+                  attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor]) -> Tensor:
+        x = self.self_attn(x, x, x,
+                           attn_mask=attn_mask,
+                           key_padding_mask=key_padding_mask,
+                           need_weights=False)[0]
+        return self.dropout1(x)
+
+    # feed forward block
+    def _ff_block(self, x: Tensor) -> Tensor:
+        x = self.linear2(self.dropout(F.relu(self.linear1(x))))
+        return self.dropout2(x)
 
 @registry.register_affordance_encoder(name="AffordanceEncoder")
 class AffordanceEncoder(nn.Module):
@@ -2737,9 +3534,14 @@ class AffordanceEncoder(nn.Module):
 
 if __name__ == "__main__":
     num_points = 2048
-    model = GeoL_net_v8(input_shape=(3, 480, 640), target_input_shape=(3, 128, 128))
+    model = GeoL_net_v9(input_shape=(3, 480, 640), target_input_shape=(3, 128, 128)).to("cuda")
+    # load state
+    state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
+    model.load_state_dict(state_affordance_dict, strict=True)  
+
     model = model.to("cuda")
     batch = {}
+    
     batch_size = 2
     batch["phrase"] = ["red ball", "blue ball"]
     batch["reference_obj"] = ["ball", "ball"]
