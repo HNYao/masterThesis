@@ -1220,7 +1220,7 @@ if __name__ == "__main__":
         "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinB_cfg.py", 
         "./thirdpart/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth"
     )
-    model_affordance_cls = registry.get_affordance_model("GeoL_net_v9")
+    model_affordance_cls = registry.get_affordance_model("GeoL_net_v10")
     model_affordance = model_affordance_cls(
         input_shape=(3, 720, 1280),
         target_input_shape=(3, 128, 128),
