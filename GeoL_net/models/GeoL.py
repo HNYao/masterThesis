@@ -2921,7 +2921,7 @@ class GeoL_net_v10(nn.Module):
         l_input = l_input.to(dtype=torch.float32)
         batch["target_query"] = l_input
 
-        d_enc, d_emb, d_mask = self.direction_encoder(
+        d_enc, d_emb, d_mask = self.direction_encoder( # direction encoder and encode text actually same
             direction_text
         )  # encode the direction text
         d_input = d_enc.to(dtype=torch.float32)
@@ -2932,41 +2932,33 @@ class GeoL_net_v10(nn.Module):
         obj_pcs = batch["fps_points_scene"]
 
         # pointnet_1: extract the geometric affordance feat.
-        obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
-        x_geo = self.geoafford_module(
-            scene_pcs, None
-        )  # [B, C, Num_pts] [B, 48, Num_pts]
+        #obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
+        x_geo = self.geoafford_module(scene_pcs)  # [B, C, Num_pts] [B, 48, Num_pts]
 
         # CLIP: extract the rgb feat.
         x_rgb = self.clipunet_module(batch=batch)  # [B, C_rgbfeat, H, W] [B, 64, H, W]
 
         # merge 得到场景特征
-        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(
-            0, 2, 1
-        )  # [B, 64, 2048]
-        x_scene = torch.cat(
-            (scene_pcs.permute(0, 2, 1), scene_pcs.permute(0, 2, 1), x_align, x_geo),
-            dim=1,
-        )  # [B, 118, 2048] test double scene
-        # each position minues anchor position
-        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118]
+        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(0, 2, 1)  # [B, 70, 2048] z_s_prime
+        x_scene = torch.cat((x_align, x_geo),dim=1,)  # [B, 118, 2048] 
+        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118] z_t
 
-        # 处理anchor position 特征
+        # anchor position feature
         # input: B*3
-        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256]
+        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256] f_proj_1
 
         # 处理 direction text
         x_anchor_and_text = torch.cat(
             (x_anchor_position, d_input), dim=1
         )  # [B,  (256 + 256) ]
         x_anchor_and_text = x_anchor_and_text.unsqueeze(1)  # [B, 1, 256+256]
-        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256]
+        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256] f_proj_2
 
         # perceive 处理x_scene and x_anchor_and_text
-        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256]
+        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256] f_perc_1
 
         # 2nd perceiver 处理 x and d_input
-        x = self.feat_perceiver_2(x, d_input.unsqueeze(1))
+        x = self.feat_perceiver_2(x, d_input.unsqueeze(1)) # [B, 2048, 1] f_perc_2
 
         x_feat = x
         #x = self.fusion_point_moudule(x)
@@ -3010,13 +3002,6 @@ class FusionPointModule(nn.Module):
 
 @registry.register_affordance_model(name="GeoL_net_v11")
 class GeoL_net_v11(nn.Module):
-    """
-    GeoL_net_v9:
-        1. use data based on kinect cfg
-        2. camera instrics is different
-        3. image size is different
-        4. intrinscis as input
-    """
 
     def __init__(self, input_shape, target_input_shape, intrinsics=None):
         super().__init__()
@@ -3062,25 +3047,26 @@ class GeoL_net_v11(nn.Module):
                 d_model=256, nhead=4, dim_feedforward=512, batch_first=True
             ),
         )
-        self.fusion_point_moudule = nn.Sequential(
-            nn.Linear(256, 256),
-            nn.TransformerEncoderLayer(
-                d_model=256, nhead=8, dim_feedforward=512, batch_first=True
-            ),
-            nn.Linear(256, 64),
-            nn.TransformerEncoderLayer(
-                d_model=64, nhead=4, dim_feedforward=256, batch_first=True
-            ),
-            nn.Linear(64, 1),
-        )
+        # self.fusion_point_moudule = nn.Sequential(
+        #     nn.Linear(256, 256),
+        #     SA_FF_decoderlayer(
+        #         d_model=256, nhead=8, dim_feedforward=512, batch_first=True
+        #     ),
+        #     nn.Linear(256, 64),
+        #     SA_FF_decoderlayer(
+        #         d_model=64, nhead=4, dim_feedforward=256, batch_first=True
+        #     ),
+        #     nn.Linear(64, 1),
+        # )
 
-        self.feat_perceiver = FeaturePerceiver(
+        self.feat_perceiver = FeaturePerceiver_v2(
             transition_dim=118, condition_dim=256, time_emb_dim=32
         )
 
-        self.feat_perceiver_2 = FeaturePerceiver(
-            transition_dim=256, condition_dim=256, time_emb_dim=32,
+        self.feat_perceiver_2 = FeaturePerceiver_v2(
+            transition_dim=256, condition_dim=256, time_emb_dim=32, use_sa_ff_decoder=True
         )
+
 
     def _load_clip(self):
         model, _ = load_clip("RN50", device=self.device)
@@ -3173,59 +3159,52 @@ class GeoL_net_v11(nn.Module):
         l_input = l_input.to(dtype=torch.float32)
         batch["target_query"] = l_input
 
-        d_enc, d_emb, d_mask = self.direction_encoder(
+        d_enc, d_emb, d_mask = self.direction_encoder( # direction encoder and encode text actually same
             direction_text
         )  # encode the direction text
         d_input = d_enc.to(dtype=torch.float32)
         d_input = self.direction_mlp(d_input)
+        c_input = self.direction_mlp(l_enc.to(dtype=torch.float32))
 
         # point cloud
         scene_pcs = batch["fps_points_scene"]
         obj_pcs = batch["fps_points_scene"]
 
         # pointnet_1: extract the geometric affordance feat.
-        obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
-        x_geo = self.geoafford_module(
-            scene_pcs, obj_pcs
-        )  # [B, C, Num_pts] [B, 48, Num_pts]
+        #obj_pcs = obj_pcs - anchor_pos.unsqueeze(1)  # [B, Num_points, 3]
+        x_geo = self.geoafford_module(scene_pcs)  # [B, C, Num_pts] [B, 48, Num_pts]
 
         # CLIP: extract the rgb feat.
         x_rgb = self.clipunet_module(batch=batch)  # [B, C_rgbfeat, H, W] [B, 64, H, W]
 
         # merge 得到场景特征
-        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(
-            0, 2, 1
-        )  # [B, 64, 2048]
-        x_scene = torch.cat(
-            (scene_pcs.permute(0, 2, 1), obj_pcs.permute(0, 2, 1), x_align, x_geo),
-            dim=1,
-        )  # 场景特征 [B, 118, 2048]
-        # each position minues anchor position
-        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118]
+        x_align = self.concate(x_rgb["affordance"], scene_pcs, self.intrinsics).permute(0, 2, 1)  # [B, 70, 2048] z_s_prime
+        x_scene = torch.cat((x_align, x_geo),dim=1,)  # [B, 118, 2048] 
+        x_scene = x_scene.permute(0, 2, 1)  # [B, 2048, 118] z_t
 
-        # 处理anchor position 特征
+        # anchor position feature
         # input: B*3
-        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256]
+        x_anchor_position = self.anchor_mlp(anchor_pos)  # output: [B, 256] f_proj_1
 
         # 处理 direction text
         x_anchor_and_text = torch.cat(
-            (x_anchor_position, d_input), dim=1
+            (x_anchor_position, c_input), dim=1
         )  # [B,  (256 + 256) ]
         x_anchor_and_text = x_anchor_and_text.unsqueeze(1)  # [B, 1, 256+256]
-        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256]
+        x_anchor_and_text = self.cond_mlp(x_anchor_and_text)  # [B, 256] f_proj_2
 
         # perceive 处理x_scene and x_anchor_and_text
-        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256]
+        x = self.feat_perceiver(x_scene, x_anchor_and_text)  # [B, 2048, 256] f_perc_1
 
         # 2nd perceiver 处理 x and d_input
-        x = self.feat_perceiver_2(x, d_input.unsqueeze(1))
+        x = self.feat_perceiver_2(x, d_input.unsqueeze(1)) # [B, 2048, 1] f_perc_2
 
         x_feat = x
-        x = self.fusion_point_moudule(x)
+        #x = self.fusion_point_moudule(x)
         # x = x.permute(0,2,1)
 
         output["affordance"] = x
-        output["affordance_feat"] = x_feat
+        #output["affordance_feat"] = x_feat
         self.model_ouput = x
         self.model_pc = scene_pcs
 
@@ -3534,10 +3513,10 @@ class AffordanceEncoder(nn.Module):
 
 if __name__ == "__main__":
     num_points = 2048
-    model = GeoL_net_v9(input_shape=(3, 480, 640), target_input_shape=(3, 128, 128)).to("cuda")
+    model = GeoL_net_v10(input_shape=(3, 480, 640), target_input_shape=(3, 128, 128)).to("cuda")
     # load state
-    state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
-    model.load_state_dict(state_affordance_dict, strict=True)  
+    state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v10_10K/ckpt_1.pth", map_location="cpu")
+    model.load_state_dict(state_affordance_dict["ckpt_dict"], strict=True)  
 
     model = model.to("cuda")
     batch = {}

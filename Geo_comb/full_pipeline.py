@@ -1220,13 +1220,13 @@ if __name__ == "__main__":
         "./thirdpart/GroundingDINO/groundingdino/config/GroundingDINO_SwinB_cfg.py", 
         "./thirdpart/GroundingDINO/weights/groundingdino_swinb_cogcoor.pth"
     )
-    model_affordance_cls = registry.get_affordance_model("GeoL_net_v10")
+    model_affordance_cls = registry.get_affordance_model("GeoL_net_v11")
     model_affordance = model_affordance_cls(
         input_shape=(3, 720, 1280),
         target_input_shape=(3, 128, 128),
         intrinsics=INTRINSICS,
     ).to("cuda")
-    state_affordance_dict = torch.load("data_and_weights/ckpt_11.pth", map_location="cpu")
+    state_affordance_dict = torch.load("outputs/checkpoints/GeoL_v11K/ckpt_26.pth", map_location="cpu")
     if "ckpt_dict" in state_affordance_dict:
         state_dict = state_affordance_dict["ckpt_dict"]
     else:
